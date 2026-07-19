@@ -4,6 +4,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
+  { ignores: ['dist/'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

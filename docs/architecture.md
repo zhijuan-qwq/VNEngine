@@ -42,9 +42,9 @@
 
 ### 分层说明
 
-| 层级 | 职责 | 依赖关系 |
-|------|------|----------|
-| **引擎 Core** | 游戏循环、渲染、脚本执行、音频、资源、存档 | 框架无关，可独立运行 |
+| 层级           | 职责                                        | 依赖关系               |
+| -------------- | ------------------------------------------- | ---------------------- |
+| **引擎 Core**  | 游戏循环、渲染、脚本执行、音频、资源、存档  | 框架无关，可独立运行   |
 | **平台适配层** | Canvas DOM 挂载、输入事件绑定、文件系统访问 | 连接 Core 与浏览器环境 |
 
 ---
@@ -80,14 +80,14 @@ Game
 
 ```ts
 interface GameConfig {
-  canvas: HTMLCanvasElement
-  width: number          // 逻辑宽度 (如 1280)
-  height: number         // 逻辑高度 (如 720)
-  scaleMode: 'fit' | 'stretch' | 'fixed'
-  fps: number            // 目标帧率，默认 60
-  scripts: string[]      // 预加载脚本列表
-  assets: AssetManifest  // 资源清单
-  plugins: Plugin[]      // 插件列表
+  canvas: HTMLCanvasElement;
+  width: number; // 逻辑宽度 (如 1280)
+  height: number; // 逻辑高度 (如 720)
+  scaleMode: 'fit' | 'stretch' | 'fixed';
+  fps: number; // 目标帧率，默认 60
+  scripts: string[]; // 预加载脚本列表
+  assets: AssetManifest; // 资源清单
+  plugins: Plugin[]; // 插件列表
 }
 ```
 
@@ -117,6 +117,7 @@ GameLoop
 ```
 
 **性能要点：**
+
 - `deltaTime` 上限设为 `1/15`（约 66ms），避免标签页切回后跳帧
 - `update` 和 `render` 解耦：渲染跟不上时可以降帧但不影响逻辑
 
@@ -135,20 +136,20 @@ EventBus（发布/订阅模式）
 
 **核心事件定义：**
 
-| 事件名 | 触发时机 | 载荷 |
-|--------|----------|------|
-| `script:command` | 执行每条命令前 | `{ cmd, args }` |
-| `script:choice` | 显示选项时 | `{ choices[] }` |
-| `script:end` | 脚本执行完毕 | — |
-| `render:frame` | 每帧渲染后 | `{ deltaTime }` |
-| `character:show` | 角色立绘显示 | `{ id, position }` |
-| `character:hide` | 角色立绘隐藏 | `{ id }` |
-| `bg:change` | 背景切换 | `{ id, transition }` |
-| `audio:play` | 音频播放 | `{ track, type }` |
-| `audio:stop` | 音频停止 | `{ track }` |
-| `game:save` | 存档 | `{ slot, data }` |
-| `game:load` | 读档 | `{ slot, data }` |
-| `game:settings` | 设置变更 | `{ key, value }` |
+| 事件名           | 触发时机       | 载荷                 |
+| ---------------- | -------------- | -------------------- |
+| `script:command` | 执行每条命令前 | `{ cmd, args }`      |
+| `script:choice`  | 显示选项时     | `{ choices[] }`      |
+| `script:end`     | 脚本执行完毕   | —                    |
+| `render:frame`   | 每帧渲染后     | `{ deltaTime }`      |
+| `character:show` | 角色立绘显示   | `{ id, position }`   |
+| `character:hide` | 角色立绘隐藏   | `{ id }`             |
+| `bg:change`      | 背景切换       | `{ id, transition }` |
+| `audio:play`     | 音频播放       | `{ track, type }`    |
+| `audio:stop`     | 音频停止       | `{ track }`          |
+| `game:save`      | 存档           | `{ slot, data }`     |
+| `game:load`      | 读档           | `{ slot, data }`     |
+| `game:settings`  | 设置变更       | `{ key, value }`     |
 
 ---
 
@@ -198,16 +199,16 @@ Renderer
 
 ```ts
 interface Layer {
-  id: string
-  zIndex: number
-  visible: boolean
-  opacity: number          // 0-1
-  offscreen: OffscreenCanvas | null  // 静态缓存
-  dirty: boolean           // 是否需要重绘
-  sprites: Sprite[]        // 该层精灵列表
+  id: string;
+  zIndex: number;
+  visible: boolean;
+  opacity: number; // 0-1
+  offscreen: OffscreenCanvas | null; // 静态缓存
+  dirty: boolean; // 是否需要重绘
+  sprites: Sprite[]; // 该层精灵列表
 
-  update(dt: number): void
-  draw(ctx: CanvasRenderingContext2D): void
+  update(dt: number): void;
+  draw(ctx: CanvasRenderingContext2D): void;
 }
 ```
 
@@ -215,24 +216,24 @@ interface Layer {
 
 ```ts
 class Sprite {
-  id: string
-  texture: Texture              // 纹理引用
-  x: number                     // 位置
-  y: number
-  width: number
-  height: number
-  opacity: number               // 0-1
-  scale: { x: number; y: number }
-  rotation: number
-  anchor: { x: number; y: number }  // 锚点（0-1）
-  effects: SpriteEffect[]       // 精灵特效（抖动、呼吸等）
-  transition: Transition | null // 过渡动画
+  id: string;
+  texture: Texture; // 纹理引用
+  x: number; // 位置
+  y: number;
+  width: number;
+  height: number;
+  opacity: number; // 0-1
+  scale: { x: number; y: number };
+  rotation: number;
+  anchor: { x: number; y: number }; // 锚点（0-1）
+  effects: SpriteEffect[]; // 精灵特效（抖动、呼吸等）
+  transition: Transition | null; // 过渡动画
 
-  update(dt: number): void
-  draw(ctx: CanvasRenderingContext2D): void
-  setTexture(texture: Texture, transition?: Transition): void
-  moveTo(x: number, y: number, duration: number, easing: EasingFn): void
-  fadeTo(opacity: number, duration: number): void
+  update(dt: number): void;
+  draw(ctx: CanvasRenderingContext2D): void;
+  setTexture(texture: Texture, transition?: Transition): void;
+  moveTo(x: number, y: number, duration: number, easing: EasingFn): void;
+  fadeTo(opacity: number, duration: number): void;
 }
 ```
 
@@ -252,16 +253,17 @@ TextureManager
 
 ```ts
 interface Texture {
-  id: string
-  source: HTMLImageElement | ImageBitmap
-  width: number
-  height: number
+  id: string;
+  source: HTMLImageElement | ImageBitmap;
+  width: number;
+  height: number;
   // 图集子区域（如果是图集中的一部分）
-  frame?: { x: number; y: number; w: number; h: number }
+  frame?: { x: number; y: number; w: number; h: number };
 }
 ```
 
 **性能策略：**
+
 - 使用 `ImageBitmap` + `createImageBitmap()` 异步解码，避免主线程阻塞
 - 纹理图集（Texture Atlas）：将多张小图合并为一张大图，减少绘制调用
 - LRU 缓存淘汰：限制内存占用上限（如 512MB），超出时卸载最久未用的纹理
@@ -289,30 +291,31 @@ interface Texture {
 ### 4.6 转场/过渡系统
 
 ```ts
-type EasingFn = (t: number) => number   // t ∈ [0, 1]
+type EasingFn = (t: number) => number; // t ∈ [0, 1]
 
 interface Transition {
-  type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom'
-  duration: number                       // 毫秒
-  easing: EasingFn
-  progress: number                       // 0-1
-  direction?: 'left' | 'right' | 'up' | 'down'
-  onComplete?: () => void
+  type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom';
+  duration: number; // 毫秒
+  easing: EasingFn;
+  progress: number; // 0-1
+  direction?: 'left' | 'right' | 'up' | 'down';
+  onComplete?: () => void;
 
-  update(dt: number): void
-  apply(ctx: CanvasRenderingContext2D, from: Sprite, to: Sprite): void
+  update(dt: number): void;
+  apply(ctx: CanvasRenderingContext2D, from: Sprite, to: Sprite): void;
 }
 ```
 
 **内置转场效果：**
-| 类型 | 说明 |
-|------|------|
-| `fade` | 淡入淡出 |
-| `slide` | 滑动（上下左右） |
-| `zoom` | 缩放切换 |
-| `wipe` | 擦除（直线/圆形/百叶窗） |
-| `pixelate` | 像素化溶解 |
-| `custom` | 自定义着色器 |
+
+| 类型       | 说明                     |
+| ---------- | ------------------------ |
+| `fade`     | 淡入淡出                 |
+| `slide`    | 滑动（上下左右）         |
+| `zoom`     | 缩放切换                 |
+| `wipe`     | 擦除（直线/圆形/百叶窗） |
+| `pixelate` | 像素化溶解               |
+| `custom`   | 自定义着色器             |
 
 ### 4.7 脏矩形优化
 
@@ -341,19 +344,21 @@ class TextRenderer {
   static async typewriter(
     ctx: CanvasRenderingContext2D,
     text: string,
-    x: number, y: number,
+    x: number,
+    y: number,
     maxWidth: number,
     lineHeight: number,
-    speed: number,           // 毫秒/字
-    onComplete?: () => void
-  ): Promise<void>
+    speed: number, // 毫秒/字
+    onComplete?: () => void,
+  ): Promise<void>;
 
   // 富文本支持（颜色、加粗、振动、ruby注音等标签）
-  static parseRichText(text: string): RichTextToken[]
+  static parseRichText(text: string): RichTextToken[];
 }
 ```
 
 **文字性能优化：**
+
 - 预测量：提前计算文字宽度，避免逐字测量
 - 离屏缓存：已显示完的静态文字绘制到离屏 Canvas
 - 字间距/行间距预设，减少计算
@@ -365,6 +370,7 @@ class TextRenderer {
 ### 5.1 设计理念
 
 采用"编译 + 解释执行"的两阶段设计：
+
 1. **解析阶段**：将 `.vns` 脚本文件解析为 AST 命令序列（初始化时完成）
 2. **执行阶段**：解释器逐条执行命令（运行时）
 
@@ -418,16 +424,16 @@ Parser
 
 ```ts
 interface Script {
-  name: string
-  commands: Command[]
-  labels: Map<string, number>   // 标签名 → 命令索引
-  metadata: ScriptMetadata
+  name: string;
+  commands: Command[];
+  labels: Map<string, number>; // 标签名 → 命令索引
+  metadata: ScriptMetadata;
 }
 
 interface Command {
-  type: string                  // 命令类型
-  args: Record<string, any>     // 参数
-  line: number                  // 源文件行号
+  type: string; // 命令类型
+  args: Record<string, any>; // 参数
+  line: number; // 源文件行号
 }
 ```
 
@@ -472,35 +478,35 @@ step():
 
 ```ts
 interface CommandHandler {
-  name: string
-  execute(ctx: ScriptContext, args: Record<string, any>): void | Promise<void>
-  undo?(ctx: ScriptContext): void       // 用于回滚
+  name: string;
+  execute(ctx: ScriptContext, args: Record<string, any>): void | Promise<void>;
+  undo?(ctx: ScriptContext): void; // 用于回滚
 }
 
 class CommandRegistry {
-  private commands: Map<string, CommandHandler>
+  private commands: Map<string, CommandHandler>;
 
-  register(handler: CommandHandler): void
-  unregister(name: string): void
-  execute(ctx: ScriptContext, cmd: Command): void | Promise<void>
+  register(handler: CommandHandler): void;
+  unregister(name: string): void;
+  execute(ctx: ScriptContext, cmd: Command): void | Promise<void>;
 }
 ```
 
 **内置命令清单：**
 
-| 分类 | 命令 | 说明 |
-|------|------|------|
-| 背景 | `@bg` | 切换背景（支持转场） |
-| 角色 | `@show`, `@hide`, `@move` | 角色显示/隐藏/移动 |
-| 立绘 | `@sprite` | 切换角色立绘表情/服装 |
-| 对话 | `@say` 或直接 `角色名 "文本"` | 显示对话 |
-| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice` | 音频控制 |
-| 选项 | `@choice` | 显示选项分支 |
-| 流程 | `@jump`, `@call`, `@return`, `@if`, `@else`, `@endif` | 流程控制 |
-| 变量 | `@set`, `@add`, `@mul`, `@random` | 变量操作 |
-| 旗标 | `@flag`, `@unflag` | 旗标操作 |
-| 特效 | `@shake`, `@flash`, `@snow`, `@rain` | 画面特效 |
-| 系统 | `@wait`, `@end`, `@label`, `@comment` | 系统命令 |
+| 分类 | 命令                                                  | 说明                  |
+| ---- | ----------------------------------------------------- | --------------------- |
+| 背景 | `@bg`                                                 | 切换背景（支持转场）  |
+| 角色 | `@show`, `@hide`, `@move`                             | 角色显示/隐藏/移动    |
+| 立绘 | `@sprite`                                             | 切换角色立绘表情/服装 |
+| 对话 | `@say` 或直接 `角色名 "文本"`                         | 显示对话              |
+| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice`       | 音频控制              |
+| 选项 | `@choice`                                             | 显示选项分支          |
+| 流程 | `@jump`, `@call`, `@return`, `@if`, `@else`, `@endif` | 流程控制              |
+| 变量 | `@set`, `@add`, `@mul`, `@random`                     | 变量操作              |
+| 旗标 | `@flag`, `@unflag`                                    | 旗标操作              |
+| 特效 | `@shake`, `@flash`, `@snow`, `@rain`                  | 画面特效              |
+| 系统 | `@wait`, `@end`, `@label`, `@comment`                 | 系统命令              |
 
 ### 5.6 自定义命令扩展示例
 
@@ -511,12 +517,12 @@ game.plugins.register('my-plugin', {
     engine.script.commandRegistry.register({
       name: '@shaketext',
       execute(ctx, args) {
-        const duration = args.duration ?? 500
-        engine.renderer.addEffect(new ShakeEffect(duration))
-      }
-    })
-  }
-})
+        const duration = args.duration ?? 500;
+        engine.renderer.addEffect(new ShakeEffect(duration));
+      },
+    });
+  },
+});
 ```
 
 ---
@@ -557,6 +563,7 @@ AssetLoader
 ```
 
 **ImageBitmap 优势：**
+
 - 在 Worker 线程中解码，不阻塞主线程
 - 零拷贝传输（Transferable）
 - 适合大尺寸 CG/背景图
@@ -565,17 +572,17 @@ AssetLoader
 
 ```ts
 class ResourceCache<T> {
-  private maxSize: number          // 字节上限
-  private currentSize: number
-  private cache: Map<string, CacheEntry<T>>
+  private maxSize: number; // 字节上限
+  private currentSize: number;
+  private cache: Map<string, CacheEntry<T>>;
 
-  get(id: string): T | null
-  set(id: string, value: T, size: number): void
-  has(id: string): boolean
-  delete(id: string): void
-  clear(): void
+  get(id: string): T | null;
+  set(id: string, value: T, size: number): void;
+  has(id: string): boolean;
+  delete(id: string): void;
+  clear(): void;
   // 淘汰最久未使用的条目直到低于 maxSize
-  private evict(): void
+  private evict(): void;
 }
 ```
 
@@ -635,18 +642,18 @@ AudioManager
 
 ```ts
 class AudioTrack {
-  type: 'bgm' | 'se' | 'voice'
-  gain: GainNode
-  source: AudioBufferSourceNode | null
-  buffer: AudioBuffer | null
-  volume: number                     // 0-1
-  state: 'stopped' | 'playing' | 'paused' | 'fading'
+  type: 'bgm' | 'se' | 'voice';
+  gain: GainNode;
+  source: AudioBufferSourceNode | null;
+  buffer: AudioBuffer | null;
+  volume: number; // 0-1
+  state: 'stopped' | 'playing' | 'paused' | 'fading';
 
-  play(buffer: AudioBuffer, loop: boolean, fadeIn: number): void
-  stop(fadeOut: number): void
-  pause(): void
-  resume(): void
-  setVolume(v: number): void
+  play(buffer: AudioBuffer, loop: boolean, fadeIn: number): void;
+  stop(fadeOut: number): void;
+  pause(): void;
+  resume(): void;
+  setVolume(v: number): void;
 }
 ```
 
@@ -656,11 +663,11 @@ class AudioTrack {
 
 ```ts
 class AudioTrackPool {
-  private pool: AudioTrack[]
-  private active: Map<string, AudioTrack>
+  private pool: AudioTrack[];
+  private active: Map<string, AudioTrack>;
 
-  acquire(): AudioTrack         // 获取空闲轨道
-  release(track: AudioTrack): void  // 归还轨道
+  acquire(): AudioTrack; // 获取空闲轨道
+  release(track: AudioTrack): void; // 归还轨道
 }
 ```
 
@@ -674,33 +681,36 @@ UI 完全由 Canvas 绘制，不依赖 DOM 元素。提供组件化抽象：
 
 ```ts
 abstract class UIComponent {
-  x: number; y: number; width: number; height: number
-  visible: boolean
-  children: UIComponent[]
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+  children: UIComponent[];
 
-  abstract update(dt: number): void
-  abstract draw(ctx: CanvasRenderingContext2D): void
+  abstract update(dt: number): void;
+  abstract draw(ctx: CanvasRenderingContext2D): void;
 
   // 事件命中测试
-  hitTest(px: number, py: number): UIComponent | null
-  onClick(px: number, py: number): void
-  onHover(px: number, py: number): void
+  hitTest(px: number, py: number): UIComponent | null;
+  onClick(px: number, py: number): void;
+  onHover(px: number, py: number): void;
 }
 ```
 
 ### 8.2 内置 UI 组件
 
-| 组件 | 说明 |
-|------|------|
-| `DialogueBox` | 对话框（角色名 + 文本 + 继续指示器） |
-| `ChoicePanel` | 选项面板（2-N个选项按钮） |
-| `TextButton` | 文本按钮（hover/click/press状态） |
-| `ImageButton` | 图片按钮 |
-| `Slider` | 滑动条（音量/速度调节） |
-| `Toggle` | 开关（全屏/自动模式等） |
-| `ScrollView` | 滚动视图（历史记录） |
-| `SaveLoadSlot` | 存档/读档槽位 |
-| `ConfirmDialog` | 确认弹窗 |
+| 组件            | 说明                                 |
+| --------------- | ------------------------------------ |
+| `DialogueBox`   | 对话框（角色名 + 文本 + 继续指示器） |
+| `ChoicePanel`   | 选项面板（2-N个选项按钮）            |
+| `TextButton`    | 文本按钮（hover/click/press状态）    |
+| `ImageButton`   | 图片按钮                             |
+| `Slider`        | 滑动条（音量/速度调节）              |
+| `Toggle`        | 开关（全屏/自动模式等）              |
+| `ScrollView`    | 滚动视图（历史记录）                 |
+| `SaveLoadSlot`  | 存档/读档槽位                        |
+| `ConfirmDialog` | 确认弹窗                             |
 
 ### 8.3 输入事件分发
 
@@ -711,20 +721,23 @@ Canvas DOM 事件 → Game.input.dispatch() → 命中测试 → UI组件回调
 
 ```ts
 class InputManager {
-  canvas: HTMLCanvasElement
-  handlers: Map<string, Handler[]>
+  canvas: HTMLCanvasElement;
+  handlers: Map<string, Handler[]>;
 
   // 绑定事件
-  private onMouseMove(e: MouseEvent): void
-  private onMouseDown(e: MouseEvent): void
-  private onMouseUp(e: MouseEvent): void
-  private onTouchStart(e: TouchEvent): void
+  private onMouseMove(e: MouseEvent): void;
+  private onMouseDown(e: MouseEvent): void;
+  private onMouseUp(e: MouseEvent): void;
+  private onTouchStart(e: TouchEvent): void;
 
   // 坐标转换（CSS像素 → 逻辑像素）
-  private toLogicalCoords(clientX: number, clientY: number): { x: number; y: number }
+  private toLogicalCoords(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number };
 
   // 分发
-  dispatch(event: InputEvent): void
+  dispatch(event: InputEvent): void;
 }
 ```
 
@@ -738,23 +751,23 @@ class InputManager {
 
 ```ts
 interface GameState {
-  currentScript: string      // 当前脚本名
-  scriptPC: number           // 脚本程序计数器
-  variables: Record<string, any>
-  flags: string[]
-  bgImage: string | null
-  characters: CharacterState[]
-  bgmId: string | null
-  bgmProgress: number        // BGM播放进度(秒)
-  history: DialogueEntry[]   // 对话历史
-  playTime: number           // 累计游玩时间
+  currentScript: string; // 当前脚本名
+  scriptPC: number; // 脚本程序计数器
+  variables: Record<string, any>;
+  flags: string[];
+  bgImage: string | null;
+  characters: CharacterState[];
+  bgmId: string | null;
+  bgmProgress: number; // BGM播放进度(秒)
+  history: DialogueEntry[]; // 对话历史
+  playTime: number; // 累计游玩时间
 }
 
 interface CharacterState {
-  id: string
-  spriteId: string
-  position: 'left' | 'center' | 'right' | { x: number; y: number }
-  opacity: number
+  id: string;
+  spriteId: string;
+  position: 'left' | 'center' | 'right' | { x: number; y: number };
+  opacity: number;
 }
 ```
 
@@ -762,16 +775,16 @@ interface CharacterState {
 
 ```ts
 interface Settings {
-  masterVolume: number
-  bgmVolume: number
-  seVolume: number
-  voiceVolume: number
-  textSpeed: number          // 字/秒
-  autoSpeed: number          // 自动模式下等待秒数
-  skipMode: 'all' | 'read'   // 跳过模式
-  fullscreen: boolean
-  language: string
-  fontSize: number
+  masterVolume: number;
+  bgmVolume: number;
+  seVolume: number;
+  voiceVolume: number;
+  textSpeed: number; // 字/秒
+  autoSpeed: number; // 自动模式下等待秒数
+  skipMode: 'all' | 'read'; // 跳过模式
+  fullscreen: boolean;
+  language: string;
+  fontSize: number;
 }
 ```
 
@@ -779,12 +792,12 @@ interface Settings {
 
 ```ts
 interface SaveData {
-  version: number             // 存档格式版本（用于迁移）
-  timestamp: number           // 存档时间戳
-  thumbnail: string           // 缩略图（base64）
-  slotLabel: string           // 存档标签（当前对话文本截取）
-  gameState: GameState        // 游戏状态快照
-  settings: Settings          // 存档时的设置
+  version: number; // 存档格式版本（用于迁移）
+  timestamp: number; // 存档时间戳
+  thumbnail: string; // 缩略图（base64）
+  slotLabel: string; // 存档标签（当前对话文本截取）
+  gameState: GameState; // 游戏状态快照
+  settings: Settings; // 存档时的设置
 }
 ```
 
@@ -816,10 +829,10 @@ interface SaveData {
 
 ```ts
 interface Plugin {
-  name: string
-  version: string
-  install(engine: VNEngine): void
-  uninstall?(engine: VNEngine): void
+  name: string;
+  version: string;
+  install(engine: VNEngine): void;
+  uninstall?(engine: VNEngine): void;
 }
 ```
 
@@ -827,46 +840,46 @@ interface Plugin {
 
 ```ts
 class PluginManager {
-  private plugins: Map<string, Plugin>
-  private engine: VNEngine
+  private plugins: Map<string, Plugin>;
+  private engine: VNEngine;
 
-  register(plugin: Plugin): void
-  unregister(name: string): void
-  get(name: string): Plugin | null
-  list(): Plugin[]
+  register(plugin: Plugin): void;
+  unregister(name: string): void;
+  get(name: string): Plugin | null;
+  list(): Plugin[];
   // 按依赖顺序加载
-  loadAll(plugins: Plugin[]): void
+  loadAll(plugins: Plugin[]): void;
 }
 ```
 
 ### 10.3 扩展点一览
 
-| 扩展点 | 接口 | 用途 |
-|--------|------|------|
-| 命令 | `CommandRegistry.register()` | 自定义脚本命令 |
-| 转场 | `Transition` 接口 | 自定义转场效果 |
-| 特效 | `Effect` 接口 | 自定义画面特效 |
-| UI组件 | `UIComponent` 基类 | 自定义UI |
-| 资源加载器 | `AssetLoader` 中间件 | 自定义资源来源（如加密包） |
-| 脚本解析器 | `Parser` 中间件 | 自定义脚本语法糖 |
-| 事件 | `EventBus.on()` | 监听任意事件 |
+| 扩展点     | 接口                         | 用途                       |
+| ---------- | ---------------------------- | -------------------------- |
+| 命令       | `CommandRegistry.register()` | 自定义脚本命令             |
+| 转场       | `Transition` 接口            | 自定义转场效果             |
+| 特效       | `Effect` 接口                | 自定义画面特效             |
+| UI组件     | `UIComponent` 基类           | 自定义UI                   |
+| 资源加载器 | `AssetLoader` 中间件         | 自定义资源来源（如加密包） |
+| 脚本解析器 | `Parser` 中间件              | 自定义脚本语法糖           |
+| 事件       | `EventBus.on()`              | 监听任意事件               |
 
 ---
 
 ## 十一、性能优化策略汇总
 
-| 策略 | 说明 | 适用场景 |
-|------|------|----------|
-| **离屏Canvas缓存** | 静态图层绘制到 OffscreenCanvas，帧间直接 blit | 背景、静止角色 |
-| **脏矩形刷新** | 仅重绘变化区域 | 对话框打字、小范围动画 |
-| **ImageBitmap** | Worker 线程异步解码图片 | 大尺寸 CG 加载 |
-| **纹理图集** | 合并小图减少 drawImage 调用 | 立绘表情切换 |
-| **对象池** | 复用 SE 音轨、粒子对象 | 高频创建/销毁 |
-| **LRU 缓存** | 限制纹理/音频内存占用 | 长剧本、多资源 |
-| **requestAnimationFrame** | 与浏览器刷新率同步 | 游戏循环 |
-| **deltaTime 上限** | 防止标签页返回后跳帧 | 所有帧逻辑 |
-| **Web Worker** | 脚本解析、资源批量加载在 Worker 执行 | 初始化/场景切换 |
-| **懒加载** | 按章节/场景预加载，不一次性加载全部 | 大型项目 |
+| 策略                      | 说明                                          | 适用场景               |
+| ------------------------- | --------------------------------------------- | ---------------------- |
+| **离屏Canvas缓存**        | 静态图层绘制到 OffscreenCanvas，帧间直接 blit | 背景、静止角色         |
+| **脏矩形刷新**            | 仅重绘变化区域                                | 对话框打字、小范围动画 |
+| **ImageBitmap**           | Worker 线程异步解码图片                       | 大尺寸 CG 加载         |
+| **纹理图集**              | 合并小图减少 drawImage 调用                   | 立绘表情切换           |
+| **对象池**                | 复用 SE 音轨、粒子对象                        | 高频创建/销毁          |
+| **LRU 缓存**              | 限制纹理/音频内存占用                         | 长剧本、多资源         |
+| **requestAnimationFrame** | 与浏览器刷新率同步                            | 游戏循环               |
+| **deltaTime 上限**        | 防止标签页返回后跳帧                          | 所有帧逻辑             |
+| **Web Worker**            | 脚本解析、资源批量加载在 Worker 执行          | 初始化/场景切换        |
+| **懒加载**                | 按章节/场景预加载，不一次性加载全部           | 大型项目               |
 
 ---
 
@@ -1047,47 +1060,47 @@ Game.init(config)
 // types/engine.ts
 
 interface GameConfig {
-  canvas: HTMLCanvasElement
-  width: number
-  height: number
-  scaleMode: 'fit' | 'stretch' | 'fixed'
-  fps: number
-  assets: AssetManifest
-  plugins?: Plugin[]
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+  scaleMode: 'fit' | 'stretch' | 'fixed';
+  fps: number;
+  assets: AssetManifest;
+  plugins?: Plugin[];
 }
 
 interface AssetManifest {
-  images: Record<string, string>
-  audio: Record<string, string>
-  scripts: Record<string, string>
-  spritesheets: Record<string, SpritesheetConfig>
+  images: Record<string, string>;
+  audio: Record<string, string>;
+  scripts: Record<string, string>;
+  spritesheets: Record<string, SpritesheetConfig>;
 }
 
 interface SpritesheetConfig {
-  url: string
-  frames: Record<string, [number, number, number, number]>
+  url: string;
+  frames: Record<string, [number, number, number, number]>;
 }
 
 // 事件类型（string → 泛型映射）
 interface EngineEvents {
-  'script:command': { cmd: string; args: Record<string, any> }
-  'script:choice': { choices: Choice[] }
-  'script:say': { speaker: string; text: string }
-  'script:end': {}
-  'render:frame': { dt: number }
-  'character:show': { id: string; position: Position }
-  'character:hide': { id: string }
-  'bg:change': { id: string; transition?: string }
-  'audio:play': { id: string; type: 'bgm' | 'se' | 'voice' }
-  'audio:stop': { type: 'bgm' | 'se' | 'voice' }
-  'game:save': { slot: number }
-  'game:load': { slot: number }
-  'game:pause': {}
-  'game:resume': {}
-  'input:click': { x: number; y: number }
-  'input:hover': { x: number; y: number }
-  'resource:progress': { loaded: number; total: number; percent: number }
-  'resource:ready': {}
+  'script:command': { cmd: string; args: Record<string, any> };
+  'script:choice': { choices: Choice[] };
+  'script:say': { speaker: string; text: string };
+  'script:end': {};
+  'render:frame': { dt: number };
+  'character:show': { id: string; position: Position };
+  'character:hide': { id: string };
+  'bg:change': { id: string; transition?: string };
+  'audio:play': { id: string; type: 'bgm' | 'se' | 'voice' };
+  'audio:stop': { type: 'bgm' | 'se' | 'voice' };
+  'game:save': { slot: number };
+  'game:load': { slot: number };
+  'game:pause': {};
+  'game:resume': {};
+  'input:click': { x: number; y: number };
+  'input:hover': { x: number; y: number };
+  'resource:progress': { loaded: number; total: number; percent: number };
+  'resource:ready': {};
 }
 ```
 
@@ -1097,30 +1110,30 @@ interface EngineEvents {
 // types/script.ts
 
 interface Script {
-  name: string
-  commands: Command[]
-  labels: Map<string, number>
-  metadata: { author?: string; version?: string }
+  name: string;
+  commands: Command[];
+  labels: Map<string, number>;
+  metadata: { author?: string; version?: string };
 }
 
 interface Command {
-  type: string
-  args: Record<string, any>
-  line: number
+  type: string;
+  args: Record<string, any>;
+  line: number;
 }
 
 interface ScriptContext {
-  engine: import('./engine').VNEngine
-  interpreter: import('../engine/script/Interpreter').Interpreter
-  variables: Map<string, any>
-  flags: Set<string>
+  engine: import('./engine').VNEngine;
+  interpreter: import('../engine/script/Interpreter').Interpreter;
+  variables: Map<string, any>;
+  flags: Set<string>;
 }
 
 interface Choice {
-  text: string
-  label: string           // 跳转标签
-  condition?: string      // 条件表达式（如 "flags.has('met_hero')"）
-  enabled?: boolean
+  text: string;
+  label: string; // 跳转标签
+  condition?: string; // 条件表达式（如 "flags.has('met_hero')"）
+  enabled?: boolean;
 }
 ```
 
@@ -1130,28 +1143,28 @@ interface Choice {
 // types/save.ts
 
 interface SaveData {
-  version: number
-  timestamp: number
-  thumbnail: string
-  slotLabel: string
-  gameState: GameStateSnapshot
-  settings: SettingsSnapshot
+  version: number;
+  timestamp: number;
+  thumbnail: string;
+  slotLabel: string;
+  gameState: GameStateSnapshot;
+  settings: SettingsSnapshot;
 }
 
 interface GameStateSnapshot {
-  currentScript: string
-  scriptPC: number
-  variables: Record<string, any>
-  flags: string[]
-  bgImage: string | null
+  currentScript: string;
+  scriptPC: number;
+  variables: Record<string, any>;
+  flags: string[];
+  bgImage: string | null;
   characters: Array<{
-    id: string
-    spriteId: string
-    position: string | { x: number; y: number }
-    opacity: number
-  }>
-  bgm: { id: string; progress: number } | null
-  history: DialogueEntry[]
+    id: string;
+    spriteId: string;
+    position: string | { x: number; y: number };
+    opacity: number;
+  }>;
+  bgm: { id: string; progress: number } | null;
+  history: DialogueEntry[];
 }
 ```
 
@@ -1192,19 +1205,19 @@ interface GameStateSnapshot {
 
 ## 十六、设计决策记录
 
-| 决策 | 选择 | 原因 |
-|------|------|------|
-| 渲染方案 | Canvas 2D | 兼容性好，API 成熟；后续可升级 WebGL |
-| 文字方案 | Canvas fillText | 避免 DOM-vs-Canvas 分层同步问题 |
-| UI 方案 | Canvas 自绘 | 帧同步一致，无 DOM 布局抖动 |
-| 音频方案 | Web Audio API | 精确控制，多音轨混音 |
-| 脚本格式 | 自定义 `.vns` | 简洁，面向 VN 场景优化 |
-| 状态管理 | 引擎内置 GameState | 框架无关，可直接序列化 |
-| 通信方式 | EventBus | 模块解耦，可测试 |
-| 资源解码 | ImageBitmap | 异步，不阻塞主线程 |
-| 存档格式 | JSON + IndexedDB | 可读可迁移，容量大 |
-| 模块化 | 引擎纯 TS | 可测试，可移植 |
+| 决策     | 选择               | 原因                                 |
+| -------- | ------------------ | ------------------------------------ |
+| 渲染方案 | Canvas 2D          | 兼容性好，API 成熟；后续可升级 WebGL |
+| 文字方案 | Canvas fillText    | 避免 DOM-vs-Canvas 分层同步问题      |
+| UI 方案  | Canvas 自绘        | 帧同步一致，无 DOM 布局抖动          |
+| 音频方案 | Web Audio API      | 精确控制，多音轨混音                 |
+| 脚本格式 | 自定义 `.vns`      | 简洁，面向 VN 场景优化               |
+| 状态管理 | 引擎内置 GameState | 框架无关，可直接序列化               |
+| 通信方式 | EventBus           | 模块解耦，可测试                     |
+| 资源解码 | ImageBitmap        | 异步，不阻塞主线程                   |
+| 存档格式 | JSON + IndexedDB   | 可读可迁移，容量大                   |
+| 模块化   | 引擎纯 TS          | 可测试，可移植                       |
 
 ---
 
-*本文档为 VNEngine 架构设计初始版本，随开发迭代持续更新。*
+_本文档为 VNEngine 架构设计初始版本，随开发迭代持续更新。_
