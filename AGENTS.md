@@ -99,3 +99,91 @@ npm run spell:check  # cSpell 拼写检查
 ```
 
 强有力的成功标准能让你独立闭环推进。弱成功标准（“把它弄好”）则会不断需要额外澄清。
+
+## git规范
+
+## 1. 分支开发规范
+
+- 1.1 核心原则
+
+  - 禁止直接向 main（或 master）分支推送代码。
+  - 所有开发均通过 分支 + 合并请求（Pull Request / Merge Request） 进行。
+  - 合并前必须通过代码评审（Code Review）和 CI 检查。
+
+- 1.2 分支命名与用途
+
+  分支类型 命名格式 说明
+  功能分支 feature/<short-description> 用于开发新功能。例：feature/user-login  
+  修复分支 fix/<short-description> 用于修复常规 Bug。例：fix/api-timeout  
+  热修复分支 hotfix/<short-description> 用于紧急修复生产环境问题，通常基于 main 创建，修复后需同时合并回 main 和 develop（如果有）  
+  发布分支 release/<version> 用于准备发布版本，做最后的测试、文档更新等。完成后合并回 main 并打标签  
+  杂项/优化 chore/<short-description> 用于构建、工具、依赖等非功能变动（如修改 ESLint 配置）  
+
+  分支名使用小写字母、连字符（-）分隔，避免使用下划线或驼峰。
+
+- 1.3 合并流程
+
+  1. 从 main 拉出开发分支（如 feature/xxx）。
+  2. 开发完成后，推送到远程仓库，并创建 PR/MR 请求合并到 main。
+  3. 至少一名 Reviewer 批准，且 CI 全部通过后，由维护者执行 Squash and Merge 或 Rebase and Merge（保持历史线性）。
+  4. 合并后删除该开发分支（可选）。
+
+---
+
+## 2. Commit Message 规范
+
+基于 Conventional Commits 1.0.0，格式如下：
+
+```
+<type>(<scope>): <subject>
+<BLANK LINE>
+<body>
+<BLANK LINE>
+<footer>
+```
+
+- 2.1 Header（必填）
+
+  - type（必填）
+
+    type 说明 是否触发版本更新  
+    feat 新功能 是  
+    fix 修复 Bug 是  
+    docs 仅文档更改 否  
+    style 代码格式（不影响运行，如空格、分号、缩进） 否  
+    refactor 代码重构（不修改外部行为） 否  
+    perf 性能优化 否  
+    test 添加或修改测试 否  
+    build 影响构建系统或外部依赖（如 npm、pip、gulp） 否  
+    ci 修改 CI 配置文件或脚本（如 GitHub Actions） 否  
+    chore 其他杂项（如修改 ESLint/Prettier 等工具配置） 否  
+    revert 回滚之前的提交 否  
+
+    特殊场景补充：
+
+      - 删除依赖项 → 使用 build(deps): 移除...
+      - 修改 ESLint/Prettier 配置 → 使用 chore(eslint): ... 或 chore(prettier): ...
+
+  - scope（可选）
+
+    本次改动影响的模块、文件或功能域，如 api、user、deps、config。
+
+  - subject（必填）
+
+    - 动词开头，现在时，如 add 而非 added。
+    - 首字母小写。
+    - 结尾不加句号（.）。
+    - 长度 ≤ 50 字符。
+
+- 2.2 Body（可选）
+
+    - 详细描述为什么改以及怎么改，与之前行为的对比。
+    - 每行不超过 72 字符。
+
+- 2.3 Footer（可选）
+
+  - Breaking Changes：以 BREAKING CHANGE: <描述> 开头。
+  - 关闭 Issue：如 Closes #123 或 Fixes #456, #789。
+
+
+
