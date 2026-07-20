@@ -4,3 +4,4 @@ package-lock.json
 .husky
 docs
 .github
+AGENTS.md
