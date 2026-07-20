@@ -32,6 +32,9 @@ export default {
     'prettierrc',
     'tsconfig',
     'cspell',
+    'spritesheets',
+    'Spritesheet',
+    'dedup',
   ],
   ignorePaths: [
     'node_modules',
