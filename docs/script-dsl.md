@@ -97,12 +97,12 @@ Hero "早上好。"
 
 VNScript 的权威 PEG 语法定义位于：
 
-**`src/engine/script/grammar.pegjs`**
+**`src/script/grammar.pegjs`**
 
 使用 Peggy 5.x 编译为可执行解析器：
 
 ```bash
-npx peggy --format es src/engine/script/grammar.pegjs -o src/engine/script/parser.js
+npx peggy --format es src/script/grammar.pegjs -o src/script/parser.js
 ```
 
 该文件采用 scannerless PEG 描述，是语法规范的唯一权威来源。以下为历史 EBNF 参考（仅供对比，可能滞后于实际实现）。
@@ -586,7 +586,7 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 ## 七、表达式语法补充
 
-> **注意**: 以下为历史 EBNF 参考。权威表达式语法定义见 `src/engine/script/grammar.pegjs` 中的 `OrExpr` / `AndExpr` / `CompExpr` / `ArithExpr` / `Term` / `Unary` 规则链。
+> **注意**: 以下为历史 EBNF 参考。权威表达式语法定义见 `src/script/grammar.pegjs` 中的 `OrExpr` / `AndExpr` / `CompExpr` / `ArithExpr` / `Term` / `Unary` 规则链。
 
 用于 `@if`、`@elseif`、`@choice` 的条件以及变量指令的右值。
 
