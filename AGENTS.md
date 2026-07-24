@@ -100,6 +100,46 @@ npm run spell:check  # cSpell 拼写检查
 
 强有力的成功标准能让你独立闭环推进。弱成功标准（“把它弄好”）则会不断需要额外澄清。
 
+## 测试规范
+
+### 1. 文件位置与命名
+
+- 测试文件放在源文件旁边的 `__test__/` 目录，如 `src/core/__test__/EventBus.spec.ts`
+- 文件命名：`<ModuleName>.spec.ts`
+- 集成测试用 `<ModuleName>.integration.spec.ts` 区分
+
+### 2. 结构与描述
+
+- 顶层 `describe('ClassName', () => { ... })` 按被测试模块分组
+- `beforeEach` 重置状态，每个 `it` 独立可运行
+- 扁平 `it` 块，避免嵌套 `describe` 除非模块有明确的子功能分组
+- `it` 标题用英文 `'should ...'` 句式描述预期行为
+
+### 3. Mock 与断言
+
+- 使用 `vi.fn()` 创建 mock 函数（全局可用，无需 import）
+- 禁止使用 `vi.mock()` 模块级 mock
+- 需要模拟时间时用 `vi.useFakeTimers()` / `vi.advanceTimersByTime()`
+- 异步测试用 `async/await`，断言拒绝用 `await expect(...).rejects.toThrow()`
+
+### 4. 覆盖要求
+
+- 每个公开 API 方法至少一个 happy-path 测试
+- 每个公开 API 方法必须包含非法入参测试（边界值、null、undefined 等）
+- 不强求覆盖率数字
+
+### 5. 辅助工具
+
+- 仅当 3+ 测试文件共用同一逻辑时才提取到 `src/__testUtils__/`（或类似目录）
+- 遵循简单优先，不过早抽象
+
+### 6. 执行与 CI
+
+- 提交前确保 `npm run test` 全部通过
+- 合并请求前 CI 必须通过 `npm run test && npm run lint && npm run build`
+- 开发时用 `npm run test:watch` 快速反馈
+- Agent 不直接提交代码
+
 ## git规范
 
 ## 1. 分支开发规范
