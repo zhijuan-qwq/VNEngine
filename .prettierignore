@@ -5,3 +5,4 @@ package-lock.json
 docs
 .github
 AGENTS.md
+src/script/parser.js
