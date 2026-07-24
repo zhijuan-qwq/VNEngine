@@ -93,7 +93,22 @@ Hero "早上好。"
 
 ---
 
-## 四、完整 EBNF 语法
+## 四、权威语法定义（PEG）
+
+VNScript 的权威 PEG 语法定义位于：
+
+**`src/engine/script/grammar.pegjs`**
+
+使用 Peggy 5.x 编译为可执行解析器：
+
+```bash
+npx peggy --format es src/engine/script/grammar.pegjs -o src/engine/script/parser.js
+```
+
+该文件采用 scannerless PEG 描述，是语法规范的唯一权威来源。以下为历史 EBNF 参考（仅供对比，可能滞后于实际实现）。
+
+<details>
+<summary>历史 EBNF 参考（展开查看）</summary>
 
 ```
 (* ===== 顶层结构 ===== *)
@@ -110,7 +125,7 @@ LabelDeclaration    = { Space } "@label" Space Identifier LineEnd
 DialogLine          = { Space } Identifier Space StringLiteral LineEnd
 CommandLine         = { Space } "@" CommandName [ Space ArgList ] LineEnd
 
-CommandName         = Identifier                  (* 不含 "@" 前缀，由 CommandRegistry 匹配 *)
+CommandName         = Identifier
 
 ArgList             = Arg { Space Arg }
 Arg                 = PositionalArg | KeyValueArg
@@ -129,25 +144,17 @@ NumberLiteral       = [ "-" ] Digit { Digit } [ "." Digit { Digit } ]
 DurationLiteral     = NumberLiteral ( "ms" | "s" )
 BooleanLiteral      = "true" | "false"
 
-(* ===== 变量引用与表达式 ===== *)
-
-VariableRef         = "$" Identifier              (* 读取变量 *)
-FlagCheckExpr       = "?" Identifier              (* 检查旗标是否存在 *)
-
-(* ===== 词法定义 ===== *)
+VariableRef         = "$" Identifier
+FlagCheckExpr       = "?" Identifier
 
 Identifier          = LetterOrUnderscore { LetterOrUnderscore | Digit | "-" }
 LetterOrUnderscore  = "a".."z" | "A".."Z" | "_"
 Digit               = "0".."9"
 Space               = " " | "\t"
 LineEnd             = "\n" | "\r\n"
-AnyChar             = ? 除换行外的任意字符 ?
-CharNoQuote         = ? 除双引号和反斜杠外的任意字符 ?
-EscapeSeq           = "\\" ( "n" | "t" | "\\" | '"' )
-
-(* ===== 文件扩展名 ===== *)
-(* VNScript 源文件: *.vns *)
 ```
+
+</details>
 
 ---
 
@@ -579,6 +586,8 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 ## 七、表达式语法补充
 
+> **注意**: 以下为历史 EBNF 参考。权威表达式语法定义见 `src/engine/script/grammar.pegjs` 中的 `OrExpr` / `AndExpr` / `CompExpr` / `ArithExpr` / `Term` / `Unary` 规则链。
+
 用于 `@if`、`@elseif`、`@choice` 的条件以及变量指令的右值。
 
 ```
@@ -689,6 +698,7 @@ Heroine "早上好..."
   -> "回应她": respond
   -> "无视她": ignore
   -> "恶作剧": prank if $confidence >= 50
+@endchoice
 
 @label respond
 @set $affection 10
