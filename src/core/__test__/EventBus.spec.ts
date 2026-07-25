@@ -55,7 +55,7 @@ describe('EventBus', () => {
     expect(() => bus.emit('test:event')).not.toThrow();
   });
 
-  it('once() should fire only once', () => {
+  it('should fire once() handler only once', () => {
     const handler = vi.fn();
     bus.once('test:event', handler);
     bus.emit('test:event');
@@ -63,7 +63,7 @@ describe('EventBus', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it('once() handler should not fire after off()', () => {
+  it('should not fire once() handler after off()', () => {
     const handler = vi.fn();
     bus.once('test:event', handler);
     bus.off('test:event', handler);
@@ -71,7 +71,7 @@ describe('EventBus', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('clear() should remove all listeners', () => {
+  it('should remove all listeners with clear()', () => {
     const h1 = vi.fn();
     const h2 = vi.fn();
     bus.on('test:a', h1);
@@ -91,14 +91,14 @@ describe('EventBus', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it('once() should receive arguments', () => {
+  it('should pass arguments to once() handler', () => {
     const handler = vi.fn();
     bus.once('test:event', handler);
     bus.emit('test:event', 'arg1', 42);
     expect(handler).toHaveBeenCalledWith('arg1', 42);
   });
 
-  it('off() should not affect other handlers for the same event', () => {
+  it('should not affect other handlers for the same event after off()', () => {
     const h1 = vi.fn();
     const h2 = vi.fn();
     bus.on('test:event', h1);
