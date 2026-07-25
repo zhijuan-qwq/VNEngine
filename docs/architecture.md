@@ -410,17 +410,25 @@ Heroine "......"
 
 ### 5.3 Parser（解析器）
 
+采用 Peggy 5.x 文法生成 + 薄封装层的两段设计：
+
+**语法定义层** — `src/script/grammar.pegjs` 是 VNScript 语法的权威定义。
+编译命令 `peggy --format es src/script/grammar.pegjs`，输出 `src/script/parser.js`（自动生成，不手动修改）。
+配套类型声明 `src/script/parser.d.ts`，暴露 `parse(input: string, options?): ParseResult`。
+
+**薄封装层** — `Parser.ts` 封装底层生成的 parser，对外暴露类型友好的接口：
+
 ```
 Parser
-├── parse(source: string): Script       // 文本 → AST
-├── parseFile(url: string): Promise<Script>
+├── parse(source: string): Script       // 文本 → Script 对象
 │
 内部流程:
-  1. Tokenizer: 词法分析，按行分割 → Token流
-  2. 语法分析: Token流 → Command AST节点
-  3. 标签解析: 收集 @label → LabelMap
-  4. 验证: 检查跳转目标存在性
+  1. 委托 parser.parse(source) 完成语法分析
+  2. 将 ParseResult（commands + metadata）包装为 Script 对象
+  3. 收集 @label → LabelMap，验证跳转目标存在性
 ```
+
+Parser 不负责文件加载（由 ResourceManager / ScriptEngine 处理），保持单一职责：`string → Script`。
 
 ```ts
 interface Script {
@@ -887,75 +895,77 @@ class PluginManager {
 
 ```
 src/
-├── engine/                        # 引擎核心（框架无关）
-│   ├── core/                      # 核心系统
-│   │   ├── Game.ts                # 游戏主类
-│   │   ├── GameLoop.ts            # 游戏循环
-│   │   ├── EventBus.ts            # 事件总线
-│   │   └── PluginManager.ts       # 插件管理器
-│   │
-│   ├── renderer/                  # 渲染系统
-│   │   ├── Renderer.ts            # 渲染器（图层管理）
-│   │   ├── Layer.ts               # 图层
-│   │   ├── Sprite.ts              # 精灵
-│   │   ├── TextureManager.ts      # 纹理管理
-│   │   ├── Texture.ts             # 纹理封装
-│   │   ├── TextRenderer.ts        # 文字渲染（逐字显示）
-│   │   ├── transitions/           # 转场效果
-│   │   │   ├── Transition.ts      # 转场基类
-│   │   │   ├── FadeTransition.ts
-│   │   │   ├── SlideTransition.ts
-│   │   │   └── WipeTransition.ts
-│   │   └── effects/               # 画面特效
-│   │       ├── Effect.ts          # 特效基类
-│   │       ├── ShakeEffect.ts
-│   │       ├── FlashEffect.ts
-│   │       └── ParticleEffect.ts
-│   │
-│   ├── script/                    # 脚本系统
-│   │   ├── ScriptEngine.ts        # 脚本引擎（Parser + Interpreter 门面）
-│   │   ├── Parser.ts              # 脚本解析器
-│   │   ├── Interpreter.ts         # 脚本解释器
-│   │   ├── CommandRegistry.ts     # 命令注册表
-│   │   └── commands/              # 内置命令实现
-│   │       ├── CommandBase.ts     # 命令基类
-│   │       ├── BgCommand.ts
-│   │       ├── ShowCommand.ts
-│   │       ├── HideCommand.ts
-│   │       ├── SayCommand.ts
-│   │       ├── ChoiceCommand.ts
-│   │       ├── AudioCommand.ts
-│   │       ├── FlowCommand.ts
-│   │       └── VariableCommand.ts
-│   │
-│   ├── audio/                     # 音频系统
-│   │   ├── AudioManager.ts        # 音频管理器
-│   │   ├── AudioTrack.ts          # 音轨
-│   │   └── AudioTrackPool.ts      # 音轨池
-│   │
-│   ├── resource/                  # 资源管理
-│   │   ├── ResourceManager.ts     # 资源管理器
-│   │   ├── AssetLoader.ts         # 资源加载器
-│   │   ├── ResourceCache.ts       # LRU缓存
-│   │   └── Preloader.ts           # 预加载器
-│   │
-│   ├── ui/                        # Canvas UI组件
-│   │   ├── UIComponent.ts         # UI组件基类
-│   │   ├── DialogueBox.ts         # 对话框
-│   │   ├── ChoicePanel.ts         # 选项面板
-│   │   ├── SaveLoadMenu.ts        # 存档/读档菜单
-│   │   ├── SettingsMenu.ts        # 设置菜单
-│   │   ├── HistoryView.ts         # 对话历史
-│   │   ├── TextButton.ts          # 文本按钮
-│   │   ├── Slider.ts              # 滑动条
-│   │   └── ConfirmDialog.ts       # 确认弹窗
-│   │
-│   ├── input/                     # 输入管理
-│   │   └── InputManager.ts        # 输入事件分发
-│   │
-│   └── save/                      # 存档系统
-│       ├── SaveManager.ts         # 存档管理器
-│       └── SaveData.ts            # 存档数据结构
+├── core/                          # 核心系统
+│   ├── Game.ts                    # 游戏主类
+│   ├── GameLoop.ts                # 游戏循环
+│   ├── EventBus.ts                # 事件总线
+│   └── PluginManager.ts           # 插件管理器
+│
+├── renderer/                      # 渲染系统
+│   ├── Renderer.ts                # 渲染器（图层管理）
+│   ├── Layer.ts                   # 图层
+│   ├── Sprite.ts                  # 精灵
+│   ├── TextureManager.ts          # 纹理管理
+│   ├── Texture.ts                 # 纹理封装
+│   ├── TextRenderer.ts            # 文字渲染（逐字显示）
+│   ├── transitions/               # 转场效果
+│   │   ├── Transition.ts          # 转场基类
+│   │   ├── FadeTransition.ts
+│   │   ├── SlideTransition.ts
+│   │   └── WipeTransition.ts
+│   └── effects/                   # 画面特效
+│       ├── Effect.ts              # 特效基类
+│       ├── ShakeEffect.ts
+│       ├── FlashEffect.ts
+│       └── ParticleEffect.ts
+│
+├── script/                        # 脚本系统
+│   ├── grammar.pegjs              # Peggy 文法定义（VNScript 语法权威来源）
+│   ├── parser.js                  # 自动生成（Peggy 编译 grammar.pegjs 输出）
+│   ├── parser.d.ts                # 生成解析器的 TypeScript 类型声明
+│   ├── Parser.ts                  # 薄封装层，调用 parser.parse() 返回 Script
+│   ├── ScriptEngine.ts            # 脚本引擎（Parser + Interpreter 门面）
+│   ├── Interpreter.ts             # 脚本解释器
+│   ├── CommandRegistry.ts         # 命令注册表
+│   └── commands/                  # 内置命令实现
+│       ├── CommandBase.ts         # 命令基类
+│       ├── BgCommand.ts
+│       ├── ShowCommand.ts
+│       ├── HideCommand.ts
+│       ├── SayCommand.ts
+│       ├── ChoiceCommand.ts
+│       ├── AudioCommand.ts
+│       ├── FlowCommand.ts
+│       └── VariableCommand.ts
+│
+├── audio/                         # 音频系统
+│   ├── AudioManager.ts            # 音频管理器
+│   ├── AudioTrack.ts              # 音轨
+│   └── AudioTrackPool.ts          # 音轨池
+│
+├── resource/                      # 资源管理
+│   ├── ResourceManager.ts         # 资源管理器
+│   ├── AssetLoader.ts             # 资源加载器
+│   ├── ResourceCache.ts           # LRU缓存
+│   └── Preloader.ts               # 预加载器
+│
+├── ui/                            # Canvas UI组件
+│   ├── UIComponent.ts             # UI组件基类
+│   ├── DialogueBox.ts             # 对话框
+│   ├── ChoicePanel.ts             # 选项面板
+│   ├── SaveLoadMenu.ts            # 存档/读档菜单
+│   ├── SettingsMenu.ts            # 设置菜单
+│   ├── HistoryView.ts             # 对话历史
+│   ├── TextButton.ts              # 文本按钮
+│   ├── Slider.ts                  # 滑动条
+│   └── ConfirmDialog.ts           # 确认弹窗
+│
+├── input/                         # 输入管理
+│   └── InputManager.ts            # 输入事件分发
+│
+├── save/                          # 存档系统
+│   ├── SaveManager.ts             # 存档管理器
+│   └── SaveData.ts                # 存档数据结构
 │
 ├── types/                         # 共享类型定义
 │   ├── engine.ts                  # 引擎核心类型
@@ -1124,7 +1134,7 @@ interface Command {
 
 interface ScriptContext {
   engine: import('./engine').VNEngine;
-  interpreter: import('../engine/script/Interpreter').Interpreter;
+  interpreter: import('../script/Interpreter').Interpreter;
   variables: Map<string, any>;
   flags: Set<string>;
 }

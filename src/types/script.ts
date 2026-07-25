@@ -4,7 +4,7 @@ export interface Script {
   name: string;
   commands: Command[];
   labels: Map<string, number>;
-  metadata: { author?: string; version?: string };
+  metadata: Record<string, string>;
 }
 
 export interface Command {

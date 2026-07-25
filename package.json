@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run build:parser && tsc && vite build",
+    "build:parser": "peggy --format es src/script/grammar.pegjs -o src/engine/script/parser.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -23,6 +24,7 @@
     "globals": "^17.7.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.1.0",
+    "peggy": "^5.1.0",
     "prettier": "^3.9.5",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.64.0",
@@ -37,6 +39,5 @@
     "*.{css,html,json,md}": [
       "prettier --write"
     ]
-  },
-  "dependencies": {}
+  }
 }

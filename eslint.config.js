@@ -4,7 +4,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist/'] },
+  { ignores: ['dist/', 'src/script/parser.js'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
