@@ -44,7 +44,7 @@ export default {
     '.git',
     '.husky',
     'package-lock.json',
-    'docs',
+    'doc',
   ],
   language: 'en',
 };

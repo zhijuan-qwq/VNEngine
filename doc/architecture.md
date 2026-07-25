@@ -30,7 +30,7 @@
 │ │ Layer栈   │  │ Parser    │  │ BGM/BGS   │  │ Loader    │ │
 │ │ Texture   │  │ Interpr   │  │ SE/Voice  │  │ Cache     │ │
 │ │ Sprite    │  │ Command   │  │ Fade控制  │  │ Preload   │ │
-│ │ Effect    │  │ Variable  │  │           │  │           │ │
+│ │ Effect    │  │ VarStore  │  │           │  │           │ │
 │ │ UI绘制    │  │ Flow控制  │  │           │  │           │ │
 │ └───────────┘  └───────────┘  └───────────┘  └───────────┘ │
 │                                                            │
@@ -445,14 +445,43 @@ interface Command {
 }
 ```
 
-### 5.4 Interpreter（解释器）
+### 5.4 VariableStore（变量与旗标存储）
+
+变量和旗标是跨脚本持久存在的运行时状态。`VariableStore` 统一管理两者（旗标本质上是值为 boolean 的变量），同时提供序列化接口供存档系统使用。
+
+```
+VariableStore
+├── variables: Map<string, unknown> // 变量表
+├── flags: Set<string>              // 旗标集合
+│
+├── get(name: string): unknown
+├── set(name: string, value: unknown): void
+├── hasFlag(name: string): boolean
+├── setFlag(name: string): void
+├── clearFlag(name: string): void
+├── toggleFlag(name: string): void
+├── clearAllFlags(): void
+├── dump(): { variables: Record<string, unknown>; flags: string[] }
+└── restore(data: { variables: Record<string, unknown>; flags: string[] }): void
+```
+
+**生命周期：**
+
+- 由 `Game` 创建并持有所有权
+- `Game` 将同一实例传递给 `ScriptEngine`，后者传递给 `Interpreter`
+- `ScriptContext` 中暴露 `store: VariableStore`，command handler 通过它读写变量和旗标
+- 存档时 `SaveManager` 从 `Game` 获取 `VariableStore` 引用，调用 `dump()` 拿到快照
+
+**与 Interpreter 的关系：**
+
+Interpreter 通过 `ScriptContext` 将 VariableStore 分发给各命令执行器，同时 Interpreter 自身也持有 VariableStore 引用用于条件评估（如 `@if` / `@elseif` 中读取当前变量值）。
+
+### 5.5 Interpreter（解释器）
 
 ```
 Interpreter
 ├── script: Script              // 当前脚本
 ├── pc: number                  // 程序计数器（命令索引）
-├── variables: Map<string, any> // 变量表
-├── flags: Set<string>          // 旗标集合
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
 ├── state: 'idle' | 'running' | 'waiting' | 'paused'
 │
@@ -461,9 +490,6 @@ Interpreter
 ├── jump(label: string): void
 ├── call(label: string): void
 ├── return(): void
-├── setVar(name: string, value: any): void
-├── getVar(name: string): any
-├── checkFlag(name: string): boolean
 └── on(event, handler): void    // 等待事件（如点击继续）
 ```
 
@@ -482,7 +508,7 @@ step():
   等待用户点击/选择 → state → 'running' → 继续 step()
 ```
 
-### 5.5 CommandRegistry（命令注册表）
+### 5.6 CommandRegistry（命令注册表）
 
 ```ts
 interface CommandHandler {
@@ -516,7 +542,7 @@ class CommandRegistry {
 | 特效 | `@shake`, `@flash`, `@snow`, `@rain`                  | 画面特效              |
 | 系统 | `@wait`, `@end`, `@label`, `@comment`                 | 系统命令              |
 
-### 5.6 自定义命令扩展示例
+### 5.7 自定义命令扩展示例
 
 ```ts
 // 在插件中注册新命令
@@ -761,8 +787,6 @@ class InputManager {
 interface GameState {
   currentScript: string; // 当前脚本名
   scriptPC: number; // 脚本程序计数器
-  variables: Record<string, any>;
-  flags: string[];
   bgImage: string | null;
   characters: CharacterState[];
   bgmId: string | null;
@@ -778,6 +802,8 @@ interface CharacterState {
   opacity: number;
 }
 ```
+
+变量和旗标由 `VariableStore`（见 §5.4）独立管理，存档/读档时通过 `dump()` / `restore()` 完成序列化与恢复，`GameState` 不再直接持有这两个字段的独立拷贝。
 
 **Settings（用户设置）：**
 
@@ -925,6 +951,7 @@ src/
 │   ├── parser.d.ts                # 生成解析器的 TypeScript 类型声明
 │   ├── Parser.ts                  # 薄封装层，调用 parser.parse() 返回 Script
 │   ├── ScriptEngine.ts            # 脚本引擎（Parser + Interpreter 门面）
+│   ├── VariableStore.ts            # 变量与旗标存储
 │   ├── Interpreter.ts             # 脚本解释器
 │   ├── CommandRegistry.ts         # 命令注册表
 │   └── commands/                  # 内置命令实现
@@ -1135,8 +1162,7 @@ interface Command {
 interface ScriptContext {
   engine: import('./engine').VNEngine;
   interpreter: import('../script/Interpreter').Interpreter;
-  variables: Map<string, any>;
-  flags: Set<string>;
+  store: import('../script/VariableStore').VariableStore;
 }
 
 interface Choice {

@@ -40,13 +40,13 @@ VNScript 是 VNEngine 专用的声明式领域特定语言（DSL），以 `.vns`
 
 ### 2.4 字面量
 
-| 类型   | 格式                                | 示例                          |
-| ------ | ----------------------------------- | ----------------------------- |
-| 字符串 | 双引号包围，支持 `\n` `\t` `\\` `\"` | `"你好"`, `"行1\n行2"`        |
-| 整数   | 十进制数字，可选负号                | `42`, `-7`                    |
-| 浮点数 | 含小数点，可选负号                  | `3.14`, `-0.5`                |
-| 布尔值 | `true` / `false`                    | —                             |
-| 持续时间 | 带单位后缀的数字                 | `2s`, `500ms`, `1.5s`         |
+| 类型     | 格式                                 | 示例                   |
+| -------- | ------------------------------------ | ---------------------- |
+| 字符串   | 双引号包围，支持 `\n` `\t` `\\` `\"` | `"你好"`, `"行1\n行2"` |
+| 整数     | 十进制数字，可选负号                 | `42`, `-7`             |
+| 浮点数   | 含小数点，可选负号                   | `3.14`, `-0.5`         |
+| 布尔值   | `true` / `false`                     | —                      |
+| 持续时间 | 带单位后缀的数字                     | `2s`, `500ms`, `1.5s`  |
 
 ### 2.5 参数分隔
 
@@ -83,11 +83,11 @@ Hero "早上好。"
 
 ### 3.1 元数据指令
 
-| 指令       | 参数     | 说明             |
-| ---------- | -------- | ---------------- |
-| `@author`  | 字符串   | 脚本作者         |
-| `@version` | 字符串   | 脚本版本号       |
-| `@title`   | 字符串   | 脚本标题（显示用）|
+| 指令       | 参数   | 说明               |
+| ---------- | ------ | ------------------ |
+| `@author`  | 字符串 | 脚本作者           |
+| `@version` | 字符串 | 脚本版本号         |
+| `@title`   | 字符串 | 脚本标题（显示用） |
 
 元数据指令必须出现在任何其他命令和标签之前，且只能出现一次。
 
@@ -213,11 +213,11 @@ TransitionSpec     = TransitionName [ Space DurationLiteral ]
 TransitionName     = Identifier
 ```
 
-| 参数       | 说明                                    |
-| ---------- | --------------------------------------- |
-| `id`       | 背景资源 ID（必填，第一个位置参数）     |
+| 参数       | 说明                                   |
+| ---------- | -------------------------------------- |
+| `id`       | 背景资源 ID（必填，第一个位置参数）    |
 | transition | 转场效果名（可选），如 `fade` `slideL` |
-| duration   | 转场持续时间（可选），默认值由引擎决定  |
+| duration   | 转场持续时间（可选），默认值由引擎决定 |
 
 ```
 @bg classroom day                    // 立即切换
@@ -570,17 +570,17 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 对话文本支持内联标签用于富文本渲染。标签不涉及脚本逻辑，仅影响渲染。
 
-| 标签               | 说明             | 示例                                 |
-| ------------------ | ---------------- | ------------------------------------ |
-| `[color=#rrggbb]`  | 文字颜色         | `"这是[color=#ff0000]红色[/color]"`  |
-| `[b]...[/b]`       | 加粗             | `"[b]重要[/b]消息"`                  |
-| `[i]...[/i]`       | 斜体             | `"[i]内心独白[/i]"`                  |
-| `[size=N]...[/size]` | 字号           | `"[size=32]标题[/size]"`             |
-| `[shake]...[/shake]` | 抖动文字       | `"[shake]啊——[/shake]"`              |
-| `[speed=N]`        | 局部打字速度     | `"[speed=30]慢速文字[/speed]"`       |
-| `[pause=N]`        | 内联暂停（毫秒） | `"然后...[pause=1000]他离开了。"`     |
-| `[ruby=注音]...[/ruby]` | 注音       | `"[ruby=つぎ]次[/ruby]"`             |
-| `{var:name}`       | 内联变量插值     | `"好感度：{$affection}"`             |
+| 标签                    | 说明             | 示例                                |
+| ----------------------- | ---------------- | ----------------------------------- |
+| `[color=#rrggbb]`       | 文字颜色         | `"这是[color=#ff0000]红色[/color]"` |
+| `[b]...[/b]`            | 加粗             | `"[b]重要[/b]消息"`                 |
+| `[i]...[/i]`            | 斜体             | `"[i]内心独白[/i]"`                 |
+| `[size=N]...[/size]`    | 字号             | `"[size=32]标题[/size]"`            |
+| `[shake]...[/shake]`    | 抖动文字         | `"[shake]啊——[/shake]"`             |
+| `[speed=N]`             | 局部打字速度     | `"[speed=30]慢速文字[/speed]"`      |
+| `[pause=N]`             | 内联暂停（毫秒） | `"然后...[pause=1000]他离开了。"`   |
+| `[ruby=注音]...[/ruby]` | 注音             | `"[ruby=つぎ]次[/ruby]"`            |
+| `{var:name}`            | 内联变量插值     | `"好感度：{$affection}"`            |
 
 ---
 
@@ -609,70 +609,70 @@ MulOp              = "*" | "/" | "%"
 
 ### 运算符优先级（从高到低）
 
-| 优先级 | 运算符                              |
-| ------ | ----------------------------------- |
-| 1      | `!` `-`（一元）                     |
-| 2      | `*` `/` `%`                         |
-| 3      | `+` `-`（二元）                     |
-| 4      | `>` `>=` `<` `<=` `==` `!=`        |
-| 5      | `and`                               |
-| 6      | `or`                                |
+| 优先级 | 运算符                      |
+| ------ | --------------------------- |
+| 1      | `!` `-`（一元）             |
+| 2      | `*` `/` `%`                 |
+| 3      | `+` `-`（二元）             |
+| 4      | `>` `>=` `<` `<=` `==` `!=` |
+| 5      | `and`                       |
+| 6      | `or`                        |
 
 ---
 
 ## 八、完整指令速查表
 
-| 分类     | 指令           | 语法                                                                 |
-| -------- | -------------- | -------------------------------------------------------------------- |
-| 元数据   | `@author`      | `@author "作者名"`                                                    |
-| —        | `@version`     | `@version "1.0"`                                                      |
-| —        | `@title`       | `@title "脚本标题"`                                                   |
-| 对话     | `@say`         | `@say 角色名 "文本" [voice=id] [adv\|nvl]`                          |
-| —        | 内联对话       | `角色名 "文本" [voice=id]`                                           |
-| 背景     | `@bg`          | `@bg 资源id [转场名] [时长]`                                        |
-| 角色     | `@show`        | `@show 角色id 位置 [sprite=id] [transition=名] [duration=时长]`     |
-| —        | `@hide`        | `@hide 角色id [transition=名] [duration=时长]`                       |
-| —        | `@move`        | `@move 角色id 位置 [时长] [缓动]`                                   |
-| 立绘     | `@sprite`      | `@sprite 角色id 立绘id [转场名] [时长]`                             |
-| 音频     | `@playBgm`     | `@playBgm 资源id [loop\|once] [fadein=时长] [volume=N]`            |
-| —        | `@stopBgm`     | `@stopBgm [fade=时长]`                                               |
-| —        | `@playSe`      | `@playSe 资源id [volume=N]`                                          |
-| —        | `@playVoice`   | `@playVoice 资源id`                                                   |
-| —        | `@playAmbient` | `@playAmbient 资源id [loop] [fadein=时长] [volume=N]`               |
-| —        | `@stopAmbient` | `@stopAmbient [fade=时长]`                                           |
-| 流程     | `@label`       | `@label 标签名`                                                       |
-| —        | `@jump`        | `@jump 标签名`                                                        |
-| —        | `@call`        | `@call 标签名`                                                        |
-| —        | `@return`      | `@return`                                                             |
-| —        | `@if`          | `@if 表达式`                                                          |
-| —        | `@elseif`      | `@elseif 表达式`                                                      |
-| —        | `@else`        | `@else`                                                               |
-| —        | `@endif`       | `@endif`                                                              |
-| —        | `@switch`      | `@switch 表达式`                                                      |
-| —        | `@case`        | `@case 字面量`                                                        |
-| —        | `@default`     | `@default`                                                            |
-| —        | `@endswitch`   | `@endswitch`                                                          |
-| 选项     | `@choice`      | `@choice [mode=adv\|nvl]` + `-> "文本": 标签 [if 条件]` + `@endchoice` |
-| 变量     | `@set`         | `@set $变量 值`                                                       |
-| —        | `@add`         | `@add $变量 值`                                                       |
-| —        | `@sub`         | `@sub $变量 值`                                                       |
-| —        | `@mul`         | `@mul $变量 值`                                                       |
-| —        | `@div`         | `@div $变量 值`                                                       |
-| —        | `@mod`         | `@mod $变量 值`                                                       |
-| —        | `@random`      | `@random $变量 最小 最大`                                            |
-| 旗标     | `@flag`        | `@flag 旗标名`                                                        |
-| —        | `@unflag`      | `@unflag 旗标名`                                                      |
-| —        | `@toggle`      | `@toggle 旗标名`                                                      |
-| —        | `@clearFlags`  | `@clearFlags`                                                         |
-| 特效     | `@shake`       | `@shake [时长] [intensity=N]`                                        |
-| —        | `@flash`       | `@flash [color=#xxx] [duration=时长]`                                |
-| —        | `@snow`        | `@snow [时长] [density=N]`                                           |
-| —        | `@rain`        | `@rain [时长] [density=N]`                                           |
-| —        | `@stopEffect`  | `@stopEffect`                                                         |
-| 系统     | `@wait`        | `@wait 时长`                                                          |
-| —        | `@pause`       | `@pause`                                                              |
-| —        | `@end`         | `@end`                                                                |
-| —        | `@clear`       | `@clear`                                                              |
+| 分类   | 指令           | 语法                                                                   |
+| ------ | -------------- | ---------------------------------------------------------------------- |
+| 元数据 | `@author`      | `@author "作者名"`                                                     |
+| —      | `@version`     | `@version "1.0"`                                                       |
+| —      | `@title`       | `@title "脚本标题"`                                                    |
+| 对话   | `@say`         | `@say 角色名 "文本" [voice=id] [adv\|nvl]`                             |
+| —      | 内联对话       | `角色名 "文本" [voice=id]`                                             |
+| 背景   | `@bg`          | `@bg 资源id [转场名] [时长]`                                           |
+| 角色   | `@show`        | `@show 角色id 位置 [sprite=id] [transition=名] [duration=时长]`        |
+| —      | `@hide`        | `@hide 角色id [transition=名] [duration=时长]`                         |
+| —      | `@move`        | `@move 角色id 位置 [时长] [缓动]`                                      |
+| 立绘   | `@sprite`      | `@sprite 角色id 立绘id [转场名] [时长]`                                |
+| 音频   | `@playBgm`     | `@playBgm 资源id [loop\|once] [fadein=时长] [volume=N]`                |
+| —      | `@stopBgm`     | `@stopBgm [fade=时长]`                                                 |
+| —      | `@playSe`      | `@playSe 资源id [volume=N]`                                            |
+| —      | `@playVoice`   | `@playVoice 资源id`                                                    |
+| —      | `@playAmbient` | `@playAmbient 资源id [loop] [fadein=时长] [volume=N]`                  |
+| —      | `@stopAmbient` | `@stopAmbient [fade=时长]`                                             |
+| 流程   | `@label`       | `@label 标签名`                                                        |
+| —      | `@jump`        | `@jump 标签名`                                                         |
+| —      | `@call`        | `@call 标签名`                                                         |
+| —      | `@return`      | `@return`                                                              |
+| —      | `@if`          | `@if 表达式`                                                           |
+| —      | `@elseif`      | `@elseif 表达式`                                                       |
+| —      | `@else`        | `@else`                                                                |
+| —      | `@endif`       | `@endif`                                                               |
+| —      | `@switch`      | `@switch 表达式`                                                       |
+| —      | `@case`        | `@case 字面量`                                                         |
+| —      | `@default`     | `@default`                                                             |
+| —      | `@endswitch`   | `@endswitch`                                                           |
+| 选项   | `@choice`      | `@choice [mode=adv\|nvl]` + `-> "文本": 标签 [if 条件]` + `@endchoice` |
+| 变量   | `@set`         | `@set $变量 值`                                                        |
+| —      | `@add`         | `@add $变量 值`                                                        |
+| —      | `@sub`         | `@sub $变量 值`                                                        |
+| —      | `@mul`         | `@mul $变量 值`                                                        |
+| —      | `@div`         | `@div $变量 值`                                                        |
+| —      | `@mod`         | `@mod $变量 值`                                                        |
+| —      | `@random`      | `@random $变量 最小 最大`                                              |
+| 旗标   | `@flag`        | `@flag 旗标名`                                                         |
+| —      | `@unflag`      | `@unflag 旗标名`                                                       |
+| —      | `@toggle`      | `@toggle 旗标名`                                                       |
+| —      | `@clearFlags`  | `@clearFlags`                                                          |
+| 特效   | `@shake`       | `@shake [时长] [intensity=N]`                                          |
+| —      | `@flash`       | `@flash [color=#xxx] [duration=时长]`                                  |
+| —      | `@snow`        | `@snow [时长] [density=N]`                                             |
+| —      | `@rain`        | `@rain [时长] [density=N]`                                             |
+| —      | `@stopEffect`  | `@stopEffect`                                                          |
+| 系统   | `@wait`        | `@wait 时长`                                                           |
+| —      | `@pause`       | `@pause`                                                               |
+| —      | `@end`         | `@end`                                                                 |
+| —      | `@clear`       | `@clear`                                                               |
 
 ---
 
@@ -741,13 +741,13 @@ Heroine "[shake]呀！[/shake]"
 
 每个 `CommandLine` 解析为一个 `Command` 节点，DialogLine 展开为 `@say` 的 `Command` 节点。
 
-| 源文本                             | AST Command                              |
-| ---------------------------------- | ---------------------------------------- |
-| `@bg classroom day fade 1s`       | `{ type: "bg", args: { id: "classroom day", transition: "fade", duration: "1s" }, line: 3 }` |
-| `Hero "你好！"`                   | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }` |
-| `@set $score 10`                  | `{ type: "set", args: { var: "$score", value: 10 }, line: 7 }` |
-| `@if $score >= 50`                | `{ type: "if", args: { expression: "$score >= 50" }, line: 9 }` |
-| `@choice` ... `@endchoice`        | 一个 `type: "choice"` 的 Command，`args.choices` 为 `Choice[]` |
+| 源文本                      | AST Command                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `@bg classroom day fade 1s` | `{ type: "bg", args: { id: "classroom day", transition: "fade", duration: "1s" }, line: 3 }` |
+| `Hero "你好！"`             | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }`                        |
+| `@set $score 10`            | `{ type: "set", args: { var: "$score", value: 10 }, line: 7 }`                               |
+| `@if $score >= 50`          | `{ type: "if", args: { expression: "$score >= 50" }, line: 9 }`                              |
+| `@choice` ... `@endchoice`  | 一个 `type: "choice"` 的 Command，`args.choices` 为 `Choice[]`                               |
 
 `@choice` 块会被折叠为单条 Command，其内部的 `->` 行转换为 `Choice[]` 数组存入 `args.choices`。
 
@@ -782,7 +782,7 @@ parser.use((source: string) => {
 
 ## 十二、文件扩展名约定
 
-| 扩展名  | 说明                     |
-| ------- | ------------------------ |
-| `.vns`  | VNScript 源文件          |
+| 扩展名  | 说明                      |
+| ------- | ------------------------- |
+| `.vns`  | VNScript 源文件           |
 | `.vnsc` | 编译后的 AST 缓存（可选） |
