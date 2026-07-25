@@ -35,6 +35,8 @@ export default {
     'spritesheets',
     'Spritesheet',
     'dedup',
+    'fadein',
+    'endchoice',
   ],
   ignorePaths: [
     'node_modules',
