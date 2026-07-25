@@ -7,9 +7,10 @@ class Parser {
     if (typeof source !== 'string') {
       throw new TypeError('Source must be a string');
     }
+    const normalized = source.endsWith('\n') ? source : source + '\n';
     let parseResult: ParseResult;
     try {
-      parseResult = parse(source);
+      parseResult = parse(normalized);
     } catch (error: unknown) {
       if (error instanceof SyntaxError) {
         throw error;
