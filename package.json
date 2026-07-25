@@ -38,6 +38,9 @@
     ],
     "*.{css,html,json,md}": [
       "prettier --write"
+    ],
+    "*.{ts,js,html}": [
+      "cspell lint --no-progress"
     ]
   }
 }
