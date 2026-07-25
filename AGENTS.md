@@ -141,36 +141,7 @@ npm run spell:check  # cSpell 拼写检查
 - Agent 不直接提交代码
 
 ## git规范
-
-## 1. 分支开发规范
-
-- 1.1 核心原则
-
-  - 禁止直接向 main（或 master）分支推送代码。
-  - 所有开发均通过 分支 + 合并请求（Pull Request / Merge Request） 进行。
-  - 合并前必须通过代码评审（Code Review）和 CI 检查。
-
-- 1.2 分支命名与用途
-
-  分支类型 命名格式 说明
-  功能分支 feature/<short-description> 用于开发新功能。例：feature/user-login  
-  修复分支 fix/<short-description> 用于修复常规 Bug。例：fix/api-timeout  
-  热修复分支 hotfix/<short-description> 用于紧急修复生产环境问题，通常基于 main 创建，修复后需同时合并回 main 和 develop（如果有）  
-  发布分支 release/<version> 用于准备发布版本，做最后的测试、文档更新等。完成后合并回 main 并打标签  
-  杂项/优化 chore/<short-description> 用于构建、工具、依赖等非功能变动（如修改 ESLint 配置）  
-
-  分支名使用小写字母、连字符（-）分隔，避免使用下划线或驼峰。
-
-- 1.3 合并流程
-
-  1. 从 main 拉出开发分支（如 feature/xxx）。
-  2. 开发完成后，推送到远程仓库，并创建 PR/MR 请求合并到 main。
-  3. 至少一名 Reviewer 批准，且 CI 全部通过后，由维护者执行 Squash and Merge 或 Rebase and Merge（保持历史线性）。
-  4. 合并后删除该开发分支（可选）。
-
----
-
-## 2. Commit Message 规范
+## Commit Message 规范
 
 基于 Conventional Commits 1.0.0，格式如下：
 
