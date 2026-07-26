@@ -488,12 +488,12 @@ Interpreter
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
 ├── state: 'idle' | 'running' | 'waiting' | 'paused'
 │
-├── load(script: Script): void
+├── load(script: Script, startPc?: number): void
 ├── step(): void                // 执行下一条命令
 ├── jump(label: string): void
 ├── call(label: string): void
 ├── return(): void
-└── on(event, handler): void    // 等待事件（如点击继续）
+└── wait(event: string, handler: () => void): void  // 暂停等待事件
 ```
 
 **命令执行流程：**
