@@ -1,3 +1,7 @@
+type VariableStoreData = {
+  variables: Record<string, unknown>;
+  flags: string[];
+};
 class VariableStore {
   private variables: Map<string, unknown>;
   private flags: Set<string>;
@@ -71,8 +75,5 @@ class VariableStore {
     }
   }
 }
-export type VariableStoreData = {
-  variables: Record<string, unknown>;
-  flags: string[];
-};
+export type { VariableStoreData, VariableStore };
 export default VariableStore;
