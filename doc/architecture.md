@@ -451,18 +451,20 @@ interface Command {
 
 ```
 VariableStore
-├── variables: Map<string, unknown> // 变量表
-├── flags: Set<string>              // 旗标集合
+├── variables: Map<string, unknown>    // 变量表
+├── flags: Set<string>                 // 旗标集合
 │
+├── has(name: string): boolean
 ├── get(name: string): unknown
 ├── set(name: string, value: unknown): void
+├── delete(name: string): void
 ├── hasFlag(name: string): boolean
 ├── setFlag(name: string): void
 ├── clearFlag(name: string): void
 ├── toggleFlag(name: string): void
 ├── clearAllFlags(): void
-├── dump(): { variables: Record<string, unknown>; flags: string[] }
-└── restore(data: { variables: Record<string, unknown>; flags: string[] }): void
+├── dump(): VariableStoreData
+└── restore(data: VariableStoreData): void
 ```
 
 **生命周期：**
