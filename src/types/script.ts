@@ -1,4 +1,6 @@
 import type { VNEngine } from './engine';
+import type { VariableStore } from '../script/VariableStore';
+import type { Interpreter } from '../script/Interpreter';
 
 export interface Script {
   name: string;
@@ -15,8 +17,8 @@ export interface Command {
 
 export interface ScriptContext {
   engine: VNEngine;
-  variables: Map<string, unknown>;
-  flags: Set<string>;
+  interpreter: Interpreter;
+  store: VariableStore;
 }
 
 export interface Choice {

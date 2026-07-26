@@ -1,4 +1,4 @@
-import type { Command } from '../types/script';
+import type { Command } from '@/types/script';
 
 export interface ParseResult {
   commands: Command[];

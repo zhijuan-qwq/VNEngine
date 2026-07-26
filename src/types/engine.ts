@@ -1,3 +1,5 @@
+import type { EventBus } from '@/core/EventBus';
+
 export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
 
 export type ScaleMode = 'fit' | 'stretch' | 'fixed';
@@ -141,5 +143,6 @@ export interface VNEngine {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   plugins: PluginManager;
+  eventBus: EventBus;
   destroy(): void;
 }

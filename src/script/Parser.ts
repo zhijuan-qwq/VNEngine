@@ -1,6 +1,6 @@
 import { parse, SyntaxError } from './parser.js';
 import type { ParseResult } from './parser.js';
-import type { Script } from '../types/script.js';
+import type { Script } from '@/types/script';
 
 class Parser {
   public parseScript(source: string): Script {
