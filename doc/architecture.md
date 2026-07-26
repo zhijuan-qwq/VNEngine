@@ -483,6 +483,7 @@ Interpreter 通过 `ScriptContext` 将 VariableStore 分发给各命令执行器
 ```
 Interpreter
 ├── script: Script              // 当前脚本
+├── store: VariableStore        // 变量与旗标存储（构造注入）
 ├── pc: number                  // 程序计数器（命令索引）
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
 ├── state: 'idle' | 'running' | 'waiting' | 'paused'
