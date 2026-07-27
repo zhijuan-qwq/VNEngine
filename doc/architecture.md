@@ -490,10 +490,11 @@ Interpreter
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
 ├── state: 'idle' | 'running' | 'waiting' | 'paused'
 │
+├── getPc(): number // pc在外部只读
 ├── load(script: Script, startPc?: number): void
 ├── step(): void                // 执行下一条命令
-├── jump(label: string): void
-├── call(label: string): void
+├── jump(name: string): void
+├── call(name: string): void
 ├── return(): void
 └── wait(event: string, handler: () => void): void  // 暂停等待事件
 ```
@@ -503,7 +504,7 @@ Interpreter
 ```
 step():
   1. 获取 commands[pc]
-  2. 若 state === 'waiting' 且未收到继续信号 → 跳过
+  2. 若 state === 'waiting' → 跳过
   3. 执行 CommandRegistry.execute(cmd, context)
   4. pc++
   5. 若 pc >= commands.length → 触发 script:end
@@ -517,7 +518,7 @@ step():
 
 ```ts
 interface CommandHandler {
-  name: string;
+  type: string;
   execute(ctx: ScriptContext, args: Record<string, any>): void | Promise<void>;
   undo?(ctx: ScriptContext): void; // 用于回滚
 }
@@ -526,7 +527,7 @@ class CommandRegistry {
   private commands: Map<string, CommandHandler>;
 
   register(handler: CommandHandler): void;
-  unregister(name: string): void;
+  unregister(type: string): void;
   execute(ctx: ScriptContext, cmd: Command): void | Promise<void>;
 }
 ```
