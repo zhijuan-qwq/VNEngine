@@ -29,10 +29,7 @@ export interface Choice {
 }
 
 export interface CommandHandler {
-  name: string;
-  execute(
-    ctx: ScriptContext,
-    args: Record<string, unknown>,
-  ): void | Promise<void>;
+  type: string;
+  execute(ctx: ScriptContext, args: Record<string, unknown>): void;
   undo?(ctx: ScriptContext): void;
 }
