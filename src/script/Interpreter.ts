@@ -69,7 +69,7 @@ class Interpreter {
 
   private resolveLabel(name: string): number {
     const label = this.script.labels.get(name);
-    if (!label) {
+    if (label === undefined) {
       throw new Error(
         `Label "${name}" not found in script "${this.script.name}".`,
       );
