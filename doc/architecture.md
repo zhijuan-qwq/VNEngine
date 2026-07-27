@@ -451,18 +451,20 @@ interface Command {
 
 ```
 VariableStore
-├── variables: Map<string, unknown> // 变量表
-├── flags: Set<string>              // 旗标集合
+├── variables: Map<string, unknown>    // 变量表
+├── flags: Set<string>                 // 旗标集合
 │
+├── has(name: string): boolean
 ├── get(name: string): unknown
 ├── set(name: string, value: unknown): void
+├── delete(name: string): void
 ├── hasFlag(name: string): boolean
 ├── setFlag(name: string): void
 ├── clearFlag(name: string): void
 ├── toggleFlag(name: string): void
 ├── clearAllFlags(): void
-├── dump(): { variables: Record<string, unknown>; flags: string[] }
-└── restore(data: { variables: Record<string, unknown>; flags: string[] }): void
+├── dump(): VariableStoreData
+└── restore(data: VariableStoreData): void
 ```
 
 **生命周期：**
@@ -481,16 +483,20 @@ Interpreter 通过 `ScriptContext` 将 VariableStore 分发给各命令执行器
 ```
 Interpreter
 ├── script: Script              // 当前脚本
+├── store: VariableStore        // 变量与旗标存储（构造注入）
+├── registry: CommandRegistry   // 命令注册表（构造注入）
+├── engine: VNEngine             // 引擎引用（构造注入，用于构建 ScriptContext）
 ├── pc: number                  // 程序计数器（命令索引）
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
 ├── state: 'idle' | 'running' | 'waiting' | 'paused'
 │
-├── load(script: Script): void
+├── getPc(): number // pc在外部只读
+├── load(script: Script, startPc?: number): void
 ├── step(): void                // 执行下一条命令
-├── jump(label: string): void
-├── call(label: string): void
+├── jump(name: string): void
+├── call(name: string): void
 ├── return(): void
-└── on(event, handler): void    // 等待事件（如点击继续）
+└── wait(event: string, handler: () => void): void  // 暂停等待事件
 ```
 
 **命令执行流程：**
@@ -498,7 +504,7 @@ Interpreter
 ```
 step():
   1. 获取 commands[pc]
-  2. 若 state === 'waiting' 且未收到继续信号 → 跳过
+  2. 若 state === 'waiting' → 跳过
   3. 执行 CommandRegistry.execute(cmd, context)
   4. pc++
   5. 若 pc >= commands.length → 触发 script:end
@@ -512,7 +518,7 @@ step():
 
 ```ts
 interface CommandHandler {
-  name: string;
+  type: string;
   execute(ctx: ScriptContext, args: Record<string, any>): void | Promise<void>;
   undo?(ctx: ScriptContext): void; // 用于回滚
 }
@@ -521,7 +527,7 @@ class CommandRegistry {
   private commands: Map<string, CommandHandler>;
 
   register(handler: CommandHandler): void;
-  unregister(name: string): void;
+  unregister(type: string): void;
   execute(ctx: ScriptContext, cmd: Command): void | Promise<void>;
 }
 ```

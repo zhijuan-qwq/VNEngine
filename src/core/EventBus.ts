@@ -36,4 +36,5 @@ class EventBus {
   }
 }
 
+export type { EventBus };
 export default EventBus;

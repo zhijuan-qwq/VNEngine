@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:parser && tsc && vite build",
-    "build:parser": "peggy --format es src/script/grammar.pegjs -o src/engine/script/parser.js",
+    "build:parser": "peggy --format es src/script/grammar.pegjs -o src/script/parser.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
     "cspell": "^10.0.1",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
