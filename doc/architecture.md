@@ -505,9 +505,11 @@ Interpreter
 step():
   1. 获取 commands[pc]
   2. 若 state === 'waiting' → 跳过
-  3. 执行 CommandRegistry.execute(cmd, context)
-  4. pc++
-  5. 若 pc >= commands.length → 触发 script:end
+  3. 流程命令（@if/@switch/@jump/@call/@return）由 Interpreter 内部直接处理，
+     不经过 CommandRegistry
+  4. 其余命令 → 执行 CommandRegistry.execute(cmd, context)
+  5. pc++
+  6. 若 pc >= commands.length → 触发 script:end
 
 等待类命令（@say, @choice）执行后:
   state → 'waiting'
@@ -534,19 +536,18 @@ class CommandRegistry {
 
 **内置命令清单：**
 
-| 分类 | 命令                                                  | 说明                  |
-| ---- | ----------------------------------------------------- | --------------------- |
-| 背景 | `@bg`                                                 | 切换背景（支持转场）  |
-| 角色 | `@show`, `@hide`, `@move`                             | 角色显示/隐藏/移动    |
-| 立绘 | `@sprite`                                             | 切换角色立绘表情/服装 |
-| 对话 | `@say` 或直接 `角色名 "文本"`                         | 显示对话              |
-| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice`       | 音频控制              |
-| 选项 | `@choice`                                             | 显示选项分支          |
-| 流程 | `@jump`, `@call`, `@return`, `@if`, `@else`, `@endif` | 流程控制              |
-| 变量 | `@set`, `@add`, `@mul`, `@random`                     | 变量操作              |
-| 旗标 | `@flag`, `@unflag`                                    | 旗标操作              |
-| 特效 | `@shake`, `@flash`, `@snow`, `@rain`                  | 画面特效              |
-| 系统 | `@wait`, `@end`, `@label`, `@comment`                 | 系统命令              |
+| 分类 | 命令                                            | 说明                  |
+| ---- | ----------------------------------------------- | --------------------- |
+| 背景 | `@bg`                                           | 切换背景（支持转场）  |
+| 角色 | `@show`, `@hide`, `@move`                       | 角色显示/隐藏/移动    |
+| 立绘 | `@sprite`                                       | 切换角色立绘表情/服装 |
+| 对话 | `@say` 或直接 `角色名 "文本"`                   | 显示对话              |
+| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice` | 音频控制              |
+| 选项 | `@choice`                                       | 显示选项分支          |
+| 变量 | `@set`, `@add`, `@mul`, `@random`               | 变量操作              |
+| 旗标 | `@flag`, `@unflag`                              | 旗标操作              |
+| 特效 | `@shake`, `@flash`, `@snow`, `@rain`            | 画面特效              |
+| 系统 | `@wait`, `@end`, `@label`, `@comment`           | 系统命令              |
 
 ### 5.7 自定义命令扩展示例
 
@@ -968,7 +969,6 @@ src/
 │       ├── SayCommand.ts
 │       ├── ChoiceCommand.ts
 │       ├── AudioCommand.ts
-│       ├── FlowCommand.ts
 │       └── VariableCommand.ts
 │
 ├── audio/                         # 音频系统
