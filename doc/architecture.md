@@ -53,28 +53,64 @@
 
 ### 3.1 Game（游戏主控）
 
+Game 是引擎的生命周期编排器，负责创建子系统、按依赖顺序初始化、协调启动/暂停/恢复/销毁。子系统间通过 EventBus 通信，Game 不作为通信中介。
+
 ```
 Game
 ├── canvas: HTMLCanvasElement        // 主画布
-├── ctx: CanvasRenderingContext2D    // 2D 上下文
 ├── loop: GameLoop                   // 游戏循环
 ├── eventBus: EventBus               // 事件总线
-├── renderer: Renderer               // 渲染器
+├── renderer: Renderer               // 渲染器（独占 ctx）
 ├── script: ScriptEngine             // 脚本引擎
 ├── audio: AudioManager              // 音频管理
 ├── resource: ResourceManager        // 资源管理
 ├── plugins: PluginManager           // 插件管理
-├── state: GameState                 // 游戏状态快照
+├── variableStore: VariableStore     // 变量与旗标存储
 │
-├── init(config: GameConfig): void   // 初始化引擎
+├── init(config: GameConfig): void   // 初始化引擎（详见下方 init 流程）
 ├── start(): void                    // 启动游戏循环
 ├── pause(): void                    // 暂停
 ├── resume(): void                   // 恢复
-├── destroy(): void                  // 销毁
-├── loadScript(url: string): void    // 加载脚本
-├── save(slot: number): SaveData     // 存档
+├── destroy(): void                  // 销毁（清理资源、取消 RAF）
+├── loadScript(url: string): void    // 运行时动态加载脚本（章节切换等）
+├── save(slot: number): void         // 存档
 └── load(slot: number): void         // 读档
 ```
+
+**生命周期状态机：**
+
+```
+uninitialized ──(init)──→ ready ──(start)──→ running
+                              ↑                 │
+                              │    ┌────────────┘
+                              │    │  (pause)
+                              │    ↓
+                              │   paused ──(resume)──→ running
+                              │    │
+                              │    │  (destroy)
+                              │    ↓
+                              └── uninitialized
+```
+
+`init` 多次调用非法，需先 `destroy` 再重新 `init`。`start` 可在 `ready` 或 `paused` 状态下调用。
+
+**init 初始化顺序：**
+
+```
+1. 创建 EventBus
+2. 创建 VariableStore
+3. 创建 ResourceManager(eventBus, config.assets)
+4. 创建 Renderer(config.canvas, eventBus)      // ctx 由 Renderer 从 canvas 获取
+5. 创建 AudioManager(eventBus)
+6. 创建 ScriptEngine(eventBus, variableStore)
+7. 创建 PluginManager(eventBus)
+8. 注册 config.plugins → PluginManager.loadAll()
+9. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
+10. 预加载 config.scripts → ScriptEngine.load()
+11. 发射 game:init 事件
+```
+
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；GameLoop 最后创建，接收 `Updatable[]`。
 
 **GameConfig 结构：**
 
@@ -84,72 +120,98 @@ interface GameConfig {
   width: number; // 逻辑宽度 (如 1280)
   height: number; // 逻辑高度 (如 720)
   scaleMode: 'fit' | 'stretch' | 'fixed';
-  fps: number; // 目标帧率，默认 60
-  scripts: string[]; // 预加载脚本列表
-  assets: AssetManifest; // 资源清单
+  //   fit   — 保持宽高比缩放至容器内（letterbox）
+  //   stretch — 拉伸填充整个容器（可能变形）
+  //   fixed — 不缩放，居中显示（原始分辨率）
+  fps: number; // 目标帧率，默认 60。低于刷新率时跳帧渲染，逻辑仍以固定频率更新
+  scripts: string[]; // 启动时预加载的脚本列表
+  assets: AssetManifest; // 资源清单，init 阶段自动加载
   plugins: Plugin[]; // 插件列表
 }
 ```
 
 ### 3.2 GameLoop（游戏循环）
 
+GameLoop 只管理帧时序，通过 `Updatable` 接口统一驱动各子系统。
+
+```ts
+interface Updatable {
+  update(dt: number): void;
+}
+```
+
 ```
 GameLoop
-├── fps: number                     // 目标帧率
-├── deltaTime: number               // 帧间隔(秒)
-├── elapsedTime: number             // 累计时间
-├── running: boolean                // 运行状态
+├── updatables: Updatable[]          // 构造注入的子系统列表
+├── fps: number                      // 目标帧率
+├── dt: number                       // 当前帧间隔（秒）
+├── elapsedTime: number              // 累计运行时间
+├── running: boolean                 // 暂停标志（pause 设 false，不取消 RAF）
+├── rafId: number | null             // 当前 RAF 句柄
 │
-├── start(): void                   // 启动 RAF 循环
-├── stop(): void                    // 停止循环
+├── start(): void                    // 绑定 RAF，开始循环
+├── stop(): void                     // 取消 RAF，重置计时器（用于 destroy）
+├── pause(): void                    // 暂停更新（设置 running=false，保留 RAF）
+├── resume(): void                   // 恢复更新
 │
-内部循环流程:
-  tick(timestamp):
-    1. 计算 deltaTime（限制最大值防止跳帧）
-    2. update(deltaTime)            // 逻辑更新
-       ├── script.update(dt)        // 脚本步进
-       ├── renderer.update(dt)      // 动画/过渡更新
-       ├── audio.update(dt)         // 音频淡入淡出
-       └── plugins.update(dt)       // 插件更新
-    3. render()                     // 渲染帧
-       └── renderer.draw(ctx)
-    4. requestAnimationFrame(tick)
+私有方法:
+  private tick(timestamp: number): void
+    1. 计算 dt = (timestamp - lastTimestamp) / 1000
+       限制 dt 上限为 1/10（100ms），防止标签页切回后跳帧
+    2. if running:
+         for (const u of updatables) u.update(dt)
+    3. renderer.draw()
+    4. 发射 render:frame 事件
+    5. rafId = requestAnimationFrame(tick)
 ```
 
-**性能要点：**
+**帧率控制：** fps 低于显示器刷新率时采用跳帧策略——两次渲染之间未达到 `1000/fps` 毫秒时跳过渲染，但逻辑仍按 dt 更新。默认 60 表示不跳帧。
 
-- `deltaTime` 上限设为 `1/15`（约 66ms），避免标签页切回后跳帧
-- `update` 和 `render` 解耦：渲染跟不上时可以降帧但不影响逻辑
+**与 Game 的协作：** `start/stop` 用于引擎初始化/销毁，`pause/resume` 用于用户暂停/恢复。Game 的 `pause/resume/destroy` 直接委托给 GameLoop 对应方法。
+
+UI 渲染属于 Renderer 职责（最顶层 Layer），GameLoop 层面只调用 `renderer.draw()` 即可。
 
 ### 3.3 EventBus（事件总线）
 
+泛型发布/订阅，类型安全。
+
+```ts
+type Handler<T = unknown> = (payload: T) => void;
+
+class EventBus<T extends Record<string, unknown>> {
+  private listeners: Map<string, Set<Handler<any>>>;
+
+  on<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  off<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  once<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  emit<K extends keyof T>(event: K, payload: T[K]): void;
+  removeAllListeners(event: string): void;
+}
 ```
-EventBus（发布/订阅模式）
-├── listeners: Map<string, Set<Handler>>
-│
-├── on(event, handler): void
-├── off(event, handler): void
-├── once(event, handler): void
-├── emit(event, ...args): void
-└── clear(): void
-```
+
+Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布均获得类型检查。
 
 **核心事件定义：**
 
-| 事件名           | 触发时机       | 载荷                 |
-| ---------------- | -------------- | -------------------- |
-| `script:command` | 执行每条命令前 | `{ cmd, args }`      |
-| `script:choice`  | 显示选项时     | `{ choices[] }`      |
-| `script:end`     | 脚本执行完毕   | —                    |
-| `render:frame`   | 每帧渲染后     | `{ deltaTime }`      |
-| `character:show` | 角色立绘显示   | `{ id, position }`   |
-| `character:hide` | 角色立绘隐藏   | `{ id }`             |
-| `bg:change`      | 背景切换       | `{ id, transition }` |
-| `audio:play`     | 音频播放       | `{ track, type }`    |
-| `audio:stop`     | 音频停止       | `{ track }`          |
-| `game:save`      | 存档           | `{ slot, data }`     |
-| `game:load`      | 读档           | `{ slot, data }`     |
-| `game:settings`  | 设置变更       | `{ key, value }`     |
+| 事件名           | 触发时机       | 载荷                                                |
+| ---------------- | -------------- | --------------------------------------------------- |
+| `game:init`      | 引擎初始化完成 | `{}`                                                |
+| `game:start`     | 游戏循环启动   | `{}`                                                |
+| `game:pause`     | 引擎暂停       | `{}`                                                |
+| `game:resume`    | 引擎恢复       | `{}`                                                |
+| `game:destroy`   | 引擎销毁前     | `{}`                                                |
+| `game:save`      | 存档完成       | `{ slot: number }`                                  |
+| `game:load`      | 读档完成       | `{ slot: number }`                                  |
+| `game:settings`  | 设置变更       | `{ key: string; value: unknown }`                   |
+| `script:command` | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`    |
+| `script:choice`  | 显示选项时     | `{ choices: Choice[] }`                             |
+| `script:end`     | 脚本执行完毕   | `{}`                                                |
+| `render:frame`   | 每帧渲染后     | `{ dt: number }`                                    |
+| `character:show` | 角色立绘显示   | `{ id: string; position: Position }`                |
+| `character:hide` | 角色立绘隐藏   | `{ id: string }`                                    |
+| `bg:change`      | 背景切换       | `{ id: string; transition?: string }`               |
+| `audio:play`     | 音频播放       | `{ track: string; type: 'bgm' \| 'se' \| 'voice' }` |
+| `audio:stop`     | 音频停止       | `{ track: string }`                                 |
 
 ---
 
