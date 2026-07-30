@@ -101,13 +101,14 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 2. 创建 VariableStore
 3. 创建 ResourceManager(eventBus, config.assets)
 4. 创建 Renderer(config.canvas, eventBus)      // ctx 由 Renderer 从 canvas 获取
-5. 创建 AudioManager(eventBus)
-6. 创建 ScriptEngine(eventBus, variableStore)
-7. 创建 PluginManager(eventBus)
-8. 注册 config.plugins → PluginManager.loadAll()
-9. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
-10. 预加载 config.scripts → ScriptEngine.load()
-11. 发射 game:init 事件
+5. 创建 InputManager(config.canvas, eventBus)   // 绑定 DOM 事件监听
+6. 创建 AudioManager(eventBus)
+7. 创建 ScriptEngine(eventBus, variableStore)
+8. 创建 PluginManager(eventBus)
+9. 注册 config.plugins → PluginManager.loadAll()
+10. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
+11. 预加载 config.scripts → ScriptEngine.load()
+12. 发射 game:init 事件
 ```
 
 依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；GameLoop 最后创建，接收 `Updatable[]`。
@@ -676,60 +677,115 @@ game.plugins.register('my-plugin', {
 
 ### 6.1 整体架构
 
+ResourceManager 是资源加载的门面，协调 AssetLoader（网络加载）、TextureManager（纹理缓存）、Parser（脚本解析）和 EventBus（进度通知）。
+
 ```
 ResourceManager
-├── loader: AssetLoader          // 资源加载器
-├── cache: ResourceCache         // LRU 缓存
-├── preloader: Preloader         // 预加载器
-├── manifest: AssetManifest      // 资源清单
+├── eventBus: EventBus               // 事件总线（发射 resource:progress / resource:ready）
+├── assetLoader: AssetLoader         // 网络加载器
+├── textureManager: TextureManager   // 纹理一级缓存（构造注入）
+├── cache: ResourceCache             // 二级缓存：原始 AudioBuffer 和 Script 对象
+├── manifest: AssetManifest          // 资源清单
+├── preloader: Preloader             // 场景/分组预加载器
 │
 ├── loadImage(id: string): Promise<Texture>
 ├── loadAudio(id: string): Promise<AudioBuffer>
 ├── loadScript(id: string): Promise<Script>
-├── loadGroup(group: string): Promise<void>     // 按包加载
-├── preloadScene(label: string): Promise<void>  // 按场景预加载
-├── getProgress(): { loaded: number; total: number; percent: number }
+├── loadGroup(group: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
+├── preloadScene(label: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
 └── clear(): void
 ```
+
+**内部加载流程：**
+
+```
+loadImage(id):
+  1. url = manifest.images[id]
+  2. 大图（>2048px 任一维度）→ assetLoader.loadImageBitmap(url)
+     小图 → assetLoader.loadImage(url)
+  3. 创建 Texture { id, source, width, height }
+  4. textureManager.set(id, texture)
+  5. 发射 resource:progress
+
+loadAudio(id):
+  1. url = manifest.audio[id]
+  2. arrayBuffer = assetLoader.loadAudio(url)
+  3. audioBuffer = audioContext.decodeAudioData(arrayBuffer)
+  4. cache.set(id, audioBuffer)
+  5. 发射 resource:progress
+
+loadScript(id):
+  1. url = manifest.scripts[id]
+  2. source = assetLoader.loadScript(url)    // 返回脚本文本
+  3. script = parser.parse(source)
+  4. cache.set(id, script)
+  5. 发射 resource:progress
+```
+
+**Preloader（预加载器）：**
+
+```
+Preloader
+├── loadScene(manifest: AssetManifest, sceneLabel: string,
+│             onProgress?: ProgressCallback): Promise<void>
+├── loadGroup(manifest: AssetManifest, groupLabel: string,
+│             onProgress?: ProgressCallback): Promise<void>
+└── unloadScene(sceneLabel: string): void       // 卸载场景专属资源，保留共享资源
+```
+
+`preloadScene` 和 `loadGroup` 分别从 manifest 的 `scenes` 和 `groups` 字段读取资源列表，按图→音→脚本的顺序加载。
 
 ### 6.2 AssetLoader（资源加载器）
 
 ```
 AssetLoader
+├── maxConcurrency: number   // 最大并发数，默认 6
+├── maxRetries: number       // 失败重试次数，默认 3
+├── timeoutMs: number        // 超时毫秒，默认 30000
+│
 ├── loadImage(url: string): Promise<HTMLImageElement>
 ├── loadImageBitmap(url: string): Promise<ImageBitmap>  // 异步解码
 ├── loadAudio(url: string): Promise<ArrayBuffer>
 ├── loadScript(url: string): Promise<string>
 │
 并发控制:
-  - 最大并发数: 6 (浏览器HTTP/2推荐)
-  - 失败重试: 3次，指数退避
-  - 超时: 30秒
+  - 最大并发数: 6（浏览器 HTTP/2 推荐值）
+  - 超出并发上限的请求进入等待队列，先进先出
+  - 失败重试: 3 次，指数退避
+  - 超时: 30 秒
 ```
+
+构造时接受 `AssetLoaderConfig`（`{ maxConcurrency?, maxRetries?, timeoutMs? }`），由 ResourceManager 初始化时传入或使用默认值。
 
 **ImageBitmap 优势：**
 
 - 在 Worker 线程中解码，不阻塞主线程
 - 零拷贝传输（Transferable）
-- 适合大尺寸 CG/背景图
+- 适合大尺寸 CG/背景图（>2048px 任一维度自动选用）
 
 ### 6.3 ResourceCache（LRU 缓存）
 
+二级缓存，存放已解码的 AudioBuffer 和已解析的 Script 对象（Texture 由 TextureManager 缓存，不在此处）。
+
 ```ts
 class ResourceCache<T> {
-  private maxSize: number; // 字节上限
-  private currentSize: number;
+  private maxEntries: number;
   private cache: Map<string, CacheEntry<T>>;
 
   get(id: string): T | null;
-  set(id: string, value: T, size: number): void;
+  set(id: string, value: T): void; // 超出 maxEntries 时自动淘汰
   has(id: string): boolean;
   delete(id: string): void;
   clear(): void;
-  // 淘汰最久未使用的条目直到低于 maxSize
-  private evict(): void;
+}
+
+interface CacheEntry<T> {
+  value: T;
+  lastAccess: number; // 用于 LRU 排序
 }
 ```
+
+淘汰策略：按条目数限制（`maxEntries`），`set` 时若 `cache.size >= maxEntries` 自动淘汰 `lastAccess` 最早的条目。
 
 ### 6.4 资源清单格式
 
@@ -751,13 +807,31 @@ class ResourceCache<T> {
     "ch_hero": {
       "url": "assets/char/hero/spritesheet.png",
       "frames": {
-        "default": [0, 0, 512, 720],
-        "smile": [512, 0, 512, 720]
+        "default": { "x": 0, "y": 0, "w": 512, "h": 720 },
+        "smile": { "x": 512, "y": 0, "w": 512, "h": 720 }
       }
+    }
+  },
+  "scenes": {
+    "start": {
+      "images": ["bg_classroom_day", "ch_hero_default"],
+      "audio": ["bgm_school"],
+      "scripts": ["chapter1"]
+    },
+    "choice1": {
+      "images": ["ch_hero_smile"]
+    }
+  },
+  "groups": {
+    "chapter1_all": {
+      "images": ["bg_classroom_day", "ch_hero_default", "ch_hero_smile"],
+      "audio": ["bgm_school"]
     }
   }
 }
 ```
+
+`spritesheets` 的 `frames` 字段与 `Texture.frame` (`{ x, y, w, h }`) 保持一致，无需格式转换。
 
 ---
 
@@ -766,55 +840,93 @@ class ResourceCache<T> {
 ### 7.1 整体架构
 
 ```
-AudioManager
-├── context: AudioContext              // Web Audio API
+AudioManager  (实现 Updatable)
+├── context: AudioContext              // Web Audio API 上下文
 ├── masterGain: GainNode              // 主音量控制
-├── bgmTrack: AudioTrack              // BGM轨道
-├── seTracks: AudioTrack[]            // 音效轨道（池化）
-├── voiceTrack: AudioTrack            // 语音轨道
+├── bgmBus: GainNode                  // BGM 总线音量
+├── seBus: GainNode                   // SE 总线音量
+├── voiceBus: GainNode                // 语音总线音量
+├── bgmTrack: AudioTrack              // BGM轨道（独占）
+├── sePool: AudioTrackPool            // 音效轨道池
+├── voiceTrack: AudioTrack            // 语音轨道（独占，同时只能播放一条）
+├── eventBus: EventBus                // 事件总线（构造注入）
 │
-├── playBgm(id: string, loop?: boolean, fadeIn?: number): void
-├── stopBgm(fadeOut?: number): void
-├── playSe(id: string): void
-├── playVoice(id: string): void
-├── setMasterVolume(v: number): void
-├── setBgmVolume(v: number): void
-├── setSeVolume(v: number): void
-└── setVoiceVolume(v: number): void
+├── playBgm(id: string, buffer: AudioBuffer, options?: { loop?: boolean; fadeIn?: number }): void
+├── stopBgm(options?: { fadeOut?: number }): void
+├── playSe(id: string, buffer: AudioBuffer): void
+├── playVoice(id: string, buffer: AudioBuffer): void
+├── setMasterVolume(v: number): void  // 0-1，设 masterGain.gain.value
+├── setBgmVolume(v: number): void     // 0-1，设 bgmBus.gain.value
+├── setSeVolume(v: number): void      // 0-1，设 seBus.gain.value
+├── setVoiceVolume(v: number): void   // 0-1，设 voiceBus.gain.value
+├── update(dt: number): void          // 驱动所有活跃 track 的 fade 渐变
+├── pause(): void                     // context.suspend()
+└── resume(): void                    // context.resume()
 ```
+
+**音频路由图：**
+
+```
+AudioTrack.buffer → sourceNode → trackGain → busGain → masterGain → destination
+                                    (独立)    (类型总线)  (总控)
+
+bgmTrack.trackGain   → bgmBus   ─┐
+sePool 各 trackGain   → seBus    ─┼→ masterGain → context.destination
+voiceTrack.trackGain  → voiceBus ─┘
+```
+
+`setBgmVolume/setSeVolume/setVoiceVolume` 控制总线级别音量，不覆盖 track 自身 gain（后者用于 fade 过程中的中间值）。
 
 ### 7.2 AudioTrack（音轨）
 
 ```ts
 class AudioTrack {
   type: 'bgm' | 'se' | 'voice';
-  gain: GainNode;
+  gain: GainNode; // 独立音量节点（fade 时修改此值）
   source: AudioBufferSourceNode | null;
   buffer: AudioBuffer | null;
-  volume: number; // 0-1
   state: 'stopped' | 'playing' | 'paused' | 'fading';
 
-  play(buffer: AudioBuffer, loop: boolean, fadeIn: number): void;
-  stop(fadeOut: number): void;
+  play(
+    buffer: AudioBuffer,
+    options?: { loop?: boolean; fadeIn?: number },
+  ): void;
+  stop(options?: { fadeOut?: number }): void;
   pause(): void;
   resume(): void;
-  setVolume(v: number): void;
+  setVolume(v: number): void; // 0-1，直接设 gain.gain.value
 }
 ```
+
+**状态转换：**
+
+```
+stopped ──play(fadeIn)──→ fading ──fadeIn 完成──→ playing
+stopped ──play(fadeIn=0)──→ playing
+
+playing ──stop(fadeOut)──→ fading ──fadeOut 完成──→ stopped
+playing ──stop(fadeOut=0)──→ stopped
+playing ──pause()──→ paused ──resume()──→ playing
+```
+
+`fading` 状态下 `update(dt)` 每帧计算 fade 进度、修改 `gain.gain.value`，完成后切到目标状态并触发事件。
 
 ### 7.3 音频池（SE轨道复用）
 
-音效同时播放数量受限，采用对象池模式：
-
 ```ts
 class AudioTrackPool {
-  private pool: AudioTrack[];
-  private active: Map<string, AudioTrack>;
+  private maxTracks: number; // 池容量，如 8
+  private pool: AudioTrack[]; // 空闲轨道
+  private active: Map<string, AudioTrack>; // 音频 id → 占用轨道
 
-  acquire(): AudioTrack; // 获取空闲轨道
-  release(track: AudioTrack): void; // 归还轨道
+  acquire(id: string): AudioTrack | null; // 获取空闲轨道；无空闲时返回 null 或复用最早 active
+  release(id: string): void; // 停止并归还轨道到池
+  update(dt: number): void; // 更新所有 active 轨道的 fade
+  stopAll(): void; // 停止所有活跃 SE
 }
 ```
+
+同一音效 id 再次播放时，若 `active.has(id)` 则复用已有轨道（从头重新播放），避免同一声叠加。池容量满时，停止并复用最早激活的轨道。
 
 ---
 
@@ -822,69 +934,115 @@ class AudioTrackPool {
 
 ### 8.1 设计思路
 
-UI 完全由 Canvas 绘制，不依赖 DOM 元素。提供组件化抽象：
+UI 完全由 Canvas 绘制，不依赖 DOM 元素。UI 组件树挂载在 UI Layer（§4.2，zIndex=600）上，Layer 的 `update(dt)` / `draw(ctx)` 递归遍历组件树。
 
 ```ts
-abstract class UIComponent {
-  x: number;
+interface UIComponent {
+  id: string;
+  x: number; // 相对父组件原点的坐标
   y: number;
   width: number;
   height: number;
   visible: boolean;
   children: UIComponent[];
 
-  abstract update(dt: number): void;
-  abstract draw(ctx: CanvasRenderingContext2D): void;
+  update(dt: number): void;
+  draw(ctx: CanvasRenderingContext2D): void;
 
-  // 事件命中测试
+  // 命中测试：将绝对画布坐标转为相对坐标后递归检测
   hitTest(px: number, py: number): UIComponent | null;
   onClick(px: number, py: number): void;
   onHover(px: number, py: number): void;
+
+  // 工具方法（由工具函数模块提供实现，不在 interface 内要求 class 实现）
+  getAbsoluteX(): number; // 递归累加：this.x + parent.getAbsoluteX()
+  getAbsoluteY(): number;
 }
 ```
 
+**坐标体系：** 绝对坐标 = 自身 x/y + 父组件绝对坐标。`draw(ctx)` 中通过 `ctx.translate(this.x, this.y)` 建立相对坐标系，子组件在父组件原点内绘制。`hitTest(px, py)` 传入绝对画布坐标，内部转为相对坐标后递归遍历 children 从顶到底（z 序）检测。
+
+**共享逻辑：** children 递归遍历、绝对坐标计算等公共逻辑放入工具函数模块（如 `ui/utils.ts`），各组件直接调用函数，不依赖基类继承。
+
 ### 8.2 内置 UI 组件
 
-| 组件            | 说明                                 |
-| --------------- | ------------------------------------ |
-| `DialogueBox`   | 对话框（角色名 + 文本 + 继续指示器） |
-| `ChoicePanel`   | 选项面板（2-N个选项按钮）            |
-| `TextButton`    | 文本按钮（hover/click/press状态）    |
-| `ImageButton`   | 图片按钮                             |
-| `Slider`        | 滑动条（音量/速度调节）              |
-| `Toggle`        | 开关（全屏/自动模式等）              |
-| `ScrollView`    | 滚动视图（历史记录）                 |
-| `SaveLoadSlot`  | 存档/读档槽位                        |
-| `ConfirmDialog` | 确认弹窗                             |
+核心组件接口：
+
+```ts
+interface DialogueBox extends UIComponent {
+  show(speaker: string, text: string): void; // 开始逐字显示
+  hide(): void;
+  isAnimating(): boolean; // 打字动画是否进行中
+  complete(): void; // 跳过动画，显示全文
+  textRenderer: TextRenderer; // §4.8 的打字机实例
+}
+
+interface ChoicePanel extends UIComponent {
+  showChoices(choices: Choice[]): void; // §5.6 的 Choice 类型
+  hide(): void;
+  onSelect: (index: number, choice: Choice) => void;
+}
+
+interface SaveLoadSlot extends UIComponent {
+  slot: number;
+  isEmpty: boolean;
+  thumbnail: string | null; // base64 缩略图
+  slotLabel: string;
+  timestamp: number | null;
+  onClick(): void; // 触发存档/读档
+}
+
+interface ConfirmDialog extends UIComponent {
+  show(message: string, onConfirm: () => void, onCancel?: () => void): void;
+  hide(): void;
+}
+```
+
+其他通用控件（列表说明）：
+
+| 组件          | 说明                                 |
+| ------------- | ------------------------------------ |
+| `TextButton`  | 文本按钮（hover/click/press 状态）   |
+| `ImageButton` | 图片按钮                             |
+| `Slider`      | 滑动条（音量/速度调节）              |
+| `Toggle`      | 开关（全屏/自动模式等）              |
+| `ScrollView`  | 滚动视图容器（含遮罩裁剪和滚动偏移） |
 
 ### 8.3 输入事件分发
 
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、AudioManager 之前）。
+
 ```
-Canvas DOM 事件 → Game.input.dispatch() → 命中测试 → UI组件回调
-                                     → 无命中 → 全局命令（如点击继续）
+Canvas DOM 事件 → InputManager.dispatch(event)
+  → toLogicalCoords(clientX, clientY)   // CSS像素 → 逻辑像素
+  → uiRoot.hitTest(logicalX, logicalY)  // 递归命中测试（从顶到底）
+    → 命中 → 调用 component.onClick(relX, relY)
+    → 未命中 → 发射 input:click 事件（全局命令：如点击继续对话）
+  → 发射 input:hover 事件
 ```
 
 ```ts
 class InputManager {
   canvas: HTMLCanvasElement;
-  handlers: Map<string, Handler[]>;
+  eventBus: EventBus;
+  uiRoot: UIComponent | null; // UI Layer 初始化后设置
 
-  // 绑定事件
+  setUIRoot(root: UIComponent): void; // 由 Game 在 UI Layer 就绪后调用
+
   private onMouseMove(e: MouseEvent): void;
   private onMouseDown(e: MouseEvent): void;
   private onMouseUp(e: MouseEvent): void;
   private onTouchStart(e: TouchEvent): void;
 
-  // 坐标转换（CSS像素 → 逻辑像素）
+  // CSS像素 → 逻辑像素（需根据 scaleMode 和容器尺寸换算）
   private toLogicalCoords(
     clientX: number,
     clientY: number,
   ): { x: number; y: number };
-
-  // 分发
-  dispatch(event: InputEvent): void;
 }
 ```
+
+`toLogicalCoords` 依赖 `scaleMode` 和 canvas 的 CSS 尺寸 vs 逻辑尺寸的比值。坐标转换逻辑与 Renderer 共享同一换算参数，避免重复计算。
 
 ---
 
