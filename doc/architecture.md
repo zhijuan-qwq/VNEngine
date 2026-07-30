@@ -659,18 +659,20 @@ class CommandRegistry {
 ### 5.7 自定义命令扩展示例
 
 ```ts
-// 在插件中注册新命令
-game.plugins.register('my-plugin', {
-  install(engine) {
-    engine.script.commandRegistry.register({
-      name: '@shaketext',
+// 在插件中注册自定义命令
+const myPlugin: Plugin = {
+  name: 'my-plugin',
+  version: '1.0.0',
+  install(game) {
+    game.script.commandRegistry.register({
+      type: '@shaketext',
       execute(ctx, args) {
         const duration = args.duration ?? 500;
-        engine.renderer.addEffect(new ShakeEffect(duration));
+        game.renderer.addEffect(new ShakeEffect(duration));
       },
     });
   },
-});
+};
 ```
 
 ---
@@ -1131,38 +1133,61 @@ SaveManager.restore(engine, slot):
 interface Plugin {
   name: string;
   version: string;
-  install(engine: VNEngine): void;
-  uninstall?(engine: VNEngine): void;
+  dependencies?: string[]; // 依赖的其他插件 name 列表
+  install(game: Game): void;
+  uninstall?(game: Game): void;
+  update?(dt: number): void; // 可选逐帧更新
 }
 ```
 
 ### 10.2 PluginManager
 
+PluginManager 实现 `Updatable`，在 `update(dt)` 中遍历已安装插件并调用其 `update?()`。
+
 ```ts
 class PluginManager {
   private plugins: Map<string, Plugin>;
-  private engine: VNEngine;
+  private installed: Plugin[]; // 已调用 install() 的插件（拓扑排序后）
+  private game: Game;
 
-  register(plugin: Plugin): void;
-  unregister(name: string): void;
+  register(plugin: Plugin): void; // 仅记录元信息，不调用 install
+  unregister(name: string): void; // 调用 uninstall() + 移除
   get(name: string): Plugin | null;
   list(): Plugin[];
-  // 按依赖顺序加载
+
+  // 注册所有插件后按依赖拓扑排序，依次调用 install(game)
   loadAll(plugins: Plugin[]): void;
+
+  update(dt: number): void; // 遍历 installed，调用 plugin.update?.(dt)
 }
 ```
 
+**两阶段初始化：**
+
+```
+1. register 阶段（仅记录）：
+   pluginManager.register(plugin1)
+   pluginManager.register(plugin2)
+   ... 或直接用 pluginManager.loadAll(config.plugins)
+
+2. loadAll 阶段（安装）：
+   解析 dependencies → 拓扑排序
+   → 循环依赖检测、缺失依赖报错
+   → 依次调用 plugin.install(game)
+```
+
+`Game.init()` 中调用 `loadAll(config.plugins)` 完成全部注册+安装。`register` 保留给运行时动态加载场景。
+
 ### 10.3 扩展点一览
 
-| 扩展点     | 接口                         | 用途                       |
-| ---------- | ---------------------------- | -------------------------- |
-| 命令       | `CommandRegistry.register()` | 自定义脚本命令             |
-| 转场       | `Transition` 接口            | 自定义转场效果             |
-| 特效       | `Effect` 接口                | 自定义画面特效             |
-| UI组件     | `UIComponent` 基类           | 自定义UI                   |
-| 资源加载器 | `AssetLoader` 中间件         | 自定义资源来源（如加密包） |
-| 脚本解析器 | `Parser` 中间件              | 自定义脚本语法糖           |
-| 事件       | `EventBus.on()`              | 监听任意事件               |
+| 扩展点   | 接入方式                     | 用途           |
+| -------- | ---------------------------- | -------------- |
+| 命令     | `CommandRegistry.register()` | 自定义脚本命令 |
+| 转场     | 实现 `Transition` 接口       | 自定义转场效果 |
+| 特效     | 实现 `Effect` 接口           | 自定义画面特效 |
+| UI组件   | 实现 `UIComponent` 接口      | 自定义 UI 控件 |
+| 事件监听 | `EventBus.on()`              | 监听引擎事件   |
+| 逐帧更新 | Plugin 实现 `update(dt)`     | 插件逐帧逻辑   |
 
 ---
 
