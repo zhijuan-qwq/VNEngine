@@ -53,28 +53,67 @@
 
 ### 3.1 Game（游戏主控）
 
+Game 是引擎的生命周期编排器，负责创建子系统、按依赖顺序初始化、协调启动/暂停/恢复/销毁。子系统间通过 EventBus 通信，Game 不作为通信中介。
+
 ```
 Game
 ├── canvas: HTMLCanvasElement        // 主画布
-├── ctx: CanvasRenderingContext2D    // 2D 上下文
 ├── loop: GameLoop                   // 游戏循环
 ├── eventBus: EventBus               // 事件总线
-├── renderer: Renderer               // 渲染器
+├── renderer: Renderer               // 渲染器（独占 ctx）
 ├── script: ScriptEngine             // 脚本引擎
 ├── audio: AudioManager              // 音频管理
 ├── resource: ResourceManager        // 资源管理
 ├── plugins: PluginManager           // 插件管理
-├── state: GameState                 // 游戏状态快照
+├── variableStore: VariableStore     // 变量与旗标存储
+├── saveManager: SaveManager         // 存档管理器
 │
-├── init(config: GameConfig): void   // 初始化引擎
+├── init(config: GameConfig): void   // 初始化引擎（详见下方 init 流程）
 ├── start(): void                    // 启动游戏循环
 ├── pause(): void                    // 暂停
 ├── resume(): void                   // 恢复
-├── destroy(): void                  // 销毁
-├── loadScript(url: string): void    // 加载脚本
-├── save(slot: number): SaveData     // 存档
+├── destroy(): void                  // 销毁（清理资源、取消 RAF）
+├── loadScript(url: string): void    // 运行时动态加载脚本（章节切换等）
+├── save(slot: number): void         // 存档
 └── load(slot: number): void         // 读档
 ```
+
+**生命周期状态机：**
+
+```
+uninitialized ──(init)──→ ready ──(start)──→ running
+                              ↑                 │
+                              │    ┌────────────┘
+                              │    │  (pause)
+                              │    ↓
+                              │   paused ──(resume)──→ running
+                              │    │
+                              │    │  (destroy)
+                              │    ↓
+                              └── uninitialized
+```
+
+`init` 多次调用非法，需先 `destroy` 再重新 `init`。`start` 可在 `ready` 或 `paused` 状态下调用。
+
+**init 初始化顺序：**
+
+```
+1. 创建 EventBus
+2. 创建 VariableStore
+3. 创建 ResourceManager(eventBus, config.assets)
+4. 创建 Renderer(config.canvas, eventBus)      // ctx 由 Renderer 从 canvas 获取
+5. 创建 InputManager(config.canvas, eventBus)   // 绑定 DOM 事件监听
+6. 创建 AudioManager(eventBus)
+7. 创建 SaveManager(eventBus)
+8. 创建 ScriptEngine(eventBus, variableStore)
+9. 创建 PluginManager(eventBus)
+10. 注册 config.plugins → PluginManager.loadAll()
+11. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
+12. 预加载 config.scripts → ScriptEngine.load()
+13. 发射 game:init 事件
+```
+
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；GameLoop 最后创建，接收 `Updatable[]`。
 
 **GameConfig 结构：**
 
@@ -84,72 +123,98 @@ interface GameConfig {
   width: number; // 逻辑宽度 (如 1280)
   height: number; // 逻辑高度 (如 720)
   scaleMode: 'fit' | 'stretch' | 'fixed';
-  fps: number; // 目标帧率，默认 60
-  scripts: string[]; // 预加载脚本列表
-  assets: AssetManifest; // 资源清单
+  //   fit   — 保持宽高比缩放至容器内（letterbox）
+  //   stretch — 拉伸填充整个容器（可能变形）
+  //   fixed — 不缩放，居中显示（原始分辨率）
+  fps: number; // 目标帧率，默认 60。低于刷新率时跳帧渲染，逻辑仍以固定频率更新
+  scripts: string[]; // 启动时预加载的脚本列表
+  assets: AssetManifest; // 资源清单，init 阶段自动加载
   plugins: Plugin[]; // 插件列表
 }
 ```
 
 ### 3.2 GameLoop（游戏循环）
 
+GameLoop 只管理帧时序，通过 `Updatable` 接口统一驱动各子系统。
+
+```ts
+interface Updatable {
+  update(dt: number): void;
+}
+```
+
 ```
 GameLoop
-├── fps: number                     // 目标帧率
-├── deltaTime: number               // 帧间隔(秒)
-├── elapsedTime: number             // 累计时间
-├── running: boolean                // 运行状态
+├── updatables: Updatable[]          // 构造注入的子系统列表
+├── fps: number                      // 目标帧率
+├── dt: number                       // 当前帧间隔（秒）
+├── elapsedTime: number              // 累计运行时间
+├── running: boolean                 // 暂停标志（pause 设 false，不取消 RAF）
+├── rafId: number | null             // 当前 RAF 句柄
 │
-├── start(): void                   // 启动 RAF 循环
-├── stop(): void                    // 停止循环
+├── start(): void                    // 绑定 RAF，开始循环
+├── stop(): void                     // 取消 RAF，重置计时器（用于 destroy）
+├── pause(): void                    // 暂停更新（设置 running=false，保留 RAF）
+├── resume(): void                   // 恢复更新
 │
-内部循环流程:
-  tick(timestamp):
-    1. 计算 deltaTime（限制最大值防止跳帧）
-    2. update(deltaTime)            // 逻辑更新
-       ├── script.update(dt)        // 脚本步进
-       ├── renderer.update(dt)      // 动画/过渡更新
-       ├── audio.update(dt)         // 音频淡入淡出
-       └── plugins.update(dt)       // 插件更新
-    3. render()                     // 渲染帧
-       └── renderer.draw(ctx)
-    4. requestAnimationFrame(tick)
+私有方法:
+  private tick(timestamp: number): void
+    1. 计算 dt = (timestamp - lastTimestamp) / 1000
+       限制 dt 上限为 1/10（100ms），防止标签页切回后跳帧
+    2. if running:
+         for (const u of updatables) u.update(dt)
+    3. renderer.draw()
+    4. 发射 render:frame 事件
+    5. rafId = requestAnimationFrame(tick)
 ```
 
-**性能要点：**
+**帧率控制：** fps 低于显示器刷新率时采用跳帧策略——两次渲染之间未达到 `1000/fps` 毫秒时跳过渲染，但逻辑仍按 dt 更新。默认 60 表示不跳帧。
 
-- `deltaTime` 上限设为 `1/15`（约 66ms），避免标签页切回后跳帧
-- `update` 和 `render` 解耦：渲染跟不上时可以降帧但不影响逻辑
+**与 Game 的协作：** `start/stop` 用于引擎初始化/销毁，`pause/resume` 用于用户暂停/恢复。Game 的 `pause/resume/destroy` 直接委托给 GameLoop 对应方法。
+
+UI 渲染属于 Renderer 职责（最顶层 Layer），GameLoop 层面只调用 `renderer.draw()` 即可。
 
 ### 3.3 EventBus（事件总线）
 
+泛型发布/订阅，类型安全。
+
+```ts
+type Handler<T = unknown> = (payload: T) => void;
+
+class EventBus<T extends Record<string, unknown>> {
+  private listeners: Map<string, Set<Handler<any>>>;
+
+  on<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  off<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  once<K extends keyof T>(event: K, handler: Handler<T[K]>): void;
+  emit<K extends keyof T>(event: K, payload: T[K]): void;
+  removeAllListeners(event: string): void;
+}
 ```
-EventBus（发布/订阅模式）
-├── listeners: Map<string, Set<Handler>>
-│
-├── on(event, handler): void
-├── off(event, handler): void
-├── once(event, handler): void
-├── emit(event, ...args): void
-└── clear(): void
-```
+
+Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布均获得类型检查。
 
 **核心事件定义：**
 
-| 事件名           | 触发时机       | 载荷                 |
-| ---------------- | -------------- | -------------------- |
-| `script:command` | 执行每条命令前 | `{ cmd, args }`      |
-| `script:choice`  | 显示选项时     | `{ choices[] }`      |
-| `script:end`     | 脚本执行完毕   | —                    |
-| `render:frame`   | 每帧渲染后     | `{ deltaTime }`      |
-| `character:show` | 角色立绘显示   | `{ id, position }`   |
-| `character:hide` | 角色立绘隐藏   | `{ id }`             |
-| `bg:change`      | 背景切换       | `{ id, transition }` |
-| `audio:play`     | 音频播放       | `{ track, type }`    |
-| `audio:stop`     | 音频停止       | `{ track }`          |
-| `game:save`      | 存档           | `{ slot, data }`     |
-| `game:load`      | 读档           | `{ slot, data }`     |
-| `game:settings`  | 设置变更       | `{ key, value }`     |
+| 事件名           | 触发时机       | 载荷                                                |
+| ---------------- | -------------- | --------------------------------------------------- |
+| `game:init`      | 引擎初始化完成 | `{}`                                                |
+| `game:start`     | 游戏循环启动   | `{}`                                                |
+| `game:pause`     | 引擎暂停       | `{}`                                                |
+| `game:resume`    | 引擎恢复       | `{}`                                                |
+| `game:destroy`   | 引擎销毁前     | `{}`                                                |
+| `game:save`      | 存档完成       | `{ slot: number }`                                  |
+| `game:load`      | 读档完成       | `{ slot: number }`                                  |
+| `game:settings`  | 设置变更       | `{ key: string; value: unknown }`                   |
+| `script:command` | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`    |
+| `script:choice`  | 显示选项时     | `{ choices: Choice[] }`                             |
+| `script:end`     | 脚本执行完毕   | `{}`                                                |
+| `render:frame`   | 每帧渲染后     | `{ dt: number }`                                    |
+| `character:show` | 角色立绘显示   | `{ id: string; position: Position }`                |
+| `character:hide` | 角色立绘隐藏   | `{ id: string }`                                    |
+| `bg:change`      | 背景切换       | `{ id: string; transition?: string }`               |
+| `audio:play`     | 音频播放       | `{ track: string; type: 'bgm' \| 'se' \| 'voice' }` |
+| `audio:stop`     | 音频停止       | `{ track: string }`                                 |
 
 ---
 
@@ -157,45 +222,51 @@ EventBus（发布/订阅模式）
 
 ### 4.1 整体设计
 
+Renderer 实现 `Updatable` 接口（见 §3.2），由 GameLoop 统一驱动。
+
 ```
 Renderer
-├── layers: Layer[]                 // 图层栈（从底到顶）
-├── textureManager: TextureManager  // 纹理管理
-├── effectQueue: Effect[]           // 特效队列
-├── dirtyRects: Rect[]              // 脏矩形列表
+├── canvas: HTMLCanvasElement        // 主画布（用于获取 ctx 和尺寸）
+├── ctx: CanvasRenderingContext2D    // 2D 上下文（构造时从 canvas 获取，独占管理）
+├── width: number                    // 逻辑宽度（来自 GameConfig）
+├── height: number                   // 逻辑高度（来自 GameConfig）
+├── layers: Layer[]                  // 图层栈（按 zIndex 升序维护）
+├── textureManager: TextureManager   // 纹理管理
+├── effectQueue: Effect[]            // 全屏特效队列
+├── dirtyRects: Rect[]               // 脏矩形列表
 │
 ├── addLayer(layer): void
 ├── removeLayer(id): void
-├── reorderLayer(id, index): void
-├── update(dt): void                // 更新动画/过渡
-├── draw(ctx): void                 // 绘制全部图层
-└── markDirty(rect): void           // 标记脏区域
+├── reorderLayer(id, newZIndex): void
+├── update(dt): void                 // 更新动画/过渡/特效
+├── draw(): void                     // 绘制全部图层（ctx 内部持有，无需外部传入）
+└── markDirty(rect): void            // 标记脏区域
 ```
 
 ### 4.2 图层架构
 
+图层不按固定编号分配，而是按 `zIndex` 排序。常用约定如下（供工厂方法使用）：
+
 ```
-图层渲染顺序（从底到顶）:
+zIndex 约定 (从底到顶):
 ┌────────────────────┐
-│  Layer 0: BG       │  背景层（静态离屏Canvas缓存）
+│  BG       (0)      │  背景层
 ├────────────────────┤
-│  Layer 1: CG       │  CG层（全屏插画，遮挡背景）
+│  CG      (100)     │  CG层（全屏插画，遮挡背景）
 ├────────────────────┤
-│  Layer 2: Middle   │  中间景层（远景人物/物体）
+│  Middle  (200)     │  中间景层（远景人物/物体）
 ├────────────────────┤
-│  Layer 3: Chara L  │  角色层-左
+│  Chara   (300)     │  角色层（所有角色共享；前后遮挡通过同一层内 Sprite 排序）
 ├────────────────────┤
-│  Layer 4: Chara C  │  角色层-中
+│  Fore    (400)     │  前景层（近景遮挡物）
 ├────────────────────┤
-│  Layer 5: Chara R  │  角色层-右
+│  Effect  (500)     │  特效层（粒子、全屏转场）
 ├────────────────────┤
-│  Layer 6: Fore     │  前景层（近景遮挡物）
-├────────────────────┤
-│  Layer 7: Effect   │  特效层（粒子、转场）
-├────────────────────┤
-│  Layer 8: UI       │  UI层（对话框、选项、菜单）
+│  UI      (600)     │  UI层（对话框、选项、菜单）
 └────────────────────┘
 ```
+
+这些值只是约定，可通过 `addLayer()` 传入任意 `zIndex`。`reorderLayer(id, newZIndex)` 修改后数组自动重排序。
 
 ```ts
 interface Layer {
@@ -203,53 +274,63 @@ interface Layer {
   zIndex: number;
   visible: boolean;
   opacity: number; // 0-1
-  offscreen: OffscreenCanvas | null; // 静态缓存
-  dirty: boolean; // 是否需要重绘
-  sprites: Sprite[]; // 该层精灵列表
+  offscreen: OffscreenCanvas | null; // 静态缓存（对于静态层可预先创建）
+  dirty: boolean; // 是否需要重绘到 offscreen
+
+  addSprite(sprite: Sprite): void;
+  removeSprite(id: string): void;
 
   update(dt: number): void;
   draw(ctx: CanvasRenderingContext2D): void;
 }
 ```
 
+`addSprite`/`removeSprite` 内部自动标记 `dirty = true` 并触发缓存失效，外部不直接操作 sprite 数组。
+
 ### 4.3 Sprite（精灵）
 
 ```ts
-class Sprite {
+interface Sprite {
   id: string;
-  texture: Texture; // 纹理引用
-  x: number; // 位置
+  texture: Texture;
+  x: number;
   y: number;
-  width: number;
-  height: number;
-  opacity: number; // 0-1
-  scale: { x: number; y: number };
+  width: number; // 画布上基准宽度（首次 setTexture 时默认赋值为纹理宽度）
+  height: number; // 画布上基准高度
+  opacity: number;
+  scale: { x: number; y: number }; // 额外缩放系数
   rotation: number;
-  anchor: { x: number; y: number }; // 锚点（0-1）
-  effects: SpriteEffect[]; // 精灵特效（抖动、呼吸等）
-  transition: Transition | null; // 过渡动画
+  anchor: { x: number; y: number }; // 锚点 0-1，原点在左上角
+  effects: Effect[]; // 精灵级特效（抖动、呼吸等）
+  transition: Transition | null; // 入场/退场过渡
 
   update(dt: number): void;
   draw(ctx: CanvasRenderingContext2D): void;
-  setTexture(texture: Texture, transition?: Transition): void;
+  setTexture(texture: Texture): void;
   moveTo(x: number, y: number, duration: number, easing: EasingFn): void;
   fadeTo(opacity: number, duration: number): void;
 }
 ```
 
+**尺寸公式：** 最终绘制宽高 = `width × scale.x`、`height × scale.y`。当纹理来自图集时，根据 `Texture.frame` 裁剪源区域；`width`/`height` 默认等于 `frame.w`/`frame.h` 或纹理本身尺寸。
+
+**精灵特效：** 与 Renderer 的全屏特效共用同一 `Effect` 接口（`update(dt)` + `draw(ctx)`），只是挂载位置不同——挂在 Sprite.effects 上的作用域为该精灵，挂在 Renderer.effectQueue 上的为全画面。
+
 ### 4.4 TextureManager（纹理管理）
+
+纹理缓存只有一份，存放于 TextureManager。ResourceManager（见 §6）是加载调度门面，`ResourceManager.loadImage()` 内部委托 AssetLoader 加载 → 创建 Texture → 存入 TextureManager.cache，自身不冗余缓存已解码纹理。
 
 ```
 TextureManager
-├── cache: Map<string, Texture>   // 纹理缓存
-├── atlas: TextureAtlas | null    // 纹理图集
+├── cache: Map<string, Texture>   // 一级缓存：可渲染的纹理对象（LRU 淘汰）
 │
-├── load(src: string): Promise<Texture>
 ├── get(id: string): Texture | null
+├── set(id: string, texture: Texture): void
 ├── unload(id: string): void
-├── preload(urls: string[]): Promise<void>
 └── createAtlas(images: ImageInfo[]): TextureAtlas
 ```
+
+ResourceManager 的 `ResourceCache`（§6.3）是二级缓存，仅缓存原始二进制数据（ArrayBuffer），不缓存 Texture 对象。
 
 ```ts
 interface Texture {
@@ -270,25 +351,42 @@ interface Texture {
 
 ### 4.5 渲染管线
 
+Renderer 支持两种渲染模式，根据是否有脏矩形自动切换：
+
+**模式 A — 全帧模式**（`dirtyRects.length === 0`，适用于动态场景）：
+
 ```
-每帧渲染流程:
-  renderer.draw(ctx):
-    1. ctx.clearRect(0, 0, width, height)
-    2. if 背景层 dirty:
-         → 绘制到离屏Canvas
-         → 标记 clean
-    3. 遍历 layers (zIndex 升序):
-       if layer.visible:
-         if layer.offscreen && !layer.dirty:
-           → 直接 drawImage(offscreen)   // 缓存命中
-         else:
-           → layer.draw(ctx)             // 重绘
-    4. 遍历 effectQueue:
-       → effect.draw(ctx)                // 叠加特效
-    5. 触发 render:frame 事件
+draw():
+  1. ctx.clearRect(0, 0, width, height)
+  2. 遍历 layers (zIndex 升序):
+     if layer.visible:
+       if layer.offscreen && !layer.dirty:
+         → ctx.drawImage(layer.offscreen, 0, 0)   // 缓存命中
+       else:
+         → layer.draw(ctx)                          // 重绘，并可选更新 offscreen
+  3. 遍历 effectQueue:
+     → effect.draw(ctx)                             // 叠加全屏特效
+  4. 发射 render:frame 事件
 ```
 
+**模式 B — 脏矩形模式**（`dirtyRects.length > 0`，适用于静态对话/微动场景）：
+
+```
+draw():
+  1. 合并重叠脏矩形
+  2. ctx.save()
+  3. 裁剪到合并后的脏区域
+  4. 同模式 A 的步骤 2-3（仅绘制与脏区域相交的 Layer/Effect）
+  5. ctx.restore()
+  6. 清空 dirtyRects
+  7. 发射 render:frame 事件
+```
+
+模式 B 不执行 `clearRect`——上一帧内容保留在画布上，只重绘变化区域。
+
 ### 4.6 转场/过渡系统
+
+过渡作用在单个 Sprite 上，通过 `progress` 驱动渲染属性变化。
 
 ```ts
 type EasingFn = (t: number) => number; // t ∈ [0, 1]
@@ -297,71 +395,80 @@ interface Transition {
   type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom';
   duration: number; // 毫秒
   easing: EasingFn;
-  progress: number; // 0-1
   direction?: 'left' | 'right' | 'up' | 'down';
   onComplete?: () => void;
 
-  update(dt: number): void;
-  apply(ctx: CanvasRenderingContext2D, from: Sprite, to: Sprite): void;
+  update(dt: number): void; // 内部累加 progress
+  isComplete(): boolean;
+  apply(ctx: CanvasRenderingContext2D, sprite: Sprite): void;
 }
 ```
 
+`progress` 由 `update(dt)` 内部维护私有字段，不公开。外部通过 `isComplete()` 判断是否结束。`apply(ctx, sprite)` 根据 `type` 和 `progress` 修改 sprite 的渲染属性（opacity、x、y、scale）后绘制。
+
+**示例：** 角色入场时 Sprite 挂载一个 `fade` Transition（opacity: 0→1）；退场时挂载 `fade`（1→0）。入退场各用一个 Transition，不共享 from/to。
+
 **内置转场效果：**
 
-| 类型       | 说明                     |
-| ---------- | ------------------------ |
-| `fade`     | 淡入淡出                 |
-| `slide`    | 滑动（上下左右）         |
-| `zoom`     | 缩放切换                 |
-| `wipe`     | 擦除（直线/圆形/百叶窗） |
-| `pixelate` | 像素化溶解               |
-| `custom`   | 自定义着色器             |
+| 类型       | 说明                          |
+| ---------- | ----------------------------- |
+| `fade`     | 淡入淡出                      |
+| `slide`    | 滑动（上下左右）              |
+| `zoom`     | 缩放切换                      |
+| `wipe`     | 擦除（直线/圆形/百叶窗）      |
+| `pixelate` | 像素化溶解                    |
+| `custom`   | 自定义绘制函数（drawFn 回调） |
 
 ### 4.7 脏矩形优化
 
 ```
-渲染优化 — 仅重绘变化区域:
-  renderer 维护 dirtyRects 列表
-  update 阶段:
-    sprite 移动/变化 → 标记包围盒为脏
-  draw 阶段:
-    1. 合并重叠脏矩形
-    2. ctx.save() → 裁剪到脏区域 → 绘制 → ctx.restore()
-    3. 清空脏矩形列表
+标记脏区域:
+  Sprite.moveTo / fadeTo / setTexture 调用时
+    → 计算 Sprite 在画布上的包围盒
+    → 调用 Renderer.markDirty(rect)
 
-适用场景:
-  - 对话框文字逐字显示（仅刷新对话框区域）
-  - 角色微动动画（仅刷新角色区域）
+  Layer.addSprite / removeSprite 时
+    → 调用 Renderer.markDirty(spriteRect)
 ```
+
+脏矩形仅在模式 B 生效（见 §4.5）。
 
 ### 4.8 文字渲染
 
-文字渲染是视觉小说中最频繁的操作之一，需要专门优化。
+文字渲染是视觉小说中最频繁的操作之一。采用帧驱动状态机，而非 Promise/await。
 
 ```ts
 class TextRenderer {
-  // 逐字显示
-  static async typewriter(
+  fullText: string;
+  speed: number; // 毫秒/字
+  currentCharCount: number; // 当前已显示字数
+  elapsed: number; // 累计毫秒
+  isComplete: boolean;
+
+  constructor(text: string, speed: number);
+
+  update(dt: number): void; // elapsed += dt; currentCharCount = min(fullText.length, floor(elapsed / speed))
+  draw(
     ctx: CanvasRenderingContext2D,
-    text: string,
     x: number,
     y: number,
     maxWidth: number,
     lineHeight: number,
-    speed: number, // 毫秒/字
-    onComplete?: () => void,
-  ): Promise<void>;
+  ): void; // 只绘制 fullText.slice(0, currentCharCount)
 
-  // 富文本支持（颜色、加粗、振动、ruby注音等标签）
+  complete(): void; // 直接跳到全量（跳过打字动画）
+  // 静态工具
   static parseRichText(text: string): RichTextToken[];
 }
 ```
 
+DialogueBox 组件持有 TextRenderer 实例，每帧调用 `update(dt)` → `draw(ctx)`。完成时 `isComplete === true`，此时用户点击继续。
+
 **文字性能优化：**
 
-- 预测量：提前计算文字宽度，避免逐字测量
-- 离屏缓存：已显示完的静态文字绘制到离屏 Canvas
-- 字间距/行间距预设，减少计算
+- 预测量：首次 `draw()` 时计算所有字的位置并缓存到 `glyphPositions: Array<{x, y}>`，避免逐帧重复测量
+- 离屏缓存：已完成显示的行绘制到离屏 Canvas，每次只绘制新增加的字符
+- 字间距/行间距预设，减少运行时计算
 
 ---
 
@@ -552,18 +659,20 @@ class CommandRegistry {
 ### 5.7 自定义命令扩展示例
 
 ```ts
-// 在插件中注册新命令
-game.plugins.register('my-plugin', {
-  install(engine) {
-    engine.script.commandRegistry.register({
-      name: '@shaketext',
+// 在插件中注册自定义命令
+const myPlugin: Plugin = {
+  name: 'my-plugin',
+  version: '1.0.0',
+  install(game) {
+    game.script.commandRegistry.register({
+      type: '@shaketext',
       execute(ctx, args) {
         const duration = args.duration ?? 500;
-        engine.renderer.addEffect(new ShakeEffect(duration));
+        game.renderer.addEffect(new ShakeEffect(duration));
       },
     });
   },
-});
+};
 ```
 
 ---
@@ -572,60 +681,115 @@ game.plugins.register('my-plugin', {
 
 ### 6.1 整体架构
 
+ResourceManager 是资源加载的门面，协调 AssetLoader（网络加载）、TextureManager（纹理缓存）、Parser（脚本解析）和 EventBus（进度通知）。
+
 ```
 ResourceManager
-├── loader: AssetLoader          // 资源加载器
-├── cache: ResourceCache         // LRU 缓存
-├── preloader: Preloader         // 预加载器
-├── manifest: AssetManifest      // 资源清单
+├── eventBus: EventBus               // 事件总线（发射 resource:progress / resource:ready）
+├── assetLoader: AssetLoader         // 网络加载器
+├── textureManager: TextureManager   // 纹理一级缓存（构造注入）
+├── cache: ResourceCache             // 二级缓存：原始 AudioBuffer 和 Script 对象
+├── manifest: AssetManifest          // 资源清单
+├── preloader: Preloader             // 场景/分组预加载器
 │
 ├── loadImage(id: string): Promise<Texture>
 ├── loadAudio(id: string): Promise<AudioBuffer>
 ├── loadScript(id: string): Promise<Script>
-├── loadGroup(group: string): Promise<void>     // 按包加载
-├── preloadScene(label: string): Promise<void>  // 按场景预加载
-├── getProgress(): { loaded: number; total: number; percent: number }
+├── loadGroup(group: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
+├── preloadScene(label: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
 └── clear(): void
 ```
+
+**内部加载流程：**
+
+```
+loadImage(id):
+  1. url = manifest.images[id]
+  2. 大图（>2048px 任一维度）→ assetLoader.loadImageBitmap(url)
+     小图 → assetLoader.loadImage(url)
+  3. 创建 Texture { id, source, width, height }
+  4. textureManager.set(id, texture)
+  5. 发射 resource:progress
+
+loadAudio(id):
+  1. url = manifest.audio[id]
+  2. arrayBuffer = assetLoader.loadAudio(url)
+  3. audioBuffer = audioContext.decodeAudioData(arrayBuffer)
+  4. cache.set(id, audioBuffer)
+  5. 发射 resource:progress
+
+loadScript(id):
+  1. url = manifest.scripts[id]
+  2. source = assetLoader.loadScript(url)    // 返回脚本文本
+  3. script = parser.parse(source)
+  4. cache.set(id, script)
+  5. 发射 resource:progress
+```
+
+**Preloader（预加载器）：**
+
+```
+Preloader
+├── loadScene(manifest: AssetManifest, sceneLabel: string,
+│             onProgress?: ProgressCallback): Promise<void>
+├── loadGroup(manifest: AssetManifest, groupLabel: string,
+│             onProgress?: ProgressCallback): Promise<void>
+└── unloadScene(sceneLabel: string): void       // 卸载场景专属资源，保留共享资源
+```
+
+`preloadScene` 和 `loadGroup` 分别从 manifest 的 `scenes` 和 `groups` 字段读取资源列表，按图→音→脚本的顺序加载。
 
 ### 6.2 AssetLoader（资源加载器）
 
 ```
 AssetLoader
+├── maxConcurrency: number   // 最大并发数，默认 6
+├── maxRetries: number       // 失败重试次数，默认 3
+├── timeoutMs: number        // 超时毫秒，默认 30000
+│
 ├── loadImage(url: string): Promise<HTMLImageElement>
 ├── loadImageBitmap(url: string): Promise<ImageBitmap>  // 异步解码
 ├── loadAudio(url: string): Promise<ArrayBuffer>
 ├── loadScript(url: string): Promise<string>
 │
 并发控制:
-  - 最大并发数: 6 (浏览器HTTP/2推荐)
-  - 失败重试: 3次，指数退避
-  - 超时: 30秒
+  - 最大并发数: 6（浏览器 HTTP/2 推荐值）
+  - 超出并发上限的请求进入等待队列，先进先出
+  - 失败重试: 3 次，指数退避
+  - 超时: 30 秒
 ```
+
+构造时接受 `AssetLoaderConfig`（`{ maxConcurrency?, maxRetries?, timeoutMs? }`），由 ResourceManager 初始化时传入或使用默认值。
 
 **ImageBitmap 优势：**
 
 - 在 Worker 线程中解码，不阻塞主线程
 - 零拷贝传输（Transferable）
-- 适合大尺寸 CG/背景图
+- 适合大尺寸 CG/背景图（>2048px 任一维度自动选用）
 
 ### 6.3 ResourceCache（LRU 缓存）
 
+二级缓存，存放已解码的 AudioBuffer 和已解析的 Script 对象（Texture 由 TextureManager 缓存，不在此处）。
+
 ```ts
 class ResourceCache<T> {
-  private maxSize: number; // 字节上限
-  private currentSize: number;
+  private maxEntries: number;
   private cache: Map<string, CacheEntry<T>>;
 
   get(id: string): T | null;
-  set(id: string, value: T, size: number): void;
+  set(id: string, value: T): void; // 超出 maxEntries 时自动淘汰
   has(id: string): boolean;
   delete(id: string): void;
   clear(): void;
-  // 淘汰最久未使用的条目直到低于 maxSize
-  private evict(): void;
+}
+
+interface CacheEntry<T> {
+  value: T;
+  lastAccess: number; // 用于 LRU 排序
 }
 ```
+
+淘汰策略：按条目数限制（`maxEntries`），`set` 时若 `cache.size >= maxEntries` 自动淘汰 `lastAccess` 最早的条目。
 
 ### 6.4 资源清单格式
 
@@ -647,13 +811,31 @@ class ResourceCache<T> {
     "ch_hero": {
       "url": "assets/char/hero/spritesheet.png",
       "frames": {
-        "default": [0, 0, 512, 720],
-        "smile": [512, 0, 512, 720]
+        "default": { "x": 0, "y": 0, "w": 512, "h": 720 },
+        "smile": { "x": 512, "y": 0, "w": 512, "h": 720 }
       }
+    }
+  },
+  "scenes": {
+    "start": {
+      "images": ["bg_classroom_day", "ch_hero_default"],
+      "audio": ["bgm_school"],
+      "scripts": ["chapter1"]
+    },
+    "choice1": {
+      "images": ["ch_hero_smile"]
+    }
+  },
+  "groups": {
+    "chapter1_all": {
+      "images": ["bg_classroom_day", "ch_hero_default", "ch_hero_smile"],
+      "audio": ["bgm_school"]
     }
   }
 }
 ```
+
+`spritesheets` 的 `frames` 字段与 `Texture.frame` (`{ x, y, w, h }`) 保持一致，无需格式转换。
 
 ---
 
@@ -662,55 +844,93 @@ class ResourceCache<T> {
 ### 7.1 整体架构
 
 ```
-AudioManager
-├── context: AudioContext              // Web Audio API
+AudioManager  (实现 Updatable)
+├── context: AudioContext              // Web Audio API 上下文
 ├── masterGain: GainNode              // 主音量控制
-├── bgmTrack: AudioTrack              // BGM轨道
-├── seTracks: AudioTrack[]            // 音效轨道（池化）
-├── voiceTrack: AudioTrack            // 语音轨道
+├── bgmBus: GainNode                  // BGM 总线音量
+├── seBus: GainNode                   // SE 总线音量
+├── voiceBus: GainNode                // 语音总线音量
+├── bgmTrack: AudioTrack              // BGM轨道（独占）
+├── sePool: AudioTrackPool            // 音效轨道池
+├── voiceTrack: AudioTrack            // 语音轨道（独占，同时只能播放一条）
+├── eventBus: EventBus                // 事件总线（构造注入）
 │
-├── playBgm(id: string, loop?: boolean, fadeIn?: number): void
-├── stopBgm(fadeOut?: number): void
-├── playSe(id: string): void
-├── playVoice(id: string): void
-├── setMasterVolume(v: number): void
-├── setBgmVolume(v: number): void
-├── setSeVolume(v: number): void
-└── setVoiceVolume(v: number): void
+├── playBgm(id: string, buffer: AudioBuffer, options?: { loop?: boolean; fadeIn?: number }): void
+├── stopBgm(options?: { fadeOut?: number }): void
+├── playSe(id: string, buffer: AudioBuffer): void
+├── playVoice(id: string, buffer: AudioBuffer): void
+├── setMasterVolume(v: number): void  // 0-1，设 masterGain.gain.value
+├── setBgmVolume(v: number): void     // 0-1，设 bgmBus.gain.value
+├── setSeVolume(v: number): void      // 0-1，设 seBus.gain.value
+├── setVoiceVolume(v: number): void   // 0-1，设 voiceBus.gain.value
+├── update(dt: number): void          // 驱动所有活跃 track 的 fade 渐变
+├── pause(): void                     // context.suspend()
+└── resume(): void                    // context.resume()
 ```
+
+**音频路由图：**
+
+```
+AudioTrack.buffer → sourceNode → trackGain → busGain → masterGain → destination
+                                    (独立)    (类型总线)  (总控)
+
+bgmTrack.trackGain   → bgmBus   ─┐
+sePool 各 trackGain   → seBus    ─┼→ masterGain → context.destination
+voiceTrack.trackGain  → voiceBus ─┘
+```
+
+`setBgmVolume/setSeVolume/setVoiceVolume` 控制总线级别音量，不覆盖 track 自身 gain（后者用于 fade 过程中的中间值）。
 
 ### 7.2 AudioTrack（音轨）
 
 ```ts
 class AudioTrack {
   type: 'bgm' | 'se' | 'voice';
-  gain: GainNode;
+  gain: GainNode; // 独立音量节点（fade 时修改此值）
   source: AudioBufferSourceNode | null;
   buffer: AudioBuffer | null;
-  volume: number; // 0-1
   state: 'stopped' | 'playing' | 'paused' | 'fading';
 
-  play(buffer: AudioBuffer, loop: boolean, fadeIn: number): void;
-  stop(fadeOut: number): void;
+  play(
+    buffer: AudioBuffer,
+    options?: { loop?: boolean; fadeIn?: number },
+  ): void;
+  stop(options?: { fadeOut?: number }): void;
   pause(): void;
   resume(): void;
-  setVolume(v: number): void;
+  setVolume(v: number): void; // 0-1，直接设 gain.gain.value
 }
 ```
+
+**状态转换：**
+
+```
+stopped ──play(fadeIn)──→ fading ──fadeIn 完成──→ playing
+stopped ──play(fadeIn=0)──→ playing
+
+playing ──stop(fadeOut)──→ fading ──fadeOut 完成──→ stopped
+playing ──stop(fadeOut=0)──→ stopped
+playing ──pause()──→ paused ──resume()──→ playing
+```
+
+`fading` 状态下 `update(dt)` 每帧计算 fade 进度、修改 `gain.gain.value`，完成后切到目标状态并触发事件。
 
 ### 7.3 音频池（SE轨道复用）
 
-音效同时播放数量受限，采用对象池模式：
-
 ```ts
 class AudioTrackPool {
-  private pool: AudioTrack[];
-  private active: Map<string, AudioTrack>;
+  private maxTracks: number; // 池容量，如 8
+  private pool: AudioTrack[]; // 空闲轨道
+  private active: Map<string, AudioTrack>; // 音频 id → 占用轨道
 
-  acquire(): AudioTrack; // 获取空闲轨道
-  release(track: AudioTrack): void; // 归还轨道
+  acquire(id: string): AudioTrack | null; // 获取空闲轨道；无空闲时返回 null 或复用最早 active
+  release(id: string): void; // 停止并归还轨道到池
+  update(dt: number): void; // 更新所有 active 轨道的 fade
+  stopAll(): void; // 停止所有活跃 SE
 }
 ```
+
+同一音效 id 再次播放时，若 `active.has(id)` 则复用已有轨道（从头重新播放），避免同一声叠加。池容量满时，停止并复用最早激活的轨道。
 
 ---
 
@@ -718,69 +938,115 @@ class AudioTrackPool {
 
 ### 8.1 设计思路
 
-UI 完全由 Canvas 绘制，不依赖 DOM 元素。提供组件化抽象：
+UI 完全由 Canvas 绘制，不依赖 DOM 元素。UI 组件树挂载在 UI Layer（§4.2，zIndex=600）上，Layer 的 `update(dt)` / `draw(ctx)` 递归遍历组件树。
 
 ```ts
-abstract class UIComponent {
-  x: number;
+interface UIComponent {
+  id: string;
+  x: number; // 相对父组件原点的坐标
   y: number;
   width: number;
   height: number;
   visible: boolean;
   children: UIComponent[];
 
-  abstract update(dt: number): void;
-  abstract draw(ctx: CanvasRenderingContext2D): void;
+  update(dt: number): void;
+  draw(ctx: CanvasRenderingContext2D): void;
 
-  // 事件命中测试
+  // 命中测试：将绝对画布坐标转为相对坐标后递归检测
   hitTest(px: number, py: number): UIComponent | null;
   onClick(px: number, py: number): void;
   onHover(px: number, py: number): void;
+
+  // 工具方法（由工具函数模块提供实现，不在 interface 内要求 class 实现）
+  getAbsoluteX(): number; // 递归累加：this.x + parent.getAbsoluteX()
+  getAbsoluteY(): number;
 }
 ```
 
+**坐标体系：** 绝对坐标 = 自身 x/y + 父组件绝对坐标。`draw(ctx)` 中通过 `ctx.translate(this.x, this.y)` 建立相对坐标系，子组件在父组件原点内绘制。`hitTest(px, py)` 传入绝对画布坐标，内部转为相对坐标后递归遍历 children 从顶到底（z 序）检测。
+
+**共享逻辑：** children 递归遍历、绝对坐标计算等公共逻辑放入工具函数模块（如 `ui/utils.ts`），各组件直接调用函数，不依赖基类继承。
+
 ### 8.2 内置 UI 组件
 
-| 组件            | 说明                                 |
-| --------------- | ------------------------------------ |
-| `DialogueBox`   | 对话框（角色名 + 文本 + 继续指示器） |
-| `ChoicePanel`   | 选项面板（2-N个选项按钮）            |
-| `TextButton`    | 文本按钮（hover/click/press状态）    |
-| `ImageButton`   | 图片按钮                             |
-| `Slider`        | 滑动条（音量/速度调节）              |
-| `Toggle`        | 开关（全屏/自动模式等）              |
-| `ScrollView`    | 滚动视图（历史记录）                 |
-| `SaveLoadSlot`  | 存档/读档槽位                        |
-| `ConfirmDialog` | 确认弹窗                             |
+核心组件接口：
+
+```ts
+interface DialogueBox extends UIComponent {
+  show(speaker: string, text: string): void; // 开始逐字显示
+  hide(): void;
+  isAnimating(): boolean; // 打字动画是否进行中
+  complete(): void; // 跳过动画，显示全文
+  textRenderer: TextRenderer; // §4.8 的打字机实例
+}
+
+interface ChoicePanel extends UIComponent {
+  showChoices(choices: Choice[]): void; // §5.6 的 Choice 类型
+  hide(): void;
+  onSelect: (index: number, choice: Choice) => void;
+}
+
+interface SaveLoadSlot extends UIComponent {
+  slot: number;
+  isEmpty: boolean;
+  thumbnail: string | null; // base64 缩略图
+  slotLabel: string;
+  timestamp: number | null;
+  onClick(): void; // 触发存档/读档
+}
+
+interface ConfirmDialog extends UIComponent {
+  show(message: string, onConfirm: () => void, onCancel?: () => void): void;
+  hide(): void;
+}
+```
+
+其他通用控件（列表说明）：
+
+| 组件          | 说明                                 |
+| ------------- | ------------------------------------ |
+| `TextButton`  | 文本按钮（hover/click/press 状态）   |
+| `ImageButton` | 图片按钮                             |
+| `Slider`      | 滑动条（音量/速度调节）              |
+| `Toggle`      | 开关（全屏/自动模式等）              |
+| `ScrollView`  | 滚动视图容器（含遮罩裁剪和滚动偏移） |
 
 ### 8.3 输入事件分发
 
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、AudioManager 之前）。
+
 ```
-Canvas DOM 事件 → Game.input.dispatch() → 命中测试 → UI组件回调
-                                     → 无命中 → 全局命令（如点击继续）
+Canvas DOM 事件 → InputManager.dispatch(event)
+  → toLogicalCoords(clientX, clientY)   // CSS像素 → 逻辑像素
+  → uiRoot.hitTest(logicalX, logicalY)  // 递归命中测试（从顶到底）
+    → 命中 → 调用 component.onClick(relX, relY)
+    → 未命中 → 发射 input:click 事件（全局命令：如点击继续对话）
+  → 发射 input:hover 事件
 ```
 
 ```ts
 class InputManager {
   canvas: HTMLCanvasElement;
-  handlers: Map<string, Handler[]>;
+  eventBus: EventBus;
+  uiRoot: UIComponent | null; // UI Layer 初始化后设置
 
-  // 绑定事件
+  setUIRoot(root: UIComponent): void; // 由 Game 在 UI Layer 就绪后调用
+
   private onMouseMove(e: MouseEvent): void;
   private onMouseDown(e: MouseEvent): void;
   private onMouseUp(e: MouseEvent): void;
   private onTouchStart(e: TouchEvent): void;
 
-  // 坐标转换（CSS像素 → 逻辑像素）
+  // CSS像素 → 逻辑像素（需根据 scaleMode 和容器尺寸换算）
   private toLogicalCoords(
     clientX: number,
     clientY: number,
   ): { x: number; y: number };
-
-  // 分发
-  dispatch(event: InputEvent): void;
 }
 ```
+
+`toLogicalCoords` 依赖 `scaleMode` 和 canvas 的 CSS 尺寸 vs 逻辑尺寸的比值。坐标转换逻辑与 Renderer 共享同一换算参数，避免重复计算。
 
 ---
 
@@ -788,79 +1054,74 @@ class InputManager {
 
 ### 9.1 游戏状态设计
 
-**GameState（游戏运行时状态）：**
+引擎不维护集中式 `GameState` 运行时对象——各子系统自有状态（ScriptEngine.pc、Renderer 的角色/背景、AudioManager 的 BGM、VariableStore 的变量/旗标等），Game 仅持有 `variableStore` 和 `saveManager`。
 
-```ts
-interface GameState {
-  currentScript: string; // 当前脚本名
-  scriptPC: number; // 脚本程序计数器
-  bgImage: string | null;
-  characters: CharacterState[];
-  bgmId: string | null;
-  bgmProgress: number; // BGM播放进度(秒)
-  history: DialogueEntry[]; // 对话历史
-  playTime: number; // 累计游玩时间
-}
+存档时 `SaveManager` 遍历各子系统收集数据，组装为 `GameStateSnapshot`（类型定义见 §14.3）：
 
-interface CharacterState {
-  id: string;
-  spriteId: string;
-  position: 'left' | 'center' | 'right' | { x: number; y: number };
-  opacity: number;
-}
-```
+| 来源          | 收集内容          | 方法               |
+| ------------- | ----------------- | ------------------ |
+| ScriptEngine  | 当前脚本名、pc    | `getState()`       |
+| Renderer      | 背景 id、角色列表 | `getState()`       |
+| AudioManager  | BGM id、播放进度  | `getState()`       |
+| VariableStore | variables、flags  | `dump()`           |
+| GameLoop      | 累计游玩时间      | `elapsedTime` 字段 |
 
-变量和旗标由 `VariableStore`（见 §5.4）独立管理，存档/读档时通过 `dump()` / `restore()` 完成序列化与恢复，`GameState` 不再直接持有这两个字段的独立拷贝。
+各子系统提供 `getState()`（或等效方法）返回各自领域的可序列化快照片段，`SaveManager` 在 capture() 中拼接为完整的 `GameStateSnapshot`。
 
 **Settings（用户设置）：**
 
 ```ts
 interface Settings {
-  masterVolume: number;
-  bgmVolume: number;
-  seVolume: number;
-  voiceVolume: number;
-  textSpeed: number; // 字/秒
-  autoSpeed: number; // 自动模式下等待秒数
-  skipMode: 'all' | 'read'; // 跳过模式
+  masterVolume: number; // 0-1
+  bgmVolume: number; // 0-1
+  seVolume: number; // 0-1
+  voiceVolume: number; // 0-1
+  textSpeed: number; // 毫秒/字
+  autoSpeed: number; // 自动模式下等待毫秒数
+  skipMode: 'all' | 'read';
   fullscreen: boolean;
   language: string;
   fontSize: number;
 }
 ```
 
+Settings 独立持久化（全局一份），不嵌入每个存档槽中。类型定义见 §14.3 `SettingsSnapshot`。
+
 ### 9.2 Save/Load 数据格式
 
-```ts
-interface SaveData {
-  version: number; // 存档格式版本（用于迁移）
-  timestamp: number; // 存档时间戳
-  thumbnail: string; // 缩略图（base64）
-  slotLabel: string; // 存档标签（当前对话文本截取）
-  gameState: GameState; // 游戏状态快照
-  settings: Settings; // 存档时的设置
-}
-```
+`SaveData` 和 `GameStateSnapshot` 的权威类型定义见 §14.3。
 
-### 9.3 存档流程
+### 9.3 存档流程（SaveManager）
 
 ```
-存档:
-  1. 引擎暂停
-  2. 生成缩略图：renderer.drawToImage() → toDataURL()
-  3. 序列化 GameState（变量、旗标、PC、角色状态、音频进度）
-  4. 构建 SaveData
-  5. 写入 localStorage / IndexedDB
-  6. 引擎恢复
+Game.save(slot)
+  → eventBus.emit('game:save', { slot })
 
-读档:
-  1. 引擎暂停
-  2. 读取 SaveData
-  3. 恢复 GameState 到引擎各子系统
-  4. 重新加载对应资源（利用缓存加速）
-  5. 跳转到存档时的脚本位置
-  6. 引擎恢复
+SaveManager.capture(engine, slot):
+  1. engine.pause()
+  2. 生成缩略图：renderer.draw() → canvas.toBlob()（Blob 直接存，无需 base64）
+  3. 收集各子系统快照 → 组装 GameStateSnapshot
+  4. 获取当前对话文本截取（≤30字）作为 slotLabel
+  5. 构建 SaveData { version, timestamp, thumbnail, slotLabel, gameState }
+  6. storage.setItem(`save_${slot}`, saveData)  // IndexedDB 优先，降级 localStorage
+  7. engine.resume()
+  8. eventBus.emit('game:saved', { slot })
+
+SaveManager.restore(engine, slot):
+  1. engine.pause()
+  2. saveData = storage.getItem(`save_${slot}`)
+  3. 版本迁移（如有需要）：逐版升级 saveData.gameState 结构
+  4. 恢复各子系统状态：
+     a. variableStore.restore(snapshot.variables, snapshot.flags)
+     b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
+     c. renderer.setState(snapshot.bgImage, snapshot.characters)
+     d. audioManager.setState(snapshot.bgm)
+     e. scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+  5. engine.resume()
+  6. eventBus.emit('game:loaded', { slot })
 ```
+
+读档的资源预加载优先走缓存（TextureManager. cache, ResourceManager.cache），命中则跳过网络请求。版本迁移由 `migrate(saveData)` 工具函数处理，按版本号逐级转换数据格式。
 
 ---
 
@@ -872,38 +1133,61 @@ interface SaveData {
 interface Plugin {
   name: string;
   version: string;
-  install(engine: VNEngine): void;
-  uninstall?(engine: VNEngine): void;
+  dependencies?: string[]; // 依赖的其他插件 name 列表
+  install(game: Game): void;
+  uninstall?(game: Game): void;
+  update?(dt: number): void; // 可选逐帧更新
 }
 ```
 
 ### 10.2 PluginManager
 
+PluginManager 实现 `Updatable`，在 `update(dt)` 中遍历已安装插件并调用其 `update?()`。
+
 ```ts
 class PluginManager {
   private plugins: Map<string, Plugin>;
-  private engine: VNEngine;
+  private installed: Plugin[]; // 已调用 install() 的插件（拓扑排序后）
+  private game: Game;
 
-  register(plugin: Plugin): void;
-  unregister(name: string): void;
+  register(plugin: Plugin): void; // 仅记录元信息，不调用 install
+  unregister(name: string): void; // 调用 uninstall() + 移除
   get(name: string): Plugin | null;
   list(): Plugin[];
-  // 按依赖顺序加载
+
+  // 注册所有插件后按依赖拓扑排序，依次调用 install(game)
   loadAll(plugins: Plugin[]): void;
+
+  update(dt: number): void; // 遍历 installed，调用 plugin.update?.(dt)
 }
 ```
 
+**两阶段初始化：**
+
+```
+1. register 阶段（仅记录）：
+   pluginManager.register(plugin1)
+   pluginManager.register(plugin2)
+   ... 或直接用 pluginManager.loadAll(config.plugins)
+
+2. loadAll 阶段（安装）：
+   解析 dependencies → 拓扑排序
+   → 循环依赖检测、缺失依赖报错
+   → 依次调用 plugin.install(game)
+```
+
+`Game.init()` 中调用 `loadAll(config.plugins)` 完成全部注册+安装。`register` 保留给运行时动态加载场景。
+
 ### 10.3 扩展点一览
 
-| 扩展点     | 接口                         | 用途                       |
-| ---------- | ---------------------------- | -------------------------- |
-| 命令       | `CommandRegistry.register()` | 自定义脚本命令             |
-| 转场       | `Transition` 接口            | 自定义转场效果             |
-| 特效       | `Effect` 接口                | 自定义画面特效             |
-| UI组件     | `UIComponent` 基类           | 自定义UI                   |
-| 资源加载器 | `AssetLoader` 中间件         | 自定义资源来源（如加密包） |
-| 脚本解析器 | `Parser` 中间件              | 自定义脚本语法糖           |
-| 事件       | `EventBus.on()`              | 监听任意事件               |
+| 扩展点   | 接入方式                     | 用途           |
+| -------- | ---------------------------- | -------------- |
+| 命令     | `CommandRegistry.register()` | 自定义脚本命令 |
+| 转场     | 实现 `Transition` 接口       | 自定义转场效果 |
+| 特效     | 实现 `Effect` 接口           | 自定义画面特效 |
+| UI组件   | 实现 `UIComponent` 接口      | 自定义 UI 控件 |
+| 事件监听 | `EventBus.on()`              | 监听引擎事件   |
+| 逐帧更新 | Plugin 实现 `update(dt)`     | 插件逐帧逻辑   |
 
 ---
 
@@ -1072,24 +1356,32 @@ Game.init(config)
 
 ```
 存档:
-  UI点击存档
-    → EventBus 发送 'ui:save'
-    → SaveManager.capture(engine)
-      → 生成缩略图
-      → 序列化 engine.state
+  UI点击存档槽
+    → SaveLoadSlot.onClick()
+    → Game.save(slot)
+    → SaveManager.capture(engine, slot)
+      → engine.pause()
+      → 生成缩略图（canvas.toBlob()）
+      → 遍历各子系统收集快照 → 组装 GameStateSnapshot
       → 构建 SaveData
       → IndexedDB 持久化
+      → engine.resume()
       → EventBus 发送 'game:saved'
 
 读档:
-  UI点击读档
+  UI点击读档槽
+    → SaveLoadSlot.onClick()
+    → Game.load(slot)
     → SaveManager.restore(engine, slot)
+      → engine.pause()
       → 从 IndexedDB 读取 SaveData
-      → ResourceManager.preloadRequired(data)  // 预加载需要资源
-      → 恢复 engine.state
-      → Interpreter.pc = data.gameState.scriptPC
-      → Renderer 恢复角色/背景状态
-      → AudioManager 恢复音频
+      → 版本迁移（如有）
+      → variableStore.restore(snapshot.variables, snapshot.flags)
+      → resourceManager.preloadScene(snapshot.currentScript)
+      → renderer.setState(snapshot.bgImage, snapshot.characters)
+      → audioManager.setState(snapshot.bgm)
+      → scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+      → engine.resume()
       → EventBus 发送 'game:loaded'
 ```
 
@@ -1185,28 +1477,28 @@ interface Choice {
 // types/save.ts
 
 interface SaveData {
-  version: number;
-  timestamp: number;
-  thumbnail: string;
-  slotLabel: string;
+  version: number; // 存档格式版本（用于迁移）
+  timestamp: number; // 存档时间戳
+  thumbnail: Blob | string; // 缩略图，IndexedDB 存 Blob，localStorage 降级 base64
+  slotLabel: string; // 存档标签（当前对话文本截取 ≤30 字）
   gameState: GameStateSnapshot;
-  settings: SettingsSnapshot;
 }
 
 interface GameStateSnapshot {
   currentScript: string;
   scriptPC: number;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   flags: string[];
   bgImage: string | null;
   characters: Array<{
     id: string;
     spriteId: string;
-    position: string | { x: number; y: number };
+    position: { x: number; y: number };
     opacity: number;
   }>;
   bgm: { id: string; progress: number } | null;
   history: DialogueEntry[];
+  playTime: number; // 累计游玩时间（毫秒）
 }
 ```
 
