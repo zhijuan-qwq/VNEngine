@@ -219,45 +219,51 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 ### 4.1 整体设计
 
+Renderer 实现 `Updatable` 接口（见 §3.2），由 GameLoop 统一驱动。
+
 ```
 Renderer
-├── layers: Layer[]                 // 图层栈（从底到顶）
-├── textureManager: TextureManager  // 纹理管理
-├── effectQueue: Effect[]           // 特效队列
-├── dirtyRects: Rect[]              // 脏矩形列表
+├── canvas: HTMLCanvasElement        // 主画布（用于获取 ctx 和尺寸）
+├── ctx: CanvasRenderingContext2D    // 2D 上下文（构造时从 canvas 获取，独占管理）
+├── width: number                    // 逻辑宽度（来自 GameConfig）
+├── height: number                   // 逻辑高度（来自 GameConfig）
+├── layers: Layer[]                  // 图层栈（按 zIndex 升序维护）
+├── textureManager: TextureManager   // 纹理管理
+├── effectQueue: Effect[]            // 全屏特效队列
+├── dirtyRects: Rect[]               // 脏矩形列表
 │
 ├── addLayer(layer): void
 ├── removeLayer(id): void
-├── reorderLayer(id, index): void
-├── update(dt): void                // 更新动画/过渡
-├── draw(ctx): void                 // 绘制全部图层
-└── markDirty(rect): void           // 标记脏区域
+├── reorderLayer(id, newZIndex): void
+├── update(dt): void                 // 更新动画/过渡/特效
+├── draw(): void                     // 绘制全部图层（ctx 内部持有，无需外部传入）
+└── markDirty(rect): void            // 标记脏区域
 ```
 
 ### 4.2 图层架构
 
+图层不按固定编号分配，而是按 `zIndex` 排序。常用约定如下（供工厂方法使用）：
+
 ```
-图层渲染顺序（从底到顶）:
+zIndex 约定 (从底到顶):
 ┌────────────────────┐
-│  Layer 0: BG       │  背景层（静态离屏Canvas缓存）
+│  BG       (0)      │  背景层
 ├────────────────────┤
-│  Layer 1: CG       │  CG层（全屏插画，遮挡背景）
+│  CG      (100)     │  CG层（全屏插画，遮挡背景）
 ├────────────────────┤
-│  Layer 2: Middle   │  中间景层（远景人物/物体）
+│  Middle  (200)     │  中间景层（远景人物/物体）
 ├────────────────────┤
-│  Layer 3: Chara L  │  角色层-左
+│  Chara   (300)     │  角色层（所有角色共享；前后遮挡通过同一层内 Sprite 排序）
 ├────────────────────┤
-│  Layer 4: Chara C  │  角色层-中
+│  Fore    (400)     │  前景层（近景遮挡物）
 ├────────────────────┤
-│  Layer 5: Chara R  │  角色层-右
+│  Effect  (500)     │  特效层（粒子、全屏转场）
 ├────────────────────┤
-│  Layer 6: Fore     │  前景层（近景遮挡物）
-├────────────────────┤
-│  Layer 7: Effect   │  特效层（粒子、转场）
-├────────────────────┤
-│  Layer 8: UI       │  UI层（对话框、选项、菜单）
+│  UI      (600)     │  UI层（对话框、选项、菜单）
 └────────────────────┘
 ```
+
+这些值只是约定，可通过 `addLayer()` 传入任意 `zIndex`。`reorderLayer(id, newZIndex)` 修改后数组自动重排序。
 
 ```ts
 interface Layer {
@@ -265,53 +271,63 @@ interface Layer {
   zIndex: number;
   visible: boolean;
   opacity: number; // 0-1
-  offscreen: OffscreenCanvas | null; // 静态缓存
-  dirty: boolean; // 是否需要重绘
-  sprites: Sprite[]; // 该层精灵列表
+  offscreen: OffscreenCanvas | null; // 静态缓存（对于静态层可预先创建）
+  dirty: boolean; // 是否需要重绘到 offscreen
+
+  addSprite(sprite: Sprite): void;
+  removeSprite(id: string): void;
 
   update(dt: number): void;
   draw(ctx: CanvasRenderingContext2D): void;
 }
 ```
 
+`addSprite`/`removeSprite` 内部自动标记 `dirty = true` 并触发缓存失效，外部不直接操作 sprite 数组。
+
 ### 4.3 Sprite（精灵）
 
 ```ts
-class Sprite {
+interface Sprite {
   id: string;
-  texture: Texture; // 纹理引用
-  x: number; // 位置
+  texture: Texture;
+  x: number;
   y: number;
-  width: number;
-  height: number;
-  opacity: number; // 0-1
-  scale: { x: number; y: number };
+  width: number; // 画布上基准宽度（首次 setTexture 时默认赋值为纹理宽度）
+  height: number; // 画布上基准高度
+  opacity: number;
+  scale: { x: number; y: number }; // 额外缩放系数
   rotation: number;
-  anchor: { x: number; y: number }; // 锚点（0-1）
-  effects: SpriteEffect[]; // 精灵特效（抖动、呼吸等）
-  transition: Transition | null; // 过渡动画
+  anchor: { x: number; y: number }; // 锚点 0-1，原点在左上角
+  effects: Effect[]; // 精灵级特效（抖动、呼吸等）
+  transition: Transition | null; // 入场/退场过渡
 
   update(dt: number): void;
   draw(ctx: CanvasRenderingContext2D): void;
-  setTexture(texture: Texture, transition?: Transition): void;
+  setTexture(texture: Texture): void;
   moveTo(x: number, y: number, duration: number, easing: EasingFn): void;
   fadeTo(opacity: number, duration: number): void;
 }
 ```
 
+**尺寸公式：** 最终绘制宽高 = `width × scale.x`、`height × scale.y`。当纹理来自图集时，根据 `Texture.frame` 裁剪源区域；`width`/`height` 默认等于 `frame.w`/`frame.h` 或纹理本身尺寸。
+
+**精灵特效：** 与 Renderer 的全屏特效共用同一 `Effect` 接口（`update(dt)` + `draw(ctx)`），只是挂载位置不同——挂在 Sprite.effects 上的作用域为该精灵，挂在 Renderer.effectQueue 上的为全画面。
+
 ### 4.4 TextureManager（纹理管理）
+
+纹理缓存只有一份，存放于 TextureManager。ResourceManager（见 §6）是加载调度门面，`ResourceManager.loadImage()` 内部委托 AssetLoader 加载 → 创建 Texture → 存入 TextureManager.cache，自身不冗余缓存已解码纹理。
 
 ```
 TextureManager
-├── cache: Map<string, Texture>   // 纹理缓存
-├── atlas: TextureAtlas | null    // 纹理图集
+├── cache: Map<string, Texture>   // 一级缓存：可渲染的纹理对象（LRU 淘汰）
 │
-├── load(src: string): Promise<Texture>
 ├── get(id: string): Texture | null
+├── set(id: string, texture: Texture): void
 ├── unload(id: string): void
-├── preload(urls: string[]): Promise<void>
 └── createAtlas(images: ImageInfo[]): TextureAtlas
 ```
+
+ResourceManager 的 `ResourceCache`（§6.3）是二级缓存，仅缓存原始二进制数据（ArrayBuffer），不缓存 Texture 对象。
 
 ```ts
 interface Texture {
@@ -332,25 +348,42 @@ interface Texture {
 
 ### 4.5 渲染管线
 
+Renderer 支持两种渲染模式，根据是否有脏矩形自动切换：
+
+**模式 A — 全帧模式**（`dirtyRects.length === 0`，适用于动态场景）：
+
 ```
-每帧渲染流程:
-  renderer.draw(ctx):
-    1. ctx.clearRect(0, 0, width, height)
-    2. if 背景层 dirty:
-         → 绘制到离屏Canvas
-         → 标记 clean
-    3. 遍历 layers (zIndex 升序):
-       if layer.visible:
-         if layer.offscreen && !layer.dirty:
-           → 直接 drawImage(offscreen)   // 缓存命中
-         else:
-           → layer.draw(ctx)             // 重绘
-    4. 遍历 effectQueue:
-       → effect.draw(ctx)                // 叠加特效
-    5. 触发 render:frame 事件
+draw():
+  1. ctx.clearRect(0, 0, width, height)
+  2. 遍历 layers (zIndex 升序):
+     if layer.visible:
+       if layer.offscreen && !layer.dirty:
+         → ctx.drawImage(layer.offscreen, 0, 0)   // 缓存命中
+       else:
+         → layer.draw(ctx)                          // 重绘，并可选更新 offscreen
+  3. 遍历 effectQueue:
+     → effect.draw(ctx)                             // 叠加全屏特效
+  4. 发射 render:frame 事件
 ```
 
+**模式 B — 脏矩形模式**（`dirtyRects.length > 0`，适用于静态对话/微动场景）：
+
+```
+draw():
+  1. 合并重叠脏矩形
+  2. ctx.save()
+  3. 裁剪到合并后的脏区域
+  4. 同模式 A 的步骤 2-3（仅绘制与脏区域相交的 Layer/Effect）
+  5. ctx.restore()
+  6. 清空 dirtyRects
+  7. 发射 render:frame 事件
+```
+
+模式 B 不执行 `clearRect`——上一帧内容保留在画布上，只重绘变化区域。
+
 ### 4.6 转场/过渡系统
+
+过渡作用在单个 Sprite 上，通过 `progress` 驱动渲染属性变化。
 
 ```ts
 type EasingFn = (t: number) => number; // t ∈ [0, 1]
@@ -359,71 +392,80 @@ interface Transition {
   type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom';
   duration: number; // 毫秒
   easing: EasingFn;
-  progress: number; // 0-1
   direction?: 'left' | 'right' | 'up' | 'down';
   onComplete?: () => void;
 
-  update(dt: number): void;
-  apply(ctx: CanvasRenderingContext2D, from: Sprite, to: Sprite): void;
+  update(dt: number): void; // 内部累加 progress
+  isComplete(): boolean;
+  apply(ctx: CanvasRenderingContext2D, sprite: Sprite): void;
 }
 ```
 
+`progress` 由 `update(dt)` 内部维护私有字段，不公开。外部通过 `isComplete()` 判断是否结束。`apply(ctx, sprite)` 根据 `type` 和 `progress` 修改 sprite 的渲染属性（opacity、x、y、scale）后绘制。
+
+**示例：** 角色入场时 Sprite 挂载一个 `fade` Transition（opacity: 0→1）；退场时挂载 `fade`（1→0）。入退场各用一个 Transition，不共享 from/to。
+
 **内置转场效果：**
 
-| 类型       | 说明                     |
-| ---------- | ------------------------ |
-| `fade`     | 淡入淡出                 |
-| `slide`    | 滑动（上下左右）         |
-| `zoom`     | 缩放切换                 |
-| `wipe`     | 擦除（直线/圆形/百叶窗） |
-| `pixelate` | 像素化溶解               |
-| `custom`   | 自定义着色器             |
+| 类型       | 说明                          |
+| ---------- | ----------------------------- |
+| `fade`     | 淡入淡出                      |
+| `slide`    | 滑动（上下左右）              |
+| `zoom`     | 缩放切换                      |
+| `wipe`     | 擦除（直线/圆形/百叶窗）      |
+| `pixelate` | 像素化溶解                    |
+| `custom`   | 自定义绘制函数（drawFn 回调） |
 
 ### 4.7 脏矩形优化
 
 ```
-渲染优化 — 仅重绘变化区域:
-  renderer 维护 dirtyRects 列表
-  update 阶段:
-    sprite 移动/变化 → 标记包围盒为脏
-  draw 阶段:
-    1. 合并重叠脏矩形
-    2. ctx.save() → 裁剪到脏区域 → 绘制 → ctx.restore()
-    3. 清空脏矩形列表
+标记脏区域:
+  Sprite.moveTo / fadeTo / setTexture 调用时
+    → 计算 Sprite 在画布上的包围盒
+    → 调用 Renderer.markDirty(rect)
 
-适用场景:
-  - 对话框文字逐字显示（仅刷新对话框区域）
-  - 角色微动动画（仅刷新角色区域）
+  Layer.addSprite / removeSprite 时
+    → 调用 Renderer.markDirty(spriteRect)
 ```
+
+脏矩形仅在模式 B 生效（见 §4.5）。
 
 ### 4.8 文字渲染
 
-文字渲染是视觉小说中最频繁的操作之一，需要专门优化。
+文字渲染是视觉小说中最频繁的操作之一。采用帧驱动状态机，而非 Promise/await。
 
 ```ts
 class TextRenderer {
-  // 逐字显示
-  static async typewriter(
+  fullText: string;
+  speed: number; // 毫秒/字
+  currentCharCount: number; // 当前已显示字数
+  elapsed: number; // 累计毫秒
+  isComplete: boolean;
+
+  constructor(text: string, speed: number);
+
+  update(dt: number): void; // elapsed += dt; currentCharCount = min(fullText.length, floor(elapsed / speed))
+  draw(
     ctx: CanvasRenderingContext2D,
-    text: string,
     x: number,
     y: number,
     maxWidth: number,
     lineHeight: number,
-    speed: number, // 毫秒/字
-    onComplete?: () => void,
-  ): Promise<void>;
+  ): void; // 只绘制 fullText.slice(0, currentCharCount)
 
-  // 富文本支持（颜色、加粗、振动、ruby注音等标签）
+  complete(): void; // 直接跳到全量（跳过打字动画）
+  // 静态工具
   static parseRichText(text: string): RichTextToken[];
 }
 ```
 
+DialogueBox 组件持有 TextRenderer 实例，每帧调用 `update(dt)` → `draw(ctx)`。完成时 `isComplete === true`，此时用户点击继续。
+
 **文字性能优化：**
 
-- 预测量：提前计算文字宽度，避免逐字测量
-- 离屏缓存：已显示完的静态文字绘制到离屏 Canvas
-- 字间距/行间距预设，减少计算
+- 预测量：首次 `draw()` 时计算所有字的位置并缓存到 `glyphPositions: Array<{x, y}>`，避免逐帧重复测量
+- 离屏缓存：已完成显示的行绘制到离屏 Canvas，每次只绘制新增加的字符
+- 字间距/行间距预设，减少运行时计算
 
 ---
 
