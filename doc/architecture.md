@@ -66,6 +66,7 @@ Game
 ├── resource: ResourceManager        // 资源管理
 ├── plugins: PluginManager           // 插件管理
 ├── variableStore: VariableStore     // 变量与旗标存储
+├── saveManager: SaveManager         // 存档管理器
 │
 ├── init(config: GameConfig): void   // 初始化引擎（详见下方 init 流程）
 ├── start(): void                    // 启动游戏循环
@@ -103,12 +104,13 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 4. 创建 Renderer(config.canvas, eventBus)      // ctx 由 Renderer 从 canvas 获取
 5. 创建 InputManager(config.canvas, eventBus)   // 绑定 DOM 事件监听
 6. 创建 AudioManager(eventBus)
-7. 创建 ScriptEngine(eventBus, variableStore)
-8. 创建 PluginManager(eventBus)
-9. 注册 config.plugins → PluginManager.loadAll()
-10. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
-11. 预加载 config.scripts → ScriptEngine.load()
-12. 发射 game:init 事件
+7. 创建 SaveManager(eventBus)
+8. 创建 ScriptEngine(eventBus, variableStore)
+9. 创建 PluginManager(eventBus)
+10. 注册 config.plugins → PluginManager.loadAll()
+11. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
+12. 预加载 config.scripts → ScriptEngine.load()
+13. 发射 game:init 事件
 ```
 
 依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；GameLoop 最后创建，接收 `Updatable[]`。
@@ -1050,79 +1052,74 @@ class InputManager {
 
 ### 9.1 游戏状态设计
 
-**GameState（游戏运行时状态）：**
+引擎不维护集中式 `GameState` 运行时对象——各子系统自有状态（ScriptEngine.pc、Renderer 的角色/背景、AudioManager 的 BGM、VariableStore 的变量/旗标等），Game 仅持有 `variableStore` 和 `saveManager`。
 
-```ts
-interface GameState {
-  currentScript: string; // 当前脚本名
-  scriptPC: number; // 脚本程序计数器
-  bgImage: string | null;
-  characters: CharacterState[];
-  bgmId: string | null;
-  bgmProgress: number; // BGM播放进度(秒)
-  history: DialogueEntry[]; // 对话历史
-  playTime: number; // 累计游玩时间
-}
+存档时 `SaveManager` 遍历各子系统收集数据，组装为 `GameStateSnapshot`（类型定义见 §14.3）：
 
-interface CharacterState {
-  id: string;
-  spriteId: string;
-  position: 'left' | 'center' | 'right' | { x: number; y: number };
-  opacity: number;
-}
-```
+| 来源          | 收集内容          | 方法               |
+| ------------- | ----------------- | ------------------ |
+| ScriptEngine  | 当前脚本名、pc    | `getState()`       |
+| Renderer      | 背景 id、角色列表 | `getState()`       |
+| AudioManager  | BGM id、播放进度  | `getState()`       |
+| VariableStore | variables、flags  | `dump()`           |
+| GameLoop      | 累计游玩时间      | `elapsedTime` 字段 |
 
-变量和旗标由 `VariableStore`（见 §5.4）独立管理，存档/读档时通过 `dump()` / `restore()` 完成序列化与恢复，`GameState` 不再直接持有这两个字段的独立拷贝。
+各子系统提供 `getState()`（或等效方法）返回各自领域的可序列化快照片段，`SaveManager` 在 capture() 中拼接为完整的 `GameStateSnapshot`。
 
 **Settings（用户设置）：**
 
 ```ts
 interface Settings {
-  masterVolume: number;
-  bgmVolume: number;
-  seVolume: number;
-  voiceVolume: number;
-  textSpeed: number; // 字/秒
-  autoSpeed: number; // 自动模式下等待秒数
-  skipMode: 'all' | 'read'; // 跳过模式
+  masterVolume: number; // 0-1
+  bgmVolume: number; // 0-1
+  seVolume: number; // 0-1
+  voiceVolume: number; // 0-1
+  textSpeed: number; // 毫秒/字
+  autoSpeed: number; // 自动模式下等待毫秒数
+  skipMode: 'all' | 'read';
   fullscreen: boolean;
   language: string;
   fontSize: number;
 }
 ```
 
+Settings 独立持久化（全局一份），不嵌入每个存档槽中。类型定义见 §14.3 `SettingsSnapshot`。
+
 ### 9.2 Save/Load 数据格式
 
-```ts
-interface SaveData {
-  version: number; // 存档格式版本（用于迁移）
-  timestamp: number; // 存档时间戳
-  thumbnail: string; // 缩略图（base64）
-  slotLabel: string; // 存档标签（当前对话文本截取）
-  gameState: GameState; // 游戏状态快照
-  settings: Settings; // 存档时的设置
-}
-```
+`SaveData` 和 `GameStateSnapshot` 的权威类型定义见 §14.3。
 
-### 9.3 存档流程
+### 9.3 存档流程（SaveManager）
 
 ```
-存档:
-  1. 引擎暂停
-  2. 生成缩略图：renderer.drawToImage() → toDataURL()
-  3. 序列化 GameState（变量、旗标、PC、角色状态、音频进度）
-  4. 构建 SaveData
-  5. 写入 localStorage / IndexedDB
-  6. 引擎恢复
+Game.save(slot)
+  → eventBus.emit('game:save', { slot })
 
-读档:
-  1. 引擎暂停
-  2. 读取 SaveData
-  3. 恢复 GameState 到引擎各子系统
-  4. 重新加载对应资源（利用缓存加速）
-  5. 跳转到存档时的脚本位置
-  6. 引擎恢复
+SaveManager.capture(engine, slot):
+  1. engine.pause()
+  2. 生成缩略图：renderer.draw() → canvas.toBlob()（Blob 直接存，无需 base64）
+  3. 收集各子系统快照 → 组装 GameStateSnapshot
+  4. 获取当前对话文本截取（≤30字）作为 slotLabel
+  5. 构建 SaveData { version, timestamp, thumbnail, slotLabel, gameState }
+  6. storage.setItem(`save_${slot}`, saveData)  // IndexedDB 优先，降级 localStorage
+  7. engine.resume()
+  8. eventBus.emit('game:saved', { slot })
+
+SaveManager.restore(engine, slot):
+  1. engine.pause()
+  2. saveData = storage.getItem(`save_${slot}`)
+  3. 版本迁移（如有需要）：逐版升级 saveData.gameState 结构
+  4. 恢复各子系统状态：
+     a. variableStore.restore(snapshot.variables, snapshot.flags)
+     b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
+     c. renderer.setState(snapshot.bgImage, snapshot.characters)
+     d. audioManager.setState(snapshot.bgm)
+     e. scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+  5. engine.resume()
+  6. eventBus.emit('game:loaded', { slot })
 ```
+
+读档的资源预加载优先走缓存（TextureManager. cache, ResourceManager.cache），命中则跳过网络请求。版本迁移由 `migrate(saveData)` 工具函数处理，按版本号逐级转换数据格式。
 
 ---
 
@@ -1334,24 +1331,32 @@ Game.init(config)
 
 ```
 存档:
-  UI点击存档
-    → EventBus 发送 'ui:save'
-    → SaveManager.capture(engine)
-      → 生成缩略图
-      → 序列化 engine.state
+  UI点击存档槽
+    → SaveLoadSlot.onClick()
+    → Game.save(slot)
+    → SaveManager.capture(engine, slot)
+      → engine.pause()
+      → 生成缩略图（canvas.toBlob()）
+      → 遍历各子系统收集快照 → 组装 GameStateSnapshot
       → 构建 SaveData
       → IndexedDB 持久化
+      → engine.resume()
       → EventBus 发送 'game:saved'
 
 读档:
-  UI点击读档
+  UI点击读档槽
+    → SaveLoadSlot.onClick()
+    → Game.load(slot)
     → SaveManager.restore(engine, slot)
+      → engine.pause()
       → 从 IndexedDB 读取 SaveData
-      → ResourceManager.preloadRequired(data)  // 预加载需要资源
-      → 恢复 engine.state
-      → Interpreter.pc = data.gameState.scriptPC
-      → Renderer 恢复角色/背景状态
-      → AudioManager 恢复音频
+      → 版本迁移（如有）
+      → variableStore.restore(snapshot.variables, snapshot.flags)
+      → resourceManager.preloadScene(snapshot.currentScript)
+      → renderer.setState(snapshot.bgImage, snapshot.characters)
+      → audioManager.setState(snapshot.bgm)
+      → scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+      → engine.resume()
       → EventBus 发送 'game:loaded'
 ```
 
@@ -1447,28 +1452,28 @@ interface Choice {
 // types/save.ts
 
 interface SaveData {
-  version: number;
-  timestamp: number;
-  thumbnail: string;
-  slotLabel: string;
+  version: number; // 存档格式版本（用于迁移）
+  timestamp: number; // 存档时间戳
+  thumbnail: Blob | string; // 缩略图，IndexedDB 存 Blob，localStorage 降级 base64
+  slotLabel: string; // 存档标签（当前对话文本截取 ≤30 字）
   gameState: GameStateSnapshot;
-  settings: SettingsSnapshot;
 }
 
 interface GameStateSnapshot {
   currentScript: string;
   scriptPC: number;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   flags: string[];
   bgImage: string | null;
   characters: Array<{
     id: string;
     spriteId: string;
-    position: string | { x: number; y: number };
+    position: { x: number; y: number };
     opacity: number;
   }>;
   bgm: { id: string; progress: number } | null;
   history: DialogueEntry[];
+  playTime: number; // 累计游玩时间（毫秒）
 }
 ```
 
