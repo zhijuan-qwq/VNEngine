@@ -1,4 +1,5 @@
 import type { EventBus } from '@/core/EventBus';
+import type { EngineEvents } from './events';
 
 export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
 
@@ -143,6 +144,6 @@ export interface VNEngine {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   plugins: PluginManager;
-  eventBus: EventBus;
+  eventBus: EventBus<EngineEvents>;
   destroy(): void;
 }
