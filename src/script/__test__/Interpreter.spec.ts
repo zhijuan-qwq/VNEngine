@@ -101,7 +101,7 @@ describe('Interpreter', () => {
       bus.on('script:end', handler);
       interpreter.load(makeScript([]));
       interpreter.step();
-      expect(handler).toHaveBeenCalledWith('test');
+      expect(handler).toHaveBeenCalledWith({});
     });
 
     it('should emit script:end when pc reaches end of commands', () => {
@@ -111,7 +111,7 @@ describe('Interpreter', () => {
       registry.register({ type: 'say', execute: vi.fn() });
       interpreter.load(script);
       interpreter.step();
-      expect(handler).toHaveBeenCalledWith('test');
+      expect(handler).toHaveBeenCalledWith({});
     });
 
     it('should skip when state is waiting', () => {
@@ -122,7 +122,7 @@ describe('Interpreter', () => {
         { type: 'end', args: {}, line: 2 },
       ]);
       interpreter.load(script);
-      interpreter.wait('click', () => {});
+      interpreter.wait('input:click', () => {});
       interpreter.step();
       expect(execute).not.toHaveBeenCalled();
     });
@@ -260,7 +260,7 @@ describe('Interpreter', () => {
         { type: 'say', args: { speaker: 'Hero' }, line: 1 },
       ]);
       interpreter.load(script);
-      interpreter.wait('click', () => {});
+      interpreter.wait('input:click', () => {});
       interpreter.step();
       expect(execute).not.toHaveBeenCalled();
     });
@@ -273,8 +273,8 @@ describe('Interpreter', () => {
         { type: 'say', args: { speaker: 'Hero' }, line: 1 },
       ]);
       interpreter.load(script);
-      interpreter.wait('click', callback);
-      bus.emit('click');
+      interpreter.wait('input:click', callback);
+      bus.emit('input:click', { x: 0, y: 0 });
       expect(callback).toHaveBeenCalledOnce();
       interpreter.step();
       expect(execute).toHaveBeenCalledOnce();
