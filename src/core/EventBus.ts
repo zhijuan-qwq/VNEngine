@@ -1,38 +1,45 @@
-type Handler = (...args: unknown[]) => void;
+type Handler<T = unknown> = (payload: T) => void;
 
-class EventBus {
-  private listeners: Map<string, Set<Handler>>;
-  private onceWrappers: WeakMap<Handler, Handler>;
+class EventBus<T extends Record<string, unknown> = Record<string, unknown>> {
+  private listeners: Map<string, Set<Handler<unknown>>>;
+  private onceWrappers: WeakMap<Handler<unknown>, Handler<unknown>>;
 
   constructor() {
     this.listeners = new Map();
     this.onceWrappers = new WeakMap();
   }
 
-  public on(event: string, handler: Handler): void {
-    if (!this.listeners.get(event)) {
-      this.listeners.set(event, new Set([handler]));
+  public on<K extends keyof T>(event: K, handler: Handler<T[K]>): void {
+    const eventName = event as string;
+    if (!this.listeners.get(eventName)) {
+      this.listeners.set(eventName, new Set([handler as Handler<unknown>]));
     } else {
-      this.listeners.get(event)?.add(handler);
+      this.listeners.get(eventName)?.add(handler as Handler<unknown>);
     }
   }
-  public off(event: string, handler: Handler): void {
-    const actualHandler = this.onceWrappers.get(handler) ?? handler;
-    this.listeners.get(event)?.delete(actualHandler);
+
+  public off<K extends keyof T>(event: K, handler: Handler<T[K]>): void {
+    const eventName = event as string;
+    const actualHandler =
+      this.onceWrappers.get(handler as Handler<unknown>) ?? handler;
+    this.listeners.get(eventName)?.delete(actualHandler as Handler<unknown>);
   }
-  public once(event: string, handler: Handler): void {
-    const onceHandler = ((...args: unknown[]) => {
-      handler(...args);
-      this.off(event, onceHandler);
-    }) as Handler;
-    this.onceWrappers.set(handler, onceHandler);
-    this.on(event, onceHandler);
+
+  public once<K extends keyof T>(event: K, handler: Handler<T[K]>): void {
+    const onceHandler = ((payload: unknown) => {
+      (handler as Handler<unknown>)(payload);
+      this.off(event, onceHandler as Handler<T[K]>);
+    }) as Handler<unknown>;
+    this.onceWrappers.set(handler as Handler<unknown>, onceHandler);
+    this.on(event, onceHandler as Handler<T[K]>);
   }
-  public emit(event: string, ...args: unknown[]): void {
-    this.listeners.get(event)?.forEach((handler) => handler(...args));
+
+  public emit<K extends keyof T>(event: K, payload: T[K]): void {
+    this.listeners.get(event as string)?.forEach((handler) => handler(payload));
   }
-  public clear(): void {
-    this.listeners.clear();
+
+  public removeAllListeners(event: string): void {
+    this.listeners.delete(event);
   }
 }
 

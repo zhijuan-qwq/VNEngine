@@ -1,7 +1,7 @@
 import type { Position } from './engine';
 import type { Choice } from './script';
 
-export interface EngineEvents {
+export type EngineEvents = {
   'script:command': { cmd: string; args: Record<string, unknown> };
   'script:choice': { choices: Choice[] };
   'script:say': { speaker: string; text: string };
@@ -20,7 +20,7 @@ export interface EngineEvents {
   'input:hover': { x: number; y: number };
   'resource:progress': { loaded: number; total: number; percent: number };
   'resource:ready': Record<string, never>;
-}
+};
 
 export type EventName = keyof EngineEvents;
 

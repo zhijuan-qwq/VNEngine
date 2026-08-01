@@ -2,6 +2,7 @@ import type { Command, Script, ScriptContext } from '@/types/script';
 import type { VariableStore } from './VariableStore';
 import type { CommandRegistry } from './CommandRegistry';
 import type { VNEngine } from '@/types/engine';
+import type { EventName } from '@/types/events';
 import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
 
 interface IfState {
@@ -199,7 +200,7 @@ class Interpreter {
 
   private endScript(): void {
     this.state = 'idle';
-    this.engine.eventBus.emit('script:end', this.script.name);
+    this.engine.eventBus.emit('script:end', {});
   }
 
   private resolveLabel(name: string): number {
@@ -232,7 +233,7 @@ class Interpreter {
     }
   }
 
-  public wait(event: string, handler: () => void): void {
+  public wait(event: EventName, handler: () => void): void {
     this.state = 'waiting';
     this.engine.eventBus.once(event, () => {
       this.state = 'running';
