@@ -161,6 +161,23 @@ describe('Interpreter', () => {
       interpreter.step();
       expect(interpreter.getPc()).toBe(1);
     });
+
+    it('should emit script:end and stop advancing on @end', () => {
+      const handler = vi.fn();
+      bus.on('script:end', handler);
+      const sayExecute = vi.fn();
+      registry.register({ type: 'say', execute: sayExecute });
+      const script = makeScript([
+        makeCmd('end', {}, 1),
+        makeCmd('say', { text: 'after' }, 2),
+      ]);
+      interpreter.load(script);
+      interpreter.step();
+      expect(handler).toHaveBeenCalledWith({});
+      expect(interpreter.getPc()).toBe(2);
+      interpreter.step();
+      expect(sayExecute).not.toHaveBeenCalled();
+    });
   });
 
   describe('jump', () => {
