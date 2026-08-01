@@ -154,6 +154,11 @@ class Interpreter {
         this.pc++;
         return true;
       }
+      case 'end': {
+        this.pc = this.script.commands.length;
+        this.endScript();
+        return true;
+      }
       default:
         return false;
     }
