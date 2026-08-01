@@ -196,25 +196,34 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 **核心事件定义：**
 
-| 事件名           | 触发时机       | 载荷                                                |
-| ---------------- | -------------- | --------------------------------------------------- |
-| `game:init`      | 引擎初始化完成 | `{}`                                                |
-| `game:start`     | 游戏循环启动   | `{}`                                                |
-| `game:pause`     | 引擎暂停       | `{}`                                                |
-| `game:resume`    | 引擎恢复       | `{}`                                                |
-| `game:destroy`   | 引擎销毁前     | `{}`                                                |
-| `game:save`      | 存档完成       | `{ slot: number }`                                  |
-| `game:load`      | 读档完成       | `{ slot: number }`                                  |
-| `game:settings`  | 设置变更       | `{ key: string; value: unknown }`                   |
-| `script:command` | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`    |
-| `script:choice`  | 显示选项时     | `{ choices: Choice[] }`                             |
-| `script:end`     | 脚本执行完毕   | `{}`                                                |
-| `render:frame`   | 每帧渲染后     | `{ dt: number }`                                    |
-| `character:show` | 角色立绘显示   | `{ id: string; position: Position }`                |
-| `character:hide` | 角色立绘隐藏   | `{ id: string }`                                    |
-| `bg:change`      | 背景切换       | `{ id: string; transition?: string }`               |
-| `audio:play`     | 音频播放       | `{ track: string; type: 'bgm' \| 'se' \| 'voice' }` |
-| `audio:stop`     | 音频停止       | `{ track: string }`                                 |
+| 事件名                   | 触发时机       | 载荷                                                                                               |
+| ------------------------ | -------------- | -------------------------------------------------------------------------------------------------- |
+| `game:init`              | 引擎初始化完成 | `{}`                                                                                               |
+| `game:start`             | 游戏循环启动   | `{}`                                                                                               |
+| `game:pause`             | 引擎暂停       | `{}`                                                                                               |
+| `game:resume`            | 引擎恢复       | `{}`                                                                                               |
+| `game:destroy`           | 引擎销毁前     | `{}`                                                                                               |
+| `game:save`              | 存档完成       | `{ slot: number }`                                                                                 |
+| `game:load`              | 读档完成       | `{ slot: number }`                                                                                 |
+| `game:settings`          | 设置变更       | `{ key: string; value: unknown }`                                                                  |
+| `script:command`         | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`                                                   |
+| `script:say`             | 显示对话       | `{ speaker: string; text: string; voice?; speed?; mode? }`                                         |
+| `script:choice`          | 显示选项时     | `{ choices: Choice[]; mode?: 'adv' \| 'nvl' }`                                                     |
+| `script:choice:selected` | 用户选中选项后 | `{}`                                                                                               |
+| `script:wait:done`       | 等待时长已到   | `{}`                                                                                               |
+| `script:clear`           | 清除对话框     | `{}`                                                                                               |
+| `script:end`             | 脚本执行完毕   | `{}`                                                                                               |
+| `render:frame`           | 每帧渲染后     | `{ dt: number }`                                                                                   |
+| `character:show`         | 角色立绘显示   | `{ id: string; position: Position; sprite?; transition?; duration? }`                              |
+| `character:hide`         | 角色立绘隐藏   | `{ id: string; transition?; duration? }`                                                           |
+| `character:move`         | 角色移动       | `{ id: string; position: Position; duration?; easing? }`                                           |
+| `character:sprite`       | 角色立绘切换   | `{ id: string; sprite: string; transition?; duration? }`                                           |
+| `bg:change`              | 背景切换       | `{ id: string; transition?; duration? }`                                                           |
+| `audio:play`             | 音频播放       | `{ id: string; type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; loop?; loopCount?; fadeIn?; volume? }` |
+| `audio:stop`             | 音频停止       | `{ type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; fadeOut? }`                                        |
+| `effect:play`            | 画面特效开始   | `{ type: 'shake' \| 'flash' \| 'snow' \| 'rain'; duration?; intensity?; color?; density? }`        |
+| `effect:stop`            | 画面特效结束   | `{}`                                                                                               |
+| `input:click`            | 画布点击       | `{ x: number; y: number }`                                                                         |
 
 ---
 
@@ -612,15 +621,15 @@ Interpreter
 step():
   1. 获取 commands[pc]
   2. 若 state === 'waiting' → 跳过
-  3. 流程命令（@if/@switch/@jump/@call/@return）由 Interpreter 内部直接处理，
-     不经过 CommandRegistry
+  3. 流程命令（@label/@jump/@call/@return/@if/@elseif/@else/@endif/@end）由
+     Interpreter 内部直接处理，不经过 CommandRegistry
   4. 其余命令 → 执行 CommandRegistry.execute(cmd, context)
   5. pc++
   6. 若 pc >= commands.length → 触发 script:end
 
-等待类命令（@say, @choice）执行后:
+等待类命令（@say, @choice, @wait, @pause）执行后:
   state → 'waiting'
-  等待用户点击/选择 → state → 'running' → 继续 step()
+  等待用户点击/选择/计时结束 → state → 'running' → 继续 step()
 ```
 
 ### 5.6 CommandRegistry（命令注册表）
@@ -643,18 +652,20 @@ class CommandRegistry {
 
 **内置命令清单：**
 
-| 分类 | 命令                                            | 说明                  |
-| ---- | ----------------------------------------------- | --------------------- |
-| 背景 | `@bg`                                           | 切换背景（支持转场）  |
-| 角色 | `@show`, `@hide`, `@move`                       | 角色显示/隐藏/移动    |
-| 立绘 | `@sprite`                                       | 切换角色立绘表情/服装 |
-| 对话 | `@say` 或直接 `角色名 "文本"`                   | 显示对话              |
-| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice` | 音频控制              |
-| 选项 | `@choice`                                       | 显示选项分支          |
-| 变量 | `@set`, `@add`, `@mul`, `@random`               | 变量操作              |
-| 旗标 | `@flag`, `@unflag`                              | 旗标操作              |
-| 特效 | `@shake`, `@flash`, `@snow`, `@rain`            | 画面特效              |
-| 系统 | `@wait`, `@end`, `@label`, `@comment`           | 系统命令              |
+| 分类 | 命令                                                                            | 说明                   |
+| ---- | ------------------------------------------------------------------------------- | ---------------------- |
+| 背景 | `@bg`                                                                           | 切换背景（支持转场）   |
+| 角色 | `@show`, `@hide`, `@move`                                                       | 角色显示/隐藏/移动     |
+| 立绘 | `@sprite`                                                                       | 切换角色立绘表情/服装  |
+| 对话 | `@say` 或直接 `角色名 "文本"`                                                   | 显示对话，等待点击继续 |
+| 选项 | `@choice` … `@endchoice`                                                        | 显示选项分支，等待选择 |
+| 音频 | `@playBgm`, `@stopBgm`, `@playSe`, `@playVoice`, `@playAmbient`, `@stopAmbient` | 音频控制               |
+| 变量 | `@set`, `@add`, `@sub`, `@mul`, `@div`, `@mod`, `@random`                       | 变量操作               |
+| 旗标 | `@flag`, `@unflag`, `@toggle`, `@clearFlags`                                    | 旗标操作               |
+| 特效 | `@shake`, `@flash`, `@snow`, `@rain`, `@stopEffect`                             | 画面特效               |
+| 系统 | `@wait`, `@pause`, `@click`, `@clear`, `@end`                                   | 系统命令               |
+
+内置命令实现位于 `src/script/commands/`（`state.ts` 变量/旗标、`presentation.ts` 表现、`dialogue.ts` 对话/阻塞），通过 `registerBuiltinCommands(registry)` 统一注册到 `CommandRegistry`。handler 通过 `ScriptContext` 读写 `VariableStore`、向 `eventBus` 发射事件，并调用 `interpreter.wait()` 阻塞等待用户输入（见 §5.5）。
 
 ### 5.7 自定义命令扩展示例
 
@@ -1246,14 +1257,11 @@ src/
 │   ├── Interpreter.ts             # 脚本解释器
 │   ├── CommandRegistry.ts         # 命令注册表
 │   └── commands/                  # 内置命令实现
-│       ├── CommandBase.ts         # 命令基类
-│       ├── BgCommand.ts
-│       ├── ShowCommand.ts
-│       ├── HideCommand.ts
-│       ├── SayCommand.ts
-│       ├── ChoiceCommand.ts
-│       ├── AudioCommand.ts
-│       └── VariableCommand.ts
+│       ├── index.ts               # 注册入口（registerBuiltinCommands）
+│       ├── utils.ts               # 共享参数解析工具（时长/位置参数/字面量）
+│       ├── state.ts               # 变量与旗标命令
+│       ├── presentation.ts        # 背景/角色/音频/画面特效命令
+│       └── dialogue.ts            # 对话/选项/等待/系统命令
 │
 ├── audio/                         # 音频系统
 │   ├── AudioManager.ts            # 音频管理器
@@ -1419,15 +1427,60 @@ interface SpritesheetConfig {
 // 事件类型（string → 泛型映射）
 interface EngineEvents {
   'script:command': { cmd: string; args: Record<string, any> };
-  'script:choice': { choices: Choice[] };
-  'script:say': { speaker: string; text: string };
+  'script:choice': { choices: Choice[]; mode?: 'adv' | 'nvl' };
+  'script:say': {
+    speaker: string;
+    text: string;
+    voice?: string;
+    speed?: number;
+    mode?: 'adv' | 'nvl';
+  };
+  'script:clear': {};
+  'script:choice:selected': {};
+  'script:wait:done': {};
   'script:end': {};
   'render:frame': { dt: number };
-  'character:show': { id: string; position: Position };
-  'character:hide': { id: string };
-  'bg:change': { id: string; transition?: string };
-  'audio:play': { id: string; type: 'bgm' | 'se' | 'voice' };
-  'audio:stop': { type: 'bgm' | 'se' | 'voice' };
+  'character:show': {
+    id: string;
+    position: Position;
+    sprite?: string;
+    transition?: string;
+    duration?: number;
+  };
+  'character:hide': { id: string; transition?: string; duration?: number };
+  'character:move': {
+    id: string;
+    position: Position;
+    duration?: number;
+    easing?: string;
+  };
+  'character:sprite': {
+    id: string;
+    sprite: string;
+    transition?: string;
+    duration?: number;
+  };
+  'bg:change': { id: string; transition?: string; duration?: number };
+  'audio:play': {
+    id: string;
+    type: 'bgm' | 'se' | 'voice' | 'ambient';
+    loop?: boolean;
+    loopCount?: number;
+    fadeIn?: number;
+    volume?: number;
+  };
+  'audio:stop': {
+    type: 'bgm' | 'se' | 'voice' | 'ambient';
+    fadeOut?: number;
+  };
+  'effect:play': {
+    type: 'shake' | 'flash' | 'snow' | 'rain';
+    duration?: number;
+    intensity?: number;
+    color?: string;
+    density?: number;
+  };
+  'effect:stop': {};
   'game:save': { slot: number };
   'game:load': { slot: number };
   'game:pause': {};
