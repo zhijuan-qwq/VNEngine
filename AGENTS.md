@@ -196,5 +196,6 @@ npm run spell:check  # cSpell 拼写检查
   - Breaking Changes：以 BREAKING CHANGE: <描述> 开头。
   - 关闭 Issue：如 Closes #123 或 Fixes #456, #789。
 
+**探索项目时使用codegraph mcp**
 
 
