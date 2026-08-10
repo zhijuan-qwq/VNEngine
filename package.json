@@ -43,5 +43,8 @@
     "*.{ts,js,html}": [
       "cspell lint --no-progress"
     ]
+  },
+  "dependencies": {
+    "pixi.js": "^8.19.0"
   }
 }
