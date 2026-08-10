@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 架构
 
-VNEngine — 基于 TypeScript + Canvas 的视觉小说引擎。架构文档见 `doc/architecture.md`，脚本 DSL 规范见 `doc/script-dsl.md`。
+VNEngine — 基于 TypeScript + PixiJS v8 的视觉小说引擎。架构文档见 `doc/architecture.md`，脚本 DSL 规范见 `doc/script-dsl.md`。
 
 核心子系统（当前已实现部分）：
 

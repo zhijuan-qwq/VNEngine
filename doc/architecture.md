@@ -2,11 +2,10 @@
 
 ## 一、设计目标
 
-- **高性能**：纯 Canvas 渲染，避免 DOM 重排重绘；脏矩形局部刷新 + 离屏缓存，稳定 60fps
+- **高性能**：基于 PixiJS v8（WebGL/WebGPU）渲染，利用 GPU 批渲染与纹理缓存替代逐帧 Canvas 2D 绘制，稳定 60fps
 - **高可扩展**：命令注册制 + 插件系统 + 中间件管线，新功能以插件形式接入
 - **解耦**：事件总线驱动模块间通信，各系统独立可测试
 - **易用**：声明式脚本语法，可视化编辑友好
-- **跨平台潜力**：核心引擎不依赖 Vue/DOM，可迁移至 Node.js 或其他运行时
 
 ---
 
@@ -18,20 +17,21 @@
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │                     Game 主控                         │  │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │  │
-│  │  │  GameLoop  │  │  EventBus  │  │ PluginManager  │  │  │
-│  │  │ (RAF循环)  │  │ (事件总线) │  │  (插件管理)    │  │  │
+│  │  │  Updater  │  │  EventBus  │  │ PluginManager  │  │  │
+│  │  │ (pixi Ticker)│ │ (事件总线) │  │  (插件管理)    │  │  │
 │  │  └────────────┘  └────────────┘  └────────────────┘  │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                            │
 │ ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐ │
 │ │ Renderer  │  │  Script   │  │   Audio   │  │ Resource  │ │
-│ │ (渲染)    │  │  (脚本)   │  │  (音频)   │  │  (资源)   │ │
+│ │ (PixiJS)  │  │  (脚本)   │  │  (音频)   │  │  (资源)   │ │
 │ │           │  │           │  │           │  │           │ │
-│ │ Layer栈   │  │ Parser    │  │ BGM/BGS   │  │ Loader    │ │
-│ │ Texture   │  │ Interpr   │  │ SE/Voice  │  │ Cache     │ │
-│ │ Sprite    │  │ Command   │  │ Fade控制  │  │ Preload   │ │
-│ │ Effect    │  │ VarStore  │  │           │  │           │ │
-│ │ UI绘制    │  │ Flow控制  │  │           │  │           │ │
+│ │ LayerStack│  │ Parser    │  │ BGM/BGS   │  │ Loader    │ │
+│ │ (Container│  │ Interpr   │  │ SE/Voice  │  │ Cache     │ │
+│ │  zIndex)  │  │ Command   │  │ Fade控制  │  │ Preload   │ │
+│ │ Sprite    │  │ VarStore  │  │           │  │           │ │
+│ │ Text      │  │ Flow控制  │  │           │  │           │ │
+│ │ Effect    │  │           │  │           │  │           │ │
 │ └───────────┘  └───────────┘  └───────────┘  └───────────┘ │
 │                                                            │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -42,10 +42,11 @@
 
 ### 分层说明
 
-| 层级           | 职责                                        | 依赖关系               |
-| -------------- | ------------------------------------------- | ---------------------- |
-| **引擎 Core**  | 游戏循环、渲染、脚本执行、音频、资源、存档  | 框架无关，可独立运行   |
-| **平台适配层** | Canvas DOM 挂载、输入事件绑定、文件系统访问 | 连接 Core 与浏览器环境 |
+| 层级           | 职责                                                                 | 依赖关系                   |
+| -------------- | -------------------------------------------------------------------- | -------------------------- |
+| **引擎 Core**  | 游戏循环、渲染、脚本执行、音频、资源、存档                           | 框架无关，可独立运行       |
+| **渲染基座**   | PixiJS v8 Application：场景图、批渲染、纹理/资源缓存、Federated 事件 | 由 Core 持有，WebGL/WebGPU |
+| **平台适配层** | Canvas DOM 挂载、输入事件绑定、文件系统访问                          | 连接 Core 与浏览器环境     |
 
 ---
 
@@ -57,10 +58,10 @@ Game 是引擎的生命周期编排器，负责创建子系统、按依赖顺序
 
 ```
 Game
-├── canvas: HTMLCanvasElement        // 主画布
-├── loop: GameLoop                   // 游戏循环
+├── app: Application                 // PixiJS Application（stage/ticker/canvas/screen）
+├── updater: Updater                 // 逐帧驱动器（包一层 app.ticker）
 ├── eventBus: EventBus               // 事件总线
-├── renderer: Renderer               // 渲染器（独占 ctx）
+├── renderer: Renderer               // 渲染器（持有 LayerStack，驱动 bg/character/effect）
 ├── script: ScriptEngine             // 脚本引擎
 ├── audio: AudioManager              // 音频管理
 ├── resource: ResourceManager        // 资源管理
@@ -68,11 +69,11 @@ Game
 ├── variableStore: VariableStore     // 变量与旗标存储
 ├── saveManager: SaveManager         // 存档管理器
 │
-├── init(config: GameConfig): void   // 初始化引擎（详见下方 init 流程）
-├── start(): void                    // 启动游戏循环
+├── async init(config: GameConfig): Promise<void>  // 初始化引擎（详见下方 init 流程）
+├── start(): void                    // 启动游戏循环（app.ticker.start()）
 ├── pause(): void                    // 暂停
 ├── resume(): void                   // 恢复
-├── destroy(): void                  // 销毁（清理资源、取消 RAF）
+├── destroy(): void                  // 销毁（清理资源、停止 ticker）
 ├── loadScript(url: string): void    // 运行时动态加载脚本（章节切换等）
 ├── save(slot: number): void         // 存档
 └── load(slot: number): void         // 读档
@@ -95,31 +96,33 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 
 `init` 多次调用非法，需先 `destroy` 再重新 `init`。`start` 可在 `ready` 或 `paused` 状态下调用。
 
-**init 初始化顺序：**
+**init 初始化顺序（async，PixiJS v8）：**
 
 ```
 1. 创建 EventBus
 2. 创建 VariableStore
 3. 创建 ResourceManager(eventBus, config.assets)
-4. 创建 Renderer(config.canvas, eventBus)      // ctx 由 Renderer 从 canvas 获取
-5. 创建 InputManager(config.canvas, eventBus)   // 绑定 DOM 事件监听
-6. 创建 AudioManager(eventBus)
-7. 创建 SaveManager(eventBus)
-8. 创建 ScriptEngine(eventBus, variableStore)
-9. 创建 PluginManager(eventBus)
-10. 注册 config.plugins → PluginManager.loadAll()
-11. 创建 GameLoop([renderer, scriptEngine, audioManager, pluginManager])
-12. 预加载 config.scripts → ScriptEngine.load()
-13. 发射 game:init 事件
+4. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
+   并将 app.canvas 挂载到容器；构建 LayerStack（根 Container + 图层 Container）
+5. 创建 Renderer(app.stage, eventBus)         // 持有 LayerStack，订阅 bg/character/effect 事件
+6. 创建 InputManager(app.stage, eventBus)      // pixi Federated Pointer Events
+7. 创建 AudioManager(eventBus)
+8. 创建 SaveManager(eventBus)
+9. 创建 ScriptEngine(eventBus, variableStore)
+10. 创建 PluginManager(eventBus)
+11. 注册 config.plugins → PluginManager.loadAll()
+12. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager])，内部 app.ticker.add(...)
+13. 预加载 config.scripts → ScriptEngine.load()
+14. 发射 game:init 事件
 ```
 
-依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；GameLoop 最后创建，接收 `Updatable[]`。
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；Updater 最后创建，接收 `Updatable[]`。
 
 **GameConfig 结构：**
 
 ```ts
 interface GameConfig {
-  canvas: HTMLCanvasElement;
+  canvas?: HTMLCanvasElement; // 可选；缺省时由 PixiJS 自行创建并挂载
   width: number; // 逻辑宽度 (如 1280)
   height: number; // 逻辑高度 (如 720)
   scaleMode: 'fit' | 'stretch' | 'fixed';
@@ -133,9 +136,9 @@ interface GameConfig {
 }
 ```
 
-### 3.2 GameLoop（游戏循环）
+### 3.2 Updater（游戏循环）
 
-GameLoop 只管理帧时序，通过 `Updatable` 接口统一驱动各子系统。
+引擎不再自绘 RAF 循环，而是由 PixiJS 的 `Ticker` 统一驱动帧时序。`Updater` 是对 `app.ticker` 的薄封装：注册一批 `Updatable`，每帧按顺序调用其 `update(dt)`，并额外做 dt 上限钳制与 `render:frame` 事件发射。
 
 ```ts
 interface Updatable {
@@ -144,35 +147,29 @@ interface Updatable {
 ```
 
 ```
-GameLoop
+Updater
+├── app: Application                 // 持有 pixi Ticker 引用
 ├── updatables: Updatable[]          // 构造注入的子系统列表
 ├── fps: number                      // 目标帧率
-├── dt: number                       // 当前帧间隔（秒）
 ├── elapsedTime: number              // 累计运行时间
-├── running: boolean                 // 暂停标志（pause 设 false，不取消 RAF）
-├── rafId: number | null             // 当前 RAF 句柄
 │
-├── start(): void                    // 绑定 RAF，开始循环
-├── stop(): void                     // 取消 RAF，重置计时器（用于 destroy）
-├── pause(): void                    // 暂停更新（设置 running=false，保留 RAF）
-├── resume(): void                   // 恢复更新
+├── start(): void                    // app.ticker.start()
+├── stop(): void                     // app.ticker.stop()（用于 destroy）
+├── pause(): void                    // 暂停更新（ticker.stop()，不销毁）
+├── resume(): void                   // 恢复更新（ticker.start()）
 │
-私有方法:
-  private tick(timestamp: number): void
-    1. 计算 dt = (timestamp - lastTimestamp) / 1000
-       限制 dt 上限为 1/10（100ms），防止标签页切回后跳帧
-    2. if running:
-         for (const u of updatables) u.update(dt)
-    3. renderer.draw()
-    4. 发射 render:frame 事件
-    5. rafId = requestAnimationFrame(tick)
+ticker 回调:
+  tick(ticker: Ticker)
+    1. dt = ticker.deltaMS / 1000，钳制上限 1/10（100ms），防止标签页切回后跳帧
+    2. if running: for (const u of updatables) u.update(dt)
+    3. 发射 render:frame 事件
 ```
 
 **帧率控制：** fps 低于显示器刷新率时采用跳帧策略——两次渲染之间未达到 `1000/fps` 毫秒时跳过渲染，但逻辑仍按 dt 更新。默认 60 表示不跳帧。
 
-**与 Game 的协作：** `start/stop` 用于引擎初始化/销毁，`pause/resume` 用于用户暂停/恢复。Game 的 `pause/resume/destroy` 直接委托给 GameLoop 对应方法。
+**与 Game 的协作：** `start/stop` 用于引擎初始化/销毁，`pause/resume` 用于用户暂停/恢复。Game 的 `pause/resume/destroy` 直接委托给 Updater 对应方法（即 ticker 的 stop/start）。
 
-UI 渲染属于 Renderer 职责（最顶层 Layer），GameLoop 层面只调用 `renderer.draw()` 即可。
+UI 渲染属于 Renderer 职责（最顶层 Layer），Updater 层面只负责逐帧更新与 `render:frame` 事件。
 
 ### 3.3 EventBus（事件总线）
 
@@ -223,7 +220,8 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `audio:stop`             | 音频停止       | `{ type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; fadeOut? }`                                        |
 | `effect:play`            | 画面特效开始   | `{ type: 'shake' \| 'flash' \| 'snow' \| 'rain'; duration?; intensity?; color?; density? }`        |
 | `effect:stop`            | 画面特效结束   | `{}`                                                                                               |
-| `input:click`            | 画布点击       | `{ x: number; y: number }`                                                                         |
+| `input:click`            | 画布点击       | `{ x: number; y: number }`（逻辑坐标，由 `toLocal(e.global)` 换算）                                |
+| `input:skip`             | 打字中点击     | `{}`（打字机进行中，点击用于跳过/补全当前文本，而非推进脚本）                                      |
 
 ---
 
@@ -231,30 +229,27 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 ### 4.1 整体设计
 
-Renderer 实现 `Updatable` 接口（见 §3.2），由 GameLoop 统一驱动。
+渲染基于 **PixiJS v8**。Renderer 实现 `Updatable` 接口（见 §3.2），由 Updater（`app.ticker`）统一驱动。渲染对象树由 pixi 场景图承担：Renderer 只负责组织图层、订阅引擎事件，并把领域概念（背景/角色/特效）映射为 pixi 显示对象。
 
 ```
 Renderer
-├── canvas: HTMLCanvasElement        // 主画布（用于获取 ctx 和尺寸）
-├── ctx: CanvasRenderingContext2D    // 2D 上下文（构造时从 canvas 获取，独占管理）
-├── width: number                    // 逻辑宽度（来自 GameConfig）
-├── height: number                   // 逻辑高度（来自 GameConfig）
-├── layers: Layer[]                  // 图层栈（按 zIndex 升序维护）
-├── textureManager: TextureManager   // 纹理管理
-├── effectQueue: Effect[]            // 全屏特效队列
-├── dirtyRects: Rect[]               // 脏矩形列表
+├── app: Application                 // pixi Application（stage/ticker）
+├── eventBus: EventBus               // 订阅 bg/character/effect 事件
+├── layerStack: LayerStack           // 根 Container + 图层 Container（zIndex 排序）
+├── characters: CharacterRegistry    // 角色 → pixi Sprite 生命周期
+├── backgrounds: BackgroundManager   // 背景切换（淡入淡出）
+├── effects: EffectManager           // shake/flash/snow/rain
+├── tween: TweenEngine               // 基于 ticker 的补间
 │
-├── addLayer(layer): void
-├── removeLayer(id): void
-├── reorderLayer(id, newZIndex): void
-├── update(dt): void                 // 更新动画/过渡/特效
-├── draw(): void                     // 绘制全部图层（ctx 内部持有，无需外部传入）
-└── markDirty(rect): void            // 标记脏区域
+├── init(stage: Container, eventBus): void   // 构建 LayerStack、订阅事件
+├── update(dt): void                 // 驱动 tween/特效/角色动画
+├── getState(): RendererState        // 供存档
+└── setState(state): void            // 供读档
 ```
 
-### 4.2 图层架构
+### 4.2 图层架构（LayerStack）
 
-图层不按固定编号分配，而是按 `zIndex` 排序。常用约定如下（供工厂方法使用）：
+图层按 `zIndex` 排序，对应 pixi `Container`（`sortableChildren = true`）。常用约定如下（供工厂方法使用）：
 
 ```
 zIndex 约定 (从底到顶):
@@ -275,209 +270,150 @@ zIndex 约定 (从底到顶):
 └────────────────────┘
 ```
 
-这些值只是约定，可通过 `addLayer()` 传入任意 `zIndex`。`reorderLayer(id, newZIndex)` 修改后数组自动重排序。
+这些值只是约定，可通过 `addLayer()` 传入任意 `zIndex`。`reorderLayer(id, newZIndex)` 修改后 pixi 自动按 `zIndex` 重排。
 
 ```ts
-interface Layer {
-  id: string;
-  zIndex: number;
-  visible: boolean;
-  opacity: number; // 0-1
-  offscreen: OffscreenCanvas | null; // 静态缓存（对于静态层可预先创建）
-  dirty: boolean; // 是否需要重绘到 offscreen
+import { Container } from 'pixi.js';
 
-  addSprite(sprite: Sprite): void;
-  removeSprite(id: string): void;
+class LayerStack extends Container {
+  readonly layers: Map<string, Container>;
 
-  update(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D): void;
+  constructor() {
+    super({ sortableChildren: true }); // 子节点按 zIndex 排序
+  }
+  addLayer(id: string, zIndex: number): Container;
+  removeLayer(id: string): void;
+  reorderLayer(id: string, newZIndex: number): void;
 }
 ```
 
-`addSprite`/`removeSprite` 内部自动标记 `dirty = true` 并触发缓存失效，外部不直接操作 sprite 数组。
+**注意（pixi v8 叶子节点规则）：** `Sprite`/`Text`/`Graphics` 是叶子节点，不能作为子节点容器；图层与分组一律用 `Container`。
 
-### 4.3 Sprite（精灵）
+### 4.3 精灵（Sprite）
+
+直接用 pixi `Sprite`，不另设平行抽象。纹理来自 pixi `Texture`（见 §4.4/§6）。`moveTo`/`fadeTo` 等动画由引擎 tween 工具实现（见 §4.6）。
 
 ```ts
-interface Sprite {
-  id: string;
-  texture: Texture;
-  x: number;
-  y: number;
-  width: number; // 画布上基准宽度（首次 setTexture 时默认赋值为纹理宽度）
-  height: number; // 画布上基准高度
-  opacity: number;
-  scale: { x: number; y: number }; // 额外缩放系数
-  rotation: number;
-  anchor: { x: number; y: number }; // 锚点 0-1，原点在左上角
-  effects: Effect[]; // 精灵级特效（抖动、呼吸等）
-  transition: Transition | null; // 入场/退场过渡
+import { Sprite } from 'pixi.js';
 
-  update(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D): void;
-  setTexture(texture: Texture): void;
-  moveTo(x: number, y: number, duration: number, easing: EasingFn): void;
-  fadeTo(opacity: number, duration: number): void;
-}
+const sprite = new Sprite(texture); // texture: Texture
+sprite.x / sprite.y; // 位置
+sprite.scale.set(sx, sy); // 缩放
+sprite.rotation; // 旋转（弧度）
+sprite.alpha; // 不透明度 0-1
+sprite.anchor.set(0.5, 0.5); // 锚点 0-1
+sprite.width / sprite.height; // 显示尺寸
+sprite.eventMode = 'static'; // 需要接收交互事件时
 ```
 
-**尺寸公式：** 最终绘制宽高 = `width × scale.x`、`height × scale.y`。当纹理来自图集时，根据 `Texture.frame` 裁剪源区域；`width`/`height` 默认等于 `frame.w`/`frame.h` 或纹理本身尺寸。
+**尺寸公式：** 最终显示宽高由 pixi 按 `width/height/scale` 计算。图集子纹理用 `new Texture({ source, frame })` 裁出源区域。
 
-**精灵特效：** 与 Renderer 的全屏特效共用同一 `Effect` 接口（`update(dt)` + `draw(ctx)`），只是挂载位置不同——挂在 Sprite.effects 上的作用域为该精灵，挂在 Renderer.effectQueue 上的为全画面。
+**精灵动画：** `moveTo(x, y, duration, easing)`、`fadeTo(alpha, duration)` 由引擎 tween 驱动（见 §4.6），作用于 `sprite.x`/`sprite.y`/`sprite.alpha` 等属性。
 
-### 4.4 TextureManager（纹理管理）
+### 4.4 纹理管理（pixi Assets）
 
-纹理缓存只有一份，存放于 TextureManager。ResourceManager（见 §6）是加载调度门面，`ResourceManager.loadImage()` 内部委托 AssetLoader 加载 → 创建 Texture → 存入 TextureManager.cache，自身不冗余缓存已解码纹理。
+不再自维护 TextureManager。pixi `Assets` 负责纹理的加载与缓存，ResourceManager（见 §6）是加载门面。
 
 ```
-TextureManager
-├── cache: Map<string, Texture>   // 一级缓存：可渲染的纹理对象（LRU 淘汰）
+pixi Assets
+├── Assets.init({ manifest })        // 可选：注册资源清单别名
+├── Assets.load(alias)               // 加载并缓存，返回 Texture；重复调用命中缓存
+├── Assets.cache                     // 缓存表（Texture.from() 只读缓存，不发请求）
 │
-├── get(id: string): Texture | null
-├── set(id: string, texture: Texture): void
-├── unload(id: string): void
-└── createAtlas(images: ImageInfo[]): TextureAtlas
+├── new Texture({ source, frame })   // 从大图裁出图集子纹理
+└── Assets.loadBundle(name)          // 按 bundle 批量加载
 ```
 
-ResourceManager 的 `ResourceCache`（§6.3）是二级缓存，仅缓存原始二进制数据（ArrayBuffer），不缓存 Texture 对象。
+**性能策略（pixi 内置，无需手写）：**
 
-```ts
-interface Texture {
-  id: string;
-  source: HTMLImageElement | ImageBitmap;
-  width: number;
-  height: number;
-  // 图集子区域（如果是图集中的一部分）
-  frame?: { x: number; y: number; w: number; h: number };
-}
-```
-
-**性能策略：**
-
-- 使用 `ImageBitmap` + `createImageBitmap()` 异步解码，避免主线程阻塞
-- 纹理图集（Texture Atlas）：将多张小图合并为一张大图，减少绘制调用
-- LRU 缓存淘汰：限制内存占用上限（如 512MB），超出时卸载最久未用的纹理
+- **批渲染**：相同纹理的精灵合并为一次 GPU draw call
+- **纹理缓存**：`Assets.load` 按 key 缓存，重复加载不重复解码/上传
+- **纹理图集**：`new Texture({ source, frame })` 从一张大图裁出多个子纹理，减少上传与切换
+- 无需手写脏矩形 / 离屏缓存 / ImageBitmap 手动解码——pixi 的 GPU 渲染与纹理缓存已覆盖这些优化
 
 ### 4.5 渲染管线
 
-Renderer 支持两种渲染模式，根据是否有脏矩形自动切换：
-
-**模式 A — 全帧模式**（`dirtyRects.length === 0`，适用于动态场景）：
+pixi 的渲染由 `Application` 内部自动完成（`app.ticker` 驱动的 `app.renderer.render({ container: app.stage })`），引擎**无需手写逐帧 draw 逻辑**。
 
 ```
-draw():
-  1. ctx.clearRect(0, 0, width, height)
-  2. 遍历 layers (zIndex 升序):
-     if layer.visible:
-       if layer.offscreen && !layer.dirty:
-         → ctx.drawImage(layer.offscreen, 0, 0)   // 缓存命中
-       else:
-         → layer.draw(ctx)                          // 重绘，并可选更新 offscreen
-  3. 遍历 effectQueue:
-     → effect.draw(ctx)                             // 叠加全屏特效
-  4. 发射 render:frame 事件
+每帧（由 app.ticker 驱动）:
+  1. 逻辑更新：Updater 逐个调用 update(dt)
+     → Renderer.update(dt)：驱动 tween / 特效 / 角色动画 / UI
+  2. pixi 渲染器自动重绘 app.stage 全部内容
+     → 批渲染 + 纹理缓存优化（无需脏矩形）
+  3. 发射 render:frame 事件
 ```
 
-**模式 B — 脏矩形模式**（`dirtyRects.length > 0`，适用于静态对话/微动场景）：
+### 4.6 转场/过渡系统（tween）
 
-```
-draw():
-  1. 合并重叠脏矩形
-  2. ctx.save()
-  3. 裁剪到合并后的脏区域
-  4. 同模式 A 的步骤 2-3（仅绘制与脏区域相交的 Layer/Effect）
-  5. ctx.restore()
-  6. 清空 dirtyRects
-  7. 发射 render:frame 事件
-```
-
-模式 B 不执行 `clearRect`——上一帧内容保留在画布上，只重绘变化区域。
-
-### 4.6 转场/过渡系统
-
-过渡作用在单个 Sprite 上，通过 `progress` 驱动渲染属性变化。
+过渡不再用 `Transition.apply(ctx, sprite)` 手绘，而是由引擎 **tween 工具**驱动 pixi 显示对象的属性（`alpha`/`x`/`y`/`scale`）。tween 基于 `app.ticker` 逐帧推进，纯数学、可在 node 单测。
 
 ```ts
 type EasingFn = (t: number) => number; // t ∈ [0, 1]
 
-interface Transition {
-  type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom';
-  duration: number; // 毫秒
-  easing: EasingFn;
-  direction?: 'left' | 'right' | 'up' | 'down';
-  onComplete?: () => void;
-
-  update(dt: number): void; // 内部累加 progress
-  isComplete(): boolean;
-  apply(ctx: CanvasRenderingContext2D, sprite: Sprite): void;
-}
+function tween<T extends object>(
+  target: T,
+  prop: keyof T,
+  to: number,
+  duration: number, // 毫秒
+  easing: EasingFn,
+  ticker: Ticker,
+): { cancel(): void };
 ```
 
-`progress` 由 `update(dt)` 内部维护私有字段，不公开。外部通过 `isComplete()` 判断是否结束。`apply(ctx, sprite)` 根据 `type` 和 `progress` 修改 sprite 的渲染属性（opacity、x、y、scale）后绘制。
+**示例：** 角色入场 = `tween(sprite, 'alpha', 1, 500, easeOut, ticker)`；退场 = 反向。背景淡入 = 新 `Sprite` 覆盖旧 `Sprite`，再 tween 旧 `alpha → 0` 后移除。
 
-**示例：** 角色入场时 Sprite 挂载一个 `fade` Transition（opacity: 0→1）；退场时挂载 `fade`（1→0）。入退场各用一个 Transition，不共享 from/to。
+**内置转场效果（映射为对 pixi 属性的 tween 组合）：**
 
-**内置转场效果：**
+| 类型       | 说明                            |
+| ---------- | ------------------------------- |
+| `fade`     | 淡入淡出（`alpha`）             |
+| `slide`    | 滑动（`x`/`y`）                 |
+| `zoom`     | 缩放切换（`scale`）             |
+| `wipe`     | 擦除转场，后续迭代（滤镜/遮罩） |
+| `pixelate` | 像素化溶解，后续迭代（滤镜）    |
+| `custom`   | 自定义回调                      |
 
-| 类型       | 说明                          |
-| ---------- | ----------------------------- |
-| `fade`     | 淡入淡出                      |
-| `slide`    | 滑动（上下左右）              |
-| `zoom`     | 缩放切换                      |
-| `wipe`     | 擦除（直线/圆形/百叶窗）      |
-| `pixelate` | 像素化溶解                    |
-| `custom`   | 自定义绘制函数（drawFn 回调） |
+### 4.7 文字渲染
 
-### 4.7 脏矩形优化
+文字渲染是 VN 中最频繁的操作之一。采用帧驱动状态机，渲染走 pixi `Text`。
+
+**方案（已确认）：** pixi `Text`（canvas 同步渲染）+ 引擎侧把 DSL 富文本标签解析成带样式分段；打字机仅在字符边界更新可见字数。
 
 ```
-标记脏区域:
-  Sprite.moveTo / fadeTo / setTexture 调用时
-    → 计算 Sprite 在画布上的包围盒
-    → 调用 Renderer.markDirty(rect)
-
-  Layer.addSprite / removeSprite 时
-    → 调用 Renderer.markDirty(spriteRect)
+DialogueBox（pixi Container）
+├── segments: Array<{ text: Text; start: number }>  // 每个富文本样式段一个 pixi Text（叶子节点）
+├── typewriter: TypewriterState                       // 纯状态机：totalChars/revealed/speed/complete
+│
+├── show(speaker: string, text: string): void
+├── update(dt): void       // 推进 typewriter；仅当 revealed 变化时更新各段 Text.text
+├── complete(): void       // 跳过动画显示全文
+└── isBusy(): boolean      // 打字机进行中（输入层据此分流 input:skip）
 ```
 
-脏矩形仅在模式 B 生效（见 §4.5）。
+**富文本解析（pure，可单测）：** `[color=#rrggbb]` `[b]` `[i]` `[size=N]` `[speed=N]` `[pause=N]` 与 `{$var}` 插值 → `Array<{ text; style }>`；`[speed]`/`[pause]` 由打字机处理；`[ruby]`/`[shake]` 标注为后续迭代。
 
-### 4.8 文字渲染
+**文字性能注意：** pixi 官方建议**不要逐帧修改 `Text.text`**（每次都会重绘到 canvas 并上传 GPU）。打字机只在字符边界（计数变化）时更新 `.text`；高频动态文本（如计时器）考虑 `BitmapText`。
 
-文字渲染是视觉小说中最频繁的操作之一。采用帧驱动状态机，而非 Promise/await。
+### 4.8 缩放适配（ScaleManager）
 
-```ts
-class TextRenderer {
-  fullText: string;
-  speed: number; // 毫秒/字
-  currentCharCount: number; // 当前已显示字数
-  elapsed: number; // 累计毫秒
-  isComplete: boolean;
+`GameConfig.scaleMode`（§3.1）决定逻辑分辨率到画布的映射，由 `ScaleManager` 统一换算，供渲染与输入共用同一坐标基准。
 
-  constructor(text: string, speed: number);
+| 模式      | 行为                                |
+| --------- | ----------------------------------- |
+| `fit`     | 保持宽高比缩放至容器内（letterbox） |
+| `stretch` | 拉伸填充整个容器（可能变形）        |
+| `fixed`   | 不缩放，居中显示（原始分辨率）      |
 
-  update(dt: number): void; // elapsed += dt; currentCharCount = min(fullText.length, floor(elapsed / speed))
-  draw(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    maxWidth: number,
-    lineHeight: number,
-  ): void; // 只绘制 fullText.slice(0, currentCharCount)
-
-  complete(): void; // 直接跳到全量（跳过打字动画）
-  // 静态工具
-  static parseRichText(text: string): RichTextToken[];
-}
+```
+ScaleManager
+├── mode: 'fit' | 'stretch' | 'fixed'
+├── logical: { width, height }           // GameConfig 指定的逻辑分辨率
+├── update(containerSize): void          // 容器尺寸变化时重算 app.stage.scale / 偏移
+└── toLogical(global: Point): Point      // 屏幕坐标 → 逻辑坐标（供输入层）
 ```
 
-DialogueBox 组件持有 TextRenderer 实例，每帧调用 `update(dt)` → `draw(ctx)`。完成时 `isComplete === true`，此时用户点击继续。
-
-**文字性能优化：**
-
-- 预测量：首次 `draw()` 时计算所有字的位置并缓存到 `glyphPositions: Array<{x, y}>`，避免逐帧重复测量
-- 离屏缓存：已完成显示的行绘制到离屏 Canvas，每次只绘制新增加的字符
-- 字间距/行间距预设，减少运行时计算
+实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。
 
 ---
 
@@ -692,18 +628,17 @@ const myPlugin: Plugin = {
 
 ### 6.1 整体架构
 
-ResourceManager 是资源加载的门面，协调 AssetLoader（网络加载）、TextureManager（纹理缓存）、Parser（脚本解析）和 EventBus（进度通知）。
+ResourceManager 是资源加载的门面，协调 pixi `Assets`（纹理加载与缓存）、fetch（音频/脚本网络获取）、Parser（脚本解析）和 EventBus（进度通知）。
 
 ```
 ResourceManager
 ├── eventBus: EventBus               // 事件总线（发射 resource:progress / resource:ready）
-├── assetLoader: AssetLoader         // 网络加载器
-├── textureManager: TextureManager   // 纹理一级缓存（构造注入）
-├── cache: ResourceCache             // 二级缓存：原始 AudioBuffer 和 Script 对象
+├── assetLoader: AssetLoader         // 加载适配器（见 §6.2）
+├── cache: ResourceCache             // 二级缓存：已解码 AudioBuffer 和已解析 Script 对象
 ├── manifest: AssetManifest          // 资源清单
 ├── preloader: Preloader             // 场景/分组预加载器
 │
-├── loadImage(id: string): Promise<Texture>
+├── loadImage(id: string): Promise<Texture>      // pixi Texture
 ├── loadAudio(id: string): Promise<AudioBuffer>
 ├── loadScript(id: string): Promise<Script>
 ├── loadGroup(group: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
@@ -716,15 +651,12 @@ ResourceManager
 ```
 loadImage(id):
   1. url = manifest.images[id]
-  2. 大图（>2048px 任一维度）→ assetLoader.loadImageBitmap(url)
-     小图 → assetLoader.loadImage(url)
-  3. 创建 Texture { id, source, width, height }
-  4. textureManager.set(id, texture)
-  5. 发射 resource:progress
+  2. texture = assetLoader.loadImage(url)        // 内部委托 pixi Assets.load（缓存命中直接返回）
+  3. 发射 resource:progress
 
 loadAudio(id):
   1. url = manifest.audio[id]
-  2. arrayBuffer = assetLoader.loadAudio(url)
+  2. arrayBuffer = assetLoader.loadAudio(url)    // fetch → arrayBuffer
   3. audioBuffer = audioContext.decodeAudioData(arrayBuffer)
   4. cache.set(id, audioBuffer)
   5. 发射 resource:progress
@@ -736,6 +668,8 @@ loadScript(id):
   4. cache.set(id, script)
   5. 发射 resource:progress
 ```
+
+Texture 由 pixi `Assets` 缓存（不再自维护一级缓存）；`ResourceCache`（§6.3）只缓存 AudioBuffer 与 Script。
 
 **Preloader（预加载器）：**
 
@@ -752,35 +686,21 @@ Preloader
 
 ### 6.2 AssetLoader（资源加载器）
 
+AssetLoader 是对底层加载能力的薄适配，不重复实现并发/重试/解码逻辑（由 pixi `Assets` 与浏览器处理）。
+
 ```
 AssetLoader
-├── maxConcurrency: number   // 最大并发数，默认 6
-├── maxRetries: number       // 失败重试次数，默认 3
-├── timeoutMs: number        // 超时毫秒，默认 30000
 │
-├── loadImage(url: string): Promise<HTMLImageElement>
-├── loadImageBitmap(url: string): Promise<ImageBitmap>  // 异步解码
-├── loadAudio(url: string): Promise<ArrayBuffer>
-├── loadScript(url: string): Promise<string>
-│
-并发控制:
-  - 最大并发数: 6（浏览器 HTTP/2 推荐值）
-  - 超出并发上限的请求进入等待队列，先进先出
-  - 失败重试: 3 次，指数退避
-  - 超时: 30 秒
+├── loadImage(url: string): Promise<Texture>       // pixi Assets.load(url)，返回并缓存 Texture
+├── loadAudio(url: string): Promise<ArrayBuffer>   // fetch(url) → arrayBuffer
+└── loadScript(url: string): Promise<string>       // fetch(url) → text
 ```
 
-构造时接受 `AssetLoaderConfig`（`{ maxConcurrency?, maxRetries?, timeoutMs? }`），由 ResourceManager 初始化时传入或使用默认值。
-
-**ImageBitmap 优势：**
-
-- 在 Worker 线程中解码，不阻塞主线程
-- 零拷贝传输（Transferable）
-- 适合大尺寸 CG/背景图（>2048px 任一维度自动选用）
+**图片加载：** 委托 pixi `Assets.load`，自动获得解码（支持 ImageBitmap/WebGL 纹理）、去重与缓存，无需手动选大图/小图解码路径。
 
 ### 6.3 ResourceCache（LRU 缓存）
 
-二级缓存，存放已解码的 AudioBuffer 和已解析的 Script 对象（Texture 由 TextureManager 缓存，不在此处）。
+二级缓存，存放已解码的 AudioBuffer 和已解析的 Script 对象（Texture 由 pixi `Assets` 缓存，不在此处）。
 
 ```ts
 class ResourceCache<T> {
@@ -945,119 +865,76 @@ class AudioTrackPool {
 
 ---
 
-## 八、UI 系统（Canvas 绘制）
+## 八、UI 系统（pixi Container + @pixi/ui）
 
 ### 8.1 设计思路
 
-UI 完全由 Canvas 绘制，不依赖 DOM 元素。UI 组件树挂载在 UI Layer（§4.2，zIndex=600）上，Layer 的 `update(dt)` / `draw(ctx)` 递归遍历组件树。
+UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Container`（子类或持有 Container），挂载在 UI Layer（§4.2，zIndex=600）上。**VN 专属组件**（对话框/选项/存读档/设置/历史）用自定义 pixi Container 实现；**通用交互控件**（按钮/滑动条/列表/滚动视图）复用 `@pixi/ui`。
 
 ```ts
-interface UIComponent {
+import { Container } from 'pixi.js';
+
+class UIComponent extends Container {
   id: string;
-  x: number; // 相对父组件原点的坐标
-  y: number;
-  width: number;
-  height: number;
-  visible: boolean;
-  children: UIComponent[];
-
+  // pixi Container 已提供 x/y/width/height/visible/children/alpha
   update(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D): void;
-
-  // 命中测试：将绝对画布坐标转为相对坐标后递归检测
-  hitTest(px: number, py: number): UIComponent | null;
-  onClick(px: number, py: number): void;
-  onHover(px: number, py: number): void;
-
-  // 工具方法（由工具函数模块提供实现，不在 interface 内要求 class 实现）
-  getAbsoluteX(): number; // 递归累加：this.x + parent.getAbsoluteX()
-  getAbsoluteY(): number;
 }
 ```
 
-**坐标体系：** 绝对坐标 = 自身 x/y + 父组件绝对坐标。`draw(ctx)` 中通过 `ctx.translate(this.x, this.y)` 建立相对坐标系，子组件在父组件原点内绘制。`hitTest(px, py)` 传入绝对画布坐标，内部转为相对坐标后递归遍历 children 从顶到底（z 序）检测。
+**坐标体系：** 沿用 pixi 场景图——父子 Container 的相对坐标由 pixi 变换系统自动累积，无需手写 `getAbsoluteX/Y`。**命中测试**由 pixi Federated Pointer Events 承担（`eventMode` + `hitArea`），无需手写递归 `hitTest`。
 
-**共享逻辑：** children 递归遍历、绝对坐标计算等公共逻辑放入工具函数模块（如 `ui/utils.ts`），各组件直接调用函数，不依赖基类继承。
+**共享逻辑：** 自定义组件的公共逻辑（如富文本分段布局）放工具函数模块（`renderer/textLayout.ts` 等），各组件直接调用函数，不依赖基类继承。
 
 ### 8.2 内置 UI 组件
 
-核心组件接口：
+核心组件（自定义 pixi Container）：
 
-```ts
-interface DialogueBox extends UIComponent {
-  show(speaker: string, text: string): void; // 开始逐字显示
-  hide(): void;
-  isAnimating(): boolean; // 打字动画是否进行中
-  complete(): void; // 跳过动画，显示全文
-  textRenderer: TextRenderer; // §4.8 的打字机实例
-}
+| 组件            | 说明                                                                    |
+| --------------- | ----------------------------------------------------------------------- |
+| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete` |
+| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`    |
+| `SaveLoadMenu`  | 存读档菜单：槽位列表（`@pixi/ui` ScrollBox/List + FancyButton）         |
+| `SettingsMenu`  | 设置菜单：音量/文字速度（`@pixi/ui` Slider）、开关（`@pixi/ui` Toggle） |
+| `HistoryView`   | 对话历史：`@pixi/ui` ScrollBox                                          |
+| `ConfirmDialog` | 确认弹窗：`@pixi/ui` FancyButton 确认/取消                              |
 
-interface ChoicePanel extends UIComponent {
-  showChoices(choices: Choice[]): void; // §5.6 的 Choice 类型
-  hide(): void;
-  onSelect: (index: number, choice: Choice) => void;
-}
+通用控件（来自 `@pixi/ui`，`@pixi/ui@^2.3` 兼容 pixi v8）：
 
-interface SaveLoadSlot extends UIComponent {
-  slot: number;
-  isEmpty: boolean;
-  thumbnail: string | null; // base64 缩略图
-  slotLabel: string;
-  timestamp: number | null;
-  onClick(): void; // 触发存档/读档
-}
-
-interface ConfirmDialog extends UIComponent {
-  show(message: string, onConfirm: () => void, onCancel?: () => void): void;
-  hide(): void;
-}
-```
-
-其他通用控件（列表说明）：
-
-| 组件          | 说明                                 |
-| ------------- | ------------------------------------ |
-| `TextButton`  | 文本按钮（hover/click/press 状态）   |
-| `ImageButton` | 图片按钮                             |
-| `Slider`      | 滑动条（音量/速度调节）              |
-| `Toggle`      | 开关（全屏/自动模式等）              |
-| `ScrollView`  | 滚动视图容器（含遮罩裁剪和滚动偏移） |
+| 控件                      | 说明                               |
+| ------------------------- | ---------------------------------- |
+| `FancyButton` / `Button`  | 文本/图片按钮（hover/click/press） |
+| `Slider` / `DoubleSlider` | 滑动条（音量/速度调节）            |
+| `CheckBox` / `Switcher`   | 开关 / 单选                        |
+| `ScrollBox` / `List`      | 滚动视图（含遮罩裁剪与滚动偏移）   |
+| `Input`                   | 文本输入框                         |
+| `ProgressBar`             | 进度条（资源加载）                 |
 
 ### 8.3 输入事件分发
 
-InputManager 由 Game 持有，在 init 时创建（Renderer 之后、AudioManager 之前）。
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、AudioManager 之前）。事件源为 **pixi Federated Pointer Events**。
 
 ```
-Canvas DOM 事件 → InputManager.dispatch(event)
-  → toLogicalCoords(clientX, clientY)   // CSS像素 → 逻辑像素
-  → uiRoot.hitTest(logicalX, logicalY)  // 递归命中测试（从顶到底）
-    → 命中 → 调用 component.onClick(relX, relY)
-    → 未命中 → 发射 input:click 事件（全局命令：如点击继续对话）
-  → 发射 input:hover 事件
+pixi Federated Events → InputManager 路由
+  → 全屏命中层（eventMode='static'）收到 pointerdown
+  → toLogical(e.global)                 // 逻辑坐标：ScaleManager.toLogical（app.stage.toLocal）
+  → 打字机进行中?
+      → 是：发射 input:skip（补全当前文本）
+      → 否：命中 UI 组件 → 组件内部处理（按钮 onClick 等）
+           未命中 → 发射 input:click（全局命令：点击继续对话）
+  → pointermove → 发射 input:hover
 ```
 
 ```ts
 class InputManager {
-  canvas: HTMLCanvasElement;
   eventBus: EventBus;
-  uiRoot: UIComponent | null; // UI Layer 初始化后设置
+  uiRoot: Container | null; // UI Layer 就绪后设置
 
-  setUIRoot(root: UIComponent): void; // 由 Game 在 UI Layer 就绪后调用
-
-  private onMouseMove(e: MouseEvent): void;
-  private onMouseDown(e: MouseEvent): void;
-  private onMouseUp(e: MouseEvent): void;
-  private onTouchStart(e: TouchEvent): void;
-
-  // CSS像素 → 逻辑像素（需根据 scaleMode 和容器尺寸换算）
-  private toLogicalCoords(
-    clientX: number,
-    clientY: number,
-  ): { x: number; y: number };
+  setUIRoot(root: Container): void;
+  // 交互组件自身 eventMode='static'，由 pixi 负责命中测试，无需全局监听 MouseEvent
 }
 ```
 
-`toLogicalCoords` 依赖 `scaleMode` 和 canvas 的 CSS 尺寸 vs 逻辑尺寸的比值。坐标转换逻辑与 Renderer 共享同一换算参数，避免重复计算。
+坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。
 
 ---
 
@@ -1075,7 +952,7 @@ class InputManager {
 | Renderer      | 背景 id、角色列表 | `getState()`       |
 | AudioManager  | BGM id、播放进度  | `getState()`       |
 | VariableStore | variables、flags  | `dump()`           |
-| GameLoop      | 累计游玩时间      | `elapsedTime` 字段 |
+| Updater       | 累计游玩时间      | `elapsedTime` 字段 |
 
 各子系统提供 `getState()`（或等效方法）返回各自领域的可序列化快照片段，`SaveManager` 在 capture() 中拼接为完整的 `GameStateSnapshot`。
 
@@ -1110,7 +987,7 @@ Game.save(slot)
 
 SaveManager.capture(engine, slot):
   1. engine.pause()
-  2. 生成缩略图：renderer.draw() → canvas.toBlob()（Blob 直接存，无需 base64）
+  2. 生成缩略图：`app.renderer.extract.texture({ target: app.stage })` → canvas.toBlob()（Blob 直接存，无需 base64）
   3. 收集各子系统快照 → 组装 GameStateSnapshot
   4. 获取当前对话文本截取（≤30字）作为 slotLabel
   5. 构建 SaveData { version, timestamp, thumbnail, slotLabel, gameState }
@@ -1132,7 +1009,7 @@ SaveManager.restore(engine, slot):
   6. eventBus.emit('game:loaded', { slot })
 ```
 
-读档的资源预加载优先走缓存（TextureManager. cache, ResourceManager.cache），命中则跳过网络请求。版本迁移由 `migrate(saveData)` 工具函数处理，按版本号逐级转换数据格式。
+读档的资源预加载优先走 pixi `Assets` 缓存（`Assets.cache`）与 `ResourceManager.cache`，命中则跳过网络请求。版本迁移由 `migrate(saveData)` 工具函数处理，按版本号逐级转换数据格式。
 
 ---
 
@@ -1153,7 +1030,7 @@ interface Plugin {
 
 ### 10.2 PluginManager
 
-PluginManager 实现 `Updatable`，在 `update(dt)` 中遍历已安装插件并调用其 `update?()`。
+PluginManager 实现 `Updatable` 并注册进 `Updater`（§3.2），pixi `ticker` 每帧驱动其 `update(dt)`，在遍历已安装插件并调用 `plugin.update?()`。
 
 ```ts
 class PluginManager {
@@ -1191,31 +1068,30 @@ class PluginManager {
 
 ### 10.3 扩展点一览
 
-| 扩展点   | 接入方式                     | 用途           |
-| -------- | ---------------------------- | -------------- |
-| 命令     | `CommandRegistry.register()` | 自定义脚本命令 |
-| 转场     | 实现 `Transition` 接口       | 自定义转场效果 |
-| 特效     | 实现 `Effect` 接口           | 自定义画面特效 |
-| UI组件   | 实现 `UIComponent` 接口      | 自定义 UI 控件 |
-| 事件监听 | `EventBus.on()`              | 监听引擎事件   |
-| 逐帧更新 | Plugin 实现 `update(dt)`     | 插件逐帧逻辑   |
+| 扩展点   | 接入方式                                                     | 用途           |
+| -------- | ------------------------------------------------------------ | -------------- |
+| 命令     | `CommandRegistry.register()`                                 | 自定义脚本命令 |
+| 转场     | 传入 `tween()` 的缓动参数 / 自定义 `EasingFn`                | 自定义转场效果 |
+| 特效     | 自定义 pixi `Container`（挂到 Effect 图层）/ 着色器 `Filter` | 自定义画面特效 |
+| UI组件   | 继承 pixi `Container` 并实现 `UIComponent` 约定              | 自定义 UI 控件 |
+| 事件监听 | `EventBus.on()`                                              | 监听引擎事件   |
+| 逐帧更新 | Plugin 实现 `update(dt)`（由 Updater 驱动）                  | 插件逐帧逻辑   |
 
 ---
 
 ## 十一、性能优化策略汇总
 
-| 策略                      | 说明                                          | 适用场景               |
-| ------------------------- | --------------------------------------------- | ---------------------- |
-| **离屏Canvas缓存**        | 静态图层绘制到 OffscreenCanvas，帧间直接 blit | 背景、静止角色         |
-| **脏矩形刷新**            | 仅重绘变化区域                                | 对话框打字、小范围动画 |
-| **ImageBitmap**           | Worker 线程异步解码图片                       | 大尺寸 CG 加载         |
-| **纹理图集**              | 合并小图减少 drawImage 调用                   | 立绘表情切换           |
-| **对象池**                | 复用 SE 音轨、粒子对象                        | 高频创建/销毁          |
-| **LRU 缓存**              | 限制纹理/音频内存占用                         | 长剧本、多资源         |
-| **requestAnimationFrame** | 与浏览器刷新率同步                            | 游戏循环               |
-| **deltaTime 上限**        | 防止标签页返回后跳帧                          | 所有帧逻辑             |
-| **Web Worker**            | 脚本解析、资源批量加载在 Worker 执行          | 初始化/场景切换        |
-| **懒加载**                | 按章节/场景预加载，不一次性加载全部           | 大型项目               |
+| 策略                  | 说明                                                        | 适用场景              |
+| --------------------- | ----------------------------------------------------------- | --------------------- |
+| **GPU 批渲染**        | pixi 自动合批 Sprite/Text/Graphics 绘制调用，减少 draw call | 立绘、粒子、大量对象  |
+| **纹理图集 / 共享帧** | 多个 `Texture` 共享同一 `TextureSource`，单张大图取 frame   | 立绘表情、spritesheet |
+| **对象池**            | 复用 SE 音轨、粒子对象                                      | 高频创建/销毁         |
+| **LRU 缓存**          | `Assets.cache` + `ResourceCache` 限制纹理/音频内存占用      | 长剧本、多资源        |
+| **pixi ticker**       | 内部用 RAF 与浏览器刷新率同步，`ticker.maxFPS` 可限帧       | 游戏循环              |
+| **deltaTime 上限**    | dt 按 1/10s 截断，防止标签页返回后跳帧                      | 所有帧逻辑            |
+| **按需/批量加载**     | `Assets.loadBundle` 按章节/场景预加载，不一次性加载全部     | 初始化/场景切换       |
+| **异步解码**          | 图片由 GPU 纹理异步上传，音频 `decodeAudioData` 异步解码    | 大尺寸 CG、长音频     |
+| **后台自停**          | 页面隐藏自动 `ticker.stop()`，恢复即续，无需手动重绘        | 页面隐藏/恢复         |
 
 ---
 
@@ -1224,25 +1100,18 @@ class PluginManager {
 ```
 src/
 ├── core/                          # 核心系统
-│   ├── Game.ts                    # 游戏主类
-│   ├── GameLoop.ts                # 游戏循环
+│   ├── Game.ts                    # 游戏主类（持有 pixi Application）
+│   ├── Updater.ts                 # 游戏循环（pixi Ticker 封装）
 │   ├── EventBus.ts                # 事件总线
 │   └── PluginManager.ts           # 插件管理器
 │
-├── renderer/                      # 渲染系统
-│   ├── Renderer.ts                # 渲染器（图层管理）
-│   ├── Layer.ts                   # 图层
-│   ├── Sprite.ts                  # 精灵
-│   ├── TextureManager.ts          # 纹理管理
-│   ├── Texture.ts                 # 纹理封装
-│   ├── TextRenderer.ts            # 文字渲染（逐字显示）
-│   ├── transitions/               # 转场效果
-│   │   ├── Transition.ts          # 转场基类
-│   │   ├── FadeTransition.ts
-│   │   ├── SlideTransition.ts
-│   │   └── WipeTransition.ts
-│   └── effects/                   # 画面特效
-│       ├── Effect.ts              # 特效基类
+├── renderer/                      # 渲染系统（pixi）
+│   ├── Renderer.ts                # 渲染器（LayerStack + 角色/背景/特效/tween）
+│   ├── LayerStack.ts              # 图层栈（zIndex 排序的 pixi Container）
+│   ├── ScaleManager.ts            # 缩放适配（fit|stretch|fixed）
+│   ├── TextRenderer.ts            # 富文本分段 + 打字机
+│   ├── tween.ts                   # 基于 ticker 的补间（转场/移动）
+│   └── effects/                   # 画面特效（自定义 pixi Container）
 │       ├── ShakeEffect.ts
 │       ├── FlashEffect.ts
 │       └── ParticleEffect.ts
@@ -1269,24 +1138,23 @@ src/
 │   └── AudioTrackPool.ts          # 音轨池
 │
 ├── resource/                      # 资源管理
-│   ├── ResourceManager.ts         # 资源管理器
-│   ├── AssetLoader.ts             # 资源加载器
+│   ├── ResourceManager.ts         # 资源管理器（pixi Assets 门面）
+│   ├── AssetLoader.ts             # 加载适配器（image→Texture / audio→ArrayBuffer / script→string）
 │   ├── ResourceCache.ts           # LRU缓存
 │   └── Preloader.ts               # 预加载器
 │
-├── ui/                            # Canvas UI组件
-│   ├── UIComponent.ts             # UI组件基类
-│   ├── DialogueBox.ts             # 对话框
+├── ui/                            # UI 组件（pixi Container + @pixi/ui）
+│   ├── UIComponent.ts             # UI组件基类（extends pixi Container）
+│   ├── DialogueBox.ts             # 对话框（富文本分段 + 打字机）
 │   ├── ChoicePanel.ts             # 选项面板
 │   ├── SaveLoadMenu.ts            # 存档/读档菜单
 │   ├── SettingsMenu.ts            # 设置菜单
 │   ├── HistoryView.ts             # 对话历史
-│   ├── TextButton.ts              # 文本按钮
-│   ├── Slider.ts                  # 滑动条
 │   └── ConfirmDialog.ts           # 确认弹窗
+│   # 通用控件（按钮/滑动条/滚动列表）由 @pixi/ui 提供
 │
 ├── input/                         # 输入管理
-│   └── InputManager.ts            # 输入事件分发
+│   └── InputManager.ts            # 输入事件分发（pixi Federated Events）
 │
 ├── save/                          # 存档系统
 │   ├── SaveManager.ts             # 存档管理器
@@ -1303,7 +1171,6 @@ src/
 │   ├── easing.ts                  # 缓动函数集
 │   ├── objectPool.ts              # 通用对象池
 │   ├── lruCache.ts                # 通用LRU缓存
-│   ├── rect.ts                    # 矩形工具（合并/相交）
 │   └── asyncQueue.ts              # 异步队列（并发控制）
 │
 ├── main.ts                        # 入口
@@ -1332,18 +1199,16 @@ src/
 ### 13.2 渲染流
 
 ```
-requestAnimationFrame(tick)
-  → GameLoop.update(dt)
-    → Renderer.update(dt)
-      → 各 Layer 的 Sprite/Transition/Effect 更新
-      → UI 组件更新
-    → AudioManager.update(dt)    // 淡入淡出
-    → PluginManager 各插件 update
-  → GameLoop.render()
-    → Renderer.draw(ctx)
-      → 图层遍历绘制
-      → UI 遍历绘制
-      → 特效叠加
+pixi app.ticker（内部用浏览器 RAF 驱动）
+  → ticker 回调 tick(ticker)
+    → Updater.update(dt)          // dt = ticker.deltaMS/1000，clamp 1/10s
+      → Renderer.update(dt)
+        → 各图层 Container 内 Sprite/Text/Effect 更新
+        → tween() 补间推进
+        → UI 组件更新
+      → AudioManager.update(dt)   // 淡入淡出
+      → PluginManager 各插件 update
+    → pixi 自动渲染 app.stage（GPU 批渲染，无需手写 draw）
     → EventBus 发送 'render:frame'
 ```
 
@@ -1369,7 +1234,7 @@ Game.init(config)
     → Game.save(slot)
     → SaveManager.capture(engine, slot)
       → engine.pause()
-      → 生成缩略图（canvas.toBlob()）
+      → 生成缩略图（app.renderer.extract.texture → canvas.toBlob()）
       → 遍历各子系统收集快照 → 组装 GameStateSnapshot
       → 构建 SaveData
       → IndexedDB 持久化
@@ -1401,13 +1266,15 @@ Game.init(config)
 
 ```ts
 // types/engine.ts
+// 注：以下为 pixi 化后的目标形态类型描述；src/types/*.ts 本次仅文档化、不改代码，
+// 以 pixi 类型替换原有 Canvas 专用接口（Layer/Sprite/Texture/SpriteEffect/Transition 等）。
 
 interface GameConfig {
-  canvas: HTMLCanvasElement;
+  canvas?: HTMLCanvasElement; // 可选：缺省时由 pixi Application 自建 canvas
   width: number;
   height: number;
   scaleMode: 'fit' | 'stretch' | 'fixed';
-  fps: number;
+  fps: number; // 映射到 app.ticker.maxFPS
   assets: AssetManifest;
   plugins?: Plugin[];
 }
@@ -1487,6 +1354,7 @@ interface EngineEvents {
   'game:resume': {};
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
+  'input:skip': {}; // 打字机进行中点击：跳过/完成当前打字，而非推进对话
   'resource:progress': { loaded: number; total: number; percent: number };
   'resource:ready': {};
 }
@@ -1561,7 +1429,7 @@ interface GameStateSnapshot {
 
 ### 16.1 第一阶段（MVP）
 
-- [x] Canvas 渲染管线（图层 + 精灵 + 纹理）
+- [x] PixiJS v8 渲染管线（图层栈 + 精灵 + 纹理）
 - [x] 脚本解析与解释执行
 - [x] 基础命令集（bg/show/hide/say/choice/jump）
 - [x] 对话框与选项 UI
@@ -1584,7 +1452,7 @@ interface GameStateSnapshot {
 - [ ] 视觉编辑器（Electron / Web）
 - [ ] Live2D / Spine 骨骼动画支持
 - [ ] 视频播放（背景/事件CG）
-- [ ] WebGL 渲染后端（着色器特效）
+- [ ] 自定义着色器特效（pixi Filter / Shader）
 - [ ] 脚本热重载（HMR）
 - [ ] 性能分析面板（DevTools）
 
@@ -1592,18 +1460,20 @@ interface GameStateSnapshot {
 
 ## 十六、设计决策记录
 
-| 决策     | 选择               | 原因                                 |
-| -------- | ------------------ | ------------------------------------ |
-| 渲染方案 | Canvas 2D          | 兼容性好，API 成熟；后续可升级 WebGL |
-| 文字方案 | Canvas fillText    | 避免 DOM-vs-Canvas 分层同步问题      |
-| UI 方案  | Canvas 自绘        | 帧同步一致，无 DOM 布局抖动          |
-| 音频方案 | Web Audio API      | 精确控制，多音轨混音                 |
-| 脚本格式 | 自定义 `.vns`      | 简洁，面向 VN 场景优化               |
-| 状态管理 | 引擎内置 GameState | 框架无关，可直接序列化               |
-| 通信方式 | EventBus           | 模块解耦，可测试                     |
-| 资源解码 | ImageBitmap        | 异步，不阻塞主线程                   |
-| 存档格式 | JSON + IndexedDB   | 可读可迁移，容量大                   |
-| 模块化   | 引擎纯 TS          | 可测试，可移植                       |
+| 决策      | 选择                                      | 原因                                            |
+| --------- | ----------------------------------------- | ----------------------------------------------- |
+| 渲染方案  | PixiJS v8（WebGL/WebGPU）                 | 场景图/批渲染/纹理缓存成熟，替代手写 Canvas 2D  |
+| 文字方案  | pixi `Text` + 引擎侧富文本分段            | Canvas 同步渲染，避免 DOM-vs-WebGL 分层同步问题 |
+| UI 方案   | pixi `Container` 组件 + @pixi/ui          | 帧同步一致，无 DOM 布局抖动；通用控件直接复用   |
+| 音频方案  | Web Audio API                             | 精确控制，多音轨混音                            |
+| 脚本格式  | 自定义 `.vns`                             | 简洁，面向 VN 场景优化                          |
+| 状态管理  | 引擎内置 GameState                        | 框架无关，可直接序列化                          |
+| 资源加载  | pixi `Assets`（`AssetManifest` 为真源）   | 统一纹理缓存/图集/加载进度，Audio 走 fetch+解码 |
+| 转场/特效 | 基于 ticker 的 tween + 自定义 `Container` | 无需额外动画库，对齐现有 `EasingFn`             |
+| 通信方式  | EventBus                                  | 模块解耦，可测试                                |
+| 资源解码  | pixi `Assets` 异步上传为 GPU 纹理         | 图片异步解码，不阻塞主线程                      |
+| 存档格式  | JSON + IndexedDB                          | 可读可迁移，容量大                              |
+| 模块化    | 引擎纯 TS                                 | 可测试，可移植                                  |
 
 ---
 
