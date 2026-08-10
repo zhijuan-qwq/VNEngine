@@ -1266,8 +1266,8 @@ Game.init(config)
 
 ```ts
 // types/engine.ts
-// 注：以下为 pixi 化后的目标形态类型描述；src/types/*.ts 本次仅文档化、不改代码，
-// 以 pixi 类型替换原有 Canvas 专用接口（Layer/Sprite/Texture/SpriteEffect/Transition 等）。
+// 注：src/types/*.ts 已按本目标形态实现；以 pixi 类型替换原有 Canvas 专用接口
+//（Layer/Sprite/Texture/SpriteEffect/Transition 等）。
 
 interface GameConfig {
   canvas?: HTMLCanvasElement; // 可选：缺省时由 pixi Application 自建 canvas

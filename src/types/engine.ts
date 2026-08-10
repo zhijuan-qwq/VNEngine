@@ -1,5 +1,10 @@
 import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents } from './events';
+import type { Application, Container } from 'pixi.js';
+import type { VariableStore } from '@/script/VariableStore';
+import type ScriptEngine from '@/script/ScriptEngine';
+import type { ResourceManager } from './resource';
+import type { SaveManager } from './save';
 
 export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
 
@@ -8,11 +13,11 @@ export type ScaleMode = 'fit' | 'stretch' | 'fixed';
 export type EasingFn = (t: number) => number;
 
 export interface GameConfig {
-  canvas: HTMLCanvasElement;
+  canvas?: HTMLCanvasElement; // 可选：缺省时由 pixi Application 自建 canvas
   width: number;
   height: number;
   scaleMode: ScaleMode;
-  fps: number;
+  fps: number; // 映射到 app.ticker.maxFPS
   scripts: string[];
   assets: AssetManifest;
   plugins?: Plugin[];
@@ -28,63 +33,6 @@ export interface AssetManifest {
 export interface SpritesheetConfig {
   url: string;
   frames: Record<string, [number, number, number, number]>;
-}
-
-export interface Layer {
-  id: string;
-  zIndex: number;
-  visible: boolean;
-  opacity: number;
-  offscreen: OffscreenCanvas | null;
-  dirty: boolean;
-  sprites: Sprite[];
-  update(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D): void;
-}
-
-export interface Sprite {
-  id: string;
-  texture: Texture;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  opacity: number;
-  scale: { x: number; y: number };
-  rotation: number;
-  anchor: { x: number; y: number };
-  effects: SpriteEffect[];
-  transition: Transition | null;
-  update(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D): void;
-  setTexture(texture: Texture, transition?: Transition): void;
-  moveTo(x: number, y: number, duration: number, easing: EasingFn): void;
-  fadeTo(opacity: number, duration: number): void;
-}
-
-export interface Texture {
-  id: string;
-  source: HTMLImageElement | ImageBitmap;
-  width: number;
-  height: number;
-  frame?: { x: number; y: number; w: number; h: number };
-}
-
-export interface SpriteEffect {
-  type: string;
-  update(dt: number): void;
-  apply(ctx: CanvasRenderingContext2D, sprite: Sprite): void;
-}
-
-export interface Transition {
-  type: 'fade' | 'slide' | 'zoom' | 'wipe' | 'pixelate' | 'custom';
-  duration: number;
-  easing: EasingFn;
-  progress: number;
-  direction?: 'left' | 'right' | 'up' | 'down';
-  onComplete?: () => void;
-  update(dt: number): void;
-  apply(ctx: CanvasRenderingContext2D, from: Sprite, to: Sprite): void;
 }
 
 export interface GameState {
@@ -140,10 +88,44 @@ export interface PluginManager {
   list(): Plugin[];
 }
 
-export interface VNEngine {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  plugins: PluginManager;
-  eventBus: EventBus<EngineEvents>;
+// 渲染子系统契约（见架构文档 §4）：持有 LayerStack，把 bg/character/effect 事件映射为 pixi 显示对象
+export interface Renderer {
+  update(dt: number): void;
+  getState(): unknown;
+  setState(state: unknown): void;
   destroy(): void;
+}
+
+// 音频子系统契约（见架构文档 §7）：Web Audio API，多音轨混音与淡入淡出
+export interface AudioManager {
+  update(dt: number): void;
+  pause(): void;
+  resume(): void;
+  getState(): { id: string; progress: number } | null;
+  setState(state: { id: string; progress: number } | null): void;
+  destroy(): void;
+}
+
+// 输入子系统契约（见架构文档 §8.3）：pixi Federated Pointer Events → EventBus
+export interface InputManager {
+  setUIRoot(root: Container): void;
+  destroy(): void;
+}
+
+export interface VNEngine {
+  app: Application;
+  eventBus: EventBus<EngineEvents>;
+  plugins: PluginManager;
+  variableStore: VariableStore;
+  script: ScriptEngine;
+  resource: ResourceManager;
+  renderer: Renderer;
+  audio: AudioManager;
+  input: InputManager;
+  save: SaveManager;
+  destroy(): void;
+  pause(): void;
+  resume(): void;
+  saveGame(slot: number): void;
+  loadGame(slot: number): void;
 }
