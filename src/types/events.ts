@@ -60,6 +60,7 @@ export type EngineEvents = {
   'game:resume': Record<string, never>;
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
+  'input:skip': Record<string, never>;
   'resource:progress': { loaded: number; total: number; percent: number };
   'resource:ready': Record<string, never>;
 };
