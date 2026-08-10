@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-VNEngine — 基于 TypeScript + Canvas 的视觉小说引擎。架构文档见 `doc/architecture.md`。
+VNEngine — 基于 TypeScript + PixiJS v8 的视觉小说引擎。架构文档见 `doc/architecture.md`。
 
 ## 命令
 
@@ -20,7 +20,7 @@ npm run spell:check  # cSpell 拼写检查
 
 ## 技术约束
 
-- **环境**: 浏览器 (DOM API + Canvas)，构建工具 Vite
+- **环境**: 浏览器 (DOM API + WebGL/WebGPU)，渲染基于 PixiJS v8，构建工具 Vite
 - **入口**: `src/main.ts`，挂载到 `index.html` 的 `#app` 节点
 - **模块系统**: ESM (`"type": "module"`)
 - **TypeScript 严格配置**:
