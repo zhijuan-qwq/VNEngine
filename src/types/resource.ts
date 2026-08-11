@@ -22,7 +22,7 @@ export interface IAssetLoader {
 
 export interface IResourceCache<T> {
   get(id: string): T | null;
-  set(id: string, value: T, size: number): void;
+  set(id: string, value: T): void;
   has(id: string): boolean;
   delete(id: string): void;
   clear(): void;
