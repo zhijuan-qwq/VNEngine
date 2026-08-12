@@ -37,6 +37,7 @@ export default {
     'dedup',
     'fadein',
     'endchoice',
+    'unstub',
   ],
   ignorePaths: [
     'node_modules',
