@@ -112,7 +112,7 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 10. 创建 PluginManager(eventBus)
 11. 注册 config.plugins → PluginManager.loadAll()
 12. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager])，内部 app.ticker.add(...)
-13. 预加载 config.scripts → ScriptEngine.load()
+13. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
 14. 发射 game:init 事件
 ```
 
@@ -480,7 +480,7 @@ Parser
   3. 收集 @label → LabelMap，验证跳转目标存在性
 ```
 
-Parser 不负责文件加载（由 ResourceManager / ScriptEngine 处理），保持单一职责：`string → Script`。
+Parser 不负责文件加载（由 ResourceManager 处理），保持单一职责：`string → Script`。ScriptEngine 仅执行，接收已解析的 Script 对象。
 
 ```ts
 interface Script {
@@ -1004,7 +1004,7 @@ SaveManager.restore(engine, slot):
      b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
      c. renderer.setState(snapshot.bgImage, snapshot.characters)
      d. audioManager.setState(snapshot.bgm)
-     e. scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+     e. scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
   5. engine.resume()
   6. eventBus.emit('game:loaded', { slot })
 ```
@@ -1121,7 +1121,7 @@ src/
 │   ├── parser.js                  # 自动生成（Peggy 编译 grammar.pegjs 输出）
 │   ├── parser.d.ts                # 生成解析器的 TypeScript 类型声明
 │   ├── Parser.ts                  # 薄封装层，调用 parser.parse() 返回 Script
-│   ├── ScriptEngine.ts            # 脚本引擎（Parser + Interpreter 门面）
+│   ├── ScriptEngine.ts            # 脚本引擎（Interpreter 门面，脚本由资源系统解析并缓存）
 │   ├── VariableStore.ts            # 变量与旗标存储
 │   ├── Interpreter.ts             # 脚本解释器
 │   ├── CommandRegistry.ts         # 命令注册表
@@ -1253,7 +1253,7 @@ Game.init(config)
       → resourceManager.preloadScene(snapshot.currentScript)
       → renderer.setState(snapshot.bgImage, snapshot.characters)
       → audioManager.setState(snapshot.bgm)
-      → scriptEngine.load(snapshot.currentScript, snapshot.scriptPC)
+      → scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
       → engine.resume()
       → EventBus 发送 'game:loaded'
 ```

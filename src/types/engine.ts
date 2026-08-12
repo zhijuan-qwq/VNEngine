@@ -3,7 +3,7 @@ import type { EngineEvents } from './events';
 import type { Application, Container } from 'pixi.js';
 import type { VariableStore } from '@/script/VariableStore';
 import type ScriptEngine from '@/script/ScriptEngine';
-import type { ResourceManager } from './resource';
+import type { IResourceManager } from './resource';
 import type { SaveManager } from './save';
 
 export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
@@ -118,7 +118,7 @@ export interface VNEngine {
   plugins: PluginManager;
   variableStore: VariableStore;
   script: ScriptEngine;
-  resource: ResourceManager;
+  resource: IResourceManager;
   renderer: Renderer;
   audio: AudioManager;
   input: InputManager;
