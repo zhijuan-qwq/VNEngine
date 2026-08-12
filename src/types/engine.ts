@@ -28,6 +28,15 @@ export interface AssetManifest {
   audio: Record<string, string>;
   scripts: Record<string, string>;
   spritesheets: Record<string, SpritesheetConfig>;
+  // 场景/分组预加载配置（见架构文档 §6.4），供 preloadScene / loadGroup 使用
+  scenes?: Record<string, ResourceGroupConfig>;
+  groups?: Record<string, ResourceGroupConfig>;
+}
+
+export interface ResourceGroupConfig {
+  images?: string[];
+  audio?: string[];
+  scripts?: string[];
 }
 
 export interface SpritesheetConfig {
