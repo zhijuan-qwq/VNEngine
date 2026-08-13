@@ -38,6 +38,9 @@ export default {
     'fadein',
     'endchoice',
     'unstub',
+    'pointertap',
+    'relayout',
+    'boldmore',
   ],
   ignorePaths: [
     'node_modules',
