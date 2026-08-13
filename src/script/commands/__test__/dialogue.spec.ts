@@ -84,6 +84,14 @@ describe('dialogue commands', () => {
       execute('choice', { choices: [], mode: 'nvl' });
       expect(spy).toHaveBeenCalledWith({ choices: [], mode: 'nvl' });
     });
+
+    it('should jump to the selected label when a choice is picked', () => {
+      listen('script:choice');
+      execute('choice', { choices: [{ text: '回应他', label: 'respond' }] });
+      expect(env.wait.handler).toBeDefined();
+      env.wait.handler?.({ label: 'respond' });
+      expect(env.jumps).toEqual(['respond']);
+    });
   });
 
   describe('@wait', () => {
