@@ -12,7 +12,7 @@ export type EngineEvents = {
     mode?: 'adv' | 'nvl';
   };
   'script:clear': Record<string, never>;
-  'script:choice:selected': Record<string, never>;
+  'script:choice:selected': { label: string };
   'script:wait:done': Record<string, never>;
   'script:end': Record<string, never>;
   'render:frame': { dt: number };

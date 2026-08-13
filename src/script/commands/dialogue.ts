@@ -39,7 +39,9 @@ export const dialogueCommands: CommandHandler[] = [
         choices,
         mode: asMode(args.mode),
       });
-      ctx.interpreter.wait('script:choice:selected', () => {});
+      ctx.interpreter.wait('script:choice:selected', (payload) => {
+        ctx.interpreter.jump(payload.label);
+      });
     },
   },
   {

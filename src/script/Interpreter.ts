@@ -2,7 +2,7 @@ import type { Command, Script, ScriptContext } from '@/types/script';
 import type { VariableStore } from './VariableStore';
 import type { CommandRegistry } from './CommandRegistry';
 import type { VNEngine } from '@/types/engine';
-import type { EventName } from '@/types/events';
+import type { EngineEvents, EventName } from '@/types/events';
 import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
 
 interface IfState {
@@ -238,11 +238,14 @@ class Interpreter {
     }
   }
 
-  public wait(event: EventName, handler: () => void): void {
+  public wait<K extends EventName>(
+    event: K,
+    handler: (payload: EngineEvents[K]) => void,
+  ): void {
     this.state = 'waiting';
-    this.engine.eventBus.once(event, () => {
+    this.engine.eventBus.once(event, (payload) => {
       this.state = 'running';
-      handler();
+      handler(payload);
     });
   }
 }
