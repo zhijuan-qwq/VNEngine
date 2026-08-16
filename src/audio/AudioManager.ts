@@ -24,10 +24,10 @@ class AudioManager {
     this.eventBus = eventBus;
     this.resourceManager = resourceManager;
     this.context = this._createAudioContext();
-    this.masterGain = new GainNode(this.context);
-    this.bgmBus = new GainNode(this.context);
-    this.seBus = new GainNode(this.context);
-    this.voiceBus = new GainNode(this.context);
+    this.masterGain = this.context.createGain();
+    this.bgmBus = this.context.createGain();
+    this.seBus = this.context.createGain();
+    this.voiceBus = this.context.createGain();
     this.sePool = new AudioTrackPool(maxSeTracks, this.context);
     this.bgmTrack = new AudioTrack('bgm', this.context);
     this.voiceTrack = new AudioTrack('voice', this.context);
