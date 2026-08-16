@@ -5,7 +5,8 @@ class AudioTrack {
   private source: AudioBufferSourceNode | null;
   private buffer: AudioBuffer | null;
   private context: AudioContext;
-  private progress: number;
+  public progress: number;
+  private startTime: number;
   private volume: number;
   private fadeElapsed: number;
   private fadeDuration: number;
@@ -22,6 +23,7 @@ class AudioTrack {
     this.buffer = null;
     this.state = 'stopped';
     this.progress = 0;
+    this.startTime = 0;
     this.volume = 1;
     this.fadeElapsed = 0;
     this.fadeDuration = 0;
@@ -30,7 +32,12 @@ class AudioTrack {
     this.fadeTarget = 'playing';
   }
 
-  play(
+  private computeOffset(): number {
+    const elapsed = this.context.currentTime - this.startTime;
+    return Math.max(0, Math.min(elapsed, this.buffer?.duration ?? 0));
+  }
+
+  public play(
     buffer: AudioBuffer,
     options?: { loop?: boolean; fadeIn?: number },
   ): void {
@@ -40,6 +47,7 @@ class AudioTrack {
     this.source.buffer = buffer;
     this.source.loop = options?.loop ?? false;
     this.source.connect(this.gain);
+    this.startTime = this.context.currentTime;
     this.source.start(0);
 
     const fadeIn = options?.fadeIn ?? 0;
@@ -57,7 +65,7 @@ class AudioTrack {
     }
   }
 
-  stop(options?: { fadeOut?: number }): void {
+  public stop(options?: { fadeOut?: number }): void {
     if (this.state === 'stopped') return;
     const fadeOut = options?.fadeOut ?? 0;
     if (fadeOut > 0) {
@@ -73,14 +81,14 @@ class AudioTrack {
     }
   }
 
-  pause(): void {
+  public pause(): void {
     if (this.state !== 'playing' && this.state !== 'fading') return;
     this.stopSource();
-    this.progress = this.context.currentTime;
+    this.progress = this.computeOffset();
     this.state = 'paused';
   }
 
-  resume(): void {
+  public resume(): void {
     if (this.buffer && this.state === 'paused') {
       this.source = this.context.createBufferSource();
       this.source.buffer = this.buffer;
@@ -92,7 +100,7 @@ class AudioTrack {
     }
   }
 
-  update(dt: number): void {
+  public update(dt: number): void {
     if (this.state !== 'fading') return;
     this.fadeElapsed += dt;
     const t = Math.min(this.fadeElapsed / this.fadeDuration, 1);
@@ -103,7 +111,7 @@ class AudioTrack {
     }
   }
 
-  setVolume(v: number): void {
+  public setVolume(v: number): void {
     this.volume = v;
     if (this.state === 'fading') {
       if (this.fadeTarget === 'playing') this.fadeTo = v;
@@ -130,6 +138,24 @@ class AudioTrack {
       }
       this.source.disconnect();
       this.source = null;
+    }
+  }
+
+  get currentProgress() {
+    return this.state === 'paused' ? this.progress : this.computeOffset();
+  }
+
+  set currentProgress(value: number) {
+    if (this.buffer) {
+      this.progress = Math.max(0, Math.min(value, this.buffer.duration));
+      if (this.state === 'playing') {
+        this.stopSource();
+        this.source = this.context.createBufferSource();
+        this.source.buffer = this.buffer;
+        this.source.connect(this.gain);
+        this.startTime = this.context.currentTime - this.progress;
+        this.source.start(0, this.progress);
+      }
     }
   }
 }

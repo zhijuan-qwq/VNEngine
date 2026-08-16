@@ -3,8 +3,9 @@ import AudioTrack from './AudioTrack';
 import AudioTrackPool from './AudioTrackPool';
 import type { EngineEvents } from '@/types/events';
 import type ResourceManager from '@/resource/ResourceManager';
+import type { IAudioManager } from '@/types/engine';
 
-class AudioManager {
+class AudioManager implements IAudioManager {
   private context: AudioContext;
   private masterGain: GainNode;
   private bgmBus: GainNode;
@@ -15,6 +16,7 @@ class AudioManager {
   private voiceTrack: AudioTrack;
   private resourceManager: ResourceManager;
   private eventBus: EventBus<EngineEvents>;
+  private currentBgmId: string;
 
   constructor(
     eventBus: EventBus<EngineEvents>,
@@ -31,12 +33,14 @@ class AudioManager {
     this.sePool = new AudioTrackPool(maxSeTracks, this.context);
     this.bgmTrack = new AudioTrack('bgm', this.context);
     this.voiceTrack = new AudioTrack('voice', this.context);
+    this.currentBgmId = '';
     this.bgmTrack.gain.connect(this.bgmBus);
     this.voiceTrack.gain.connect(this.voiceBus);
     this.sePool.connect(this.masterGain);
     this.bgmBus.connect(this.masterGain);
     this.voiceBus.connect(this.masterGain);
     this.seBus.connect(this.masterGain);
+    this.masterGain.connect(this.context.destination);
 
     this.eventBus.on('audio:play', async (payload) => {
       let buffer: AudioBuffer;
@@ -60,8 +64,21 @@ class AudioManager {
         case 'voice':
           this.playVoice(payload.id, buffer);
           break;
-        case 'ambient':
-          // 后续实现
+        default:
+          break;
+      }
+    });
+
+    this.eventBus.on('audio:stop', (payload) => {
+      switch (payload.type) {
+        case 'bgm':
+          this.stopBgm({ fadeOut: payload.fadeOut });
+          break;
+        case 'se':
+          this.sePool.release(payload.id);
+          break;
+        case 'voice':
+          this.voiceTrack.stop({ fadeOut: payload.fadeOut });
           break;
         default:
           break;
@@ -82,6 +99,7 @@ class AudioManager {
     buffer: AudioBuffer,
     options?: { loop?: boolean; fadeIn?: number },
   ): void {
+    this.currentBgmId = id;
     this.bgmTrack.play(buffer, options);
   }
 
@@ -126,6 +144,30 @@ class AudioManager {
 
   public resume(): void {
     this.context.resume();
+  }
+
+  public getState(): { id: string; progress: number } {
+    return {
+      id: this.currentBgmId,
+      progress: this.bgmTrack.currentProgress,
+    };
+  }
+
+  public setState(state: { id: string; progress: number }): void {
+    if (state) {
+      this.currentBgmId = state.id;
+      this.bgmTrack.currentProgress = state.progress;
+    } else {
+      this.currentBgmId = '';
+      this.bgmTrack.currentProgress = 0;
+    }
+  }
+
+  public destroy(): void {
+    this.bgmTrack.stop();
+    this.voiceTrack.stop();
+    this.sePool.stopAll();
+    this.context.close();
   }
 }
 
