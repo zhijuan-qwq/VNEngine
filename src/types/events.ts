@@ -45,7 +45,11 @@ export type EngineEvents = {
     fadeIn?: number;
     volume?: number;
   };
-  'audio:stop': { type: 'bgm' | 'se' | 'voice' | 'ambient'; fadeOut?: number };
+  'audio:stop': {
+    id: string;
+    type: 'bgm' | 'se' | 'voice' | 'ambient';
+    fadeOut?: number;
+  };
   'effect:play': {
     type: 'shake' | 'flash' | 'snow' | 'rain';
     duration?: number;
