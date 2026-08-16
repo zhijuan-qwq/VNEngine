@@ -49,11 +49,6 @@ class AudioManager {
       } else {
         buffer = await this.resourceManager.loadAudio(payload.id);
       }
-      if (!buffer) {
-        console.warn(
-          `Failed to load ${payload.type}: ${payload.id}.Resource not found`,
-        );
-      }
       switch (payload.type) {
         case 'bgm':
           this.playBgm(payload.id, buffer, {
