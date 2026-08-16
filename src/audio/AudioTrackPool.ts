@@ -2,7 +2,7 @@ import AudioTrack from './AudioTrack';
 
 class AudioTrackPool {
   private maxTracks: number;
-  public readonly pool: AudioTrack[];
+  private pool: AudioTrack[];
   private active: Map<string, AudioTrack>;
   private context: AudioContext;
 
@@ -47,6 +47,12 @@ class AudioTrackPool {
       track.stop();
       this.active.delete(id);
       this.pool.push(track);
+    }
+  }
+
+  public connect(bus: GainNode): void {
+    for (const t of this.pool) {
+      t.gain.connect(bus);
     }
   }
 }

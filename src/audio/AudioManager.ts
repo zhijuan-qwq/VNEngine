@@ -33,9 +33,7 @@ class AudioManager {
     this.voiceTrack = new AudioTrack('voice', this.context);
     this.bgmTrack.gain.connect(this.bgmBus);
     this.voiceTrack.gain.connect(this.voiceBus);
-    for (const t of this.sePool.pool) {
-      t.gain.connect(this.seBus);
-    }
+    this.sePool.connect(this.masterGain);
     this.bgmBus.connect(this.masterGain);
     this.voiceBus.connect(this.masterGain);
     this.seBus.connect(this.masterGain);
