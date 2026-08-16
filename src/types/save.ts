@@ -34,7 +34,7 @@ export interface DialogueEntrySnapshot {
 }
 
 // 存档子系统契约（见架构文档 §9.3）
-export interface SaveManager {
+export interface ISaveManager {
   capture(engine: VNEngine, slot: number): Promise<SaveData>;
   restore(engine: VNEngine, slot: number): Promise<void>;
 }
