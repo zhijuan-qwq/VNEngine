@@ -79,16 +79,6 @@ class AudioManager {
     return new AudioContextClass();
   }
 
-  private _resolveVolumeValue(v: number) {
-    if (v > 1) {
-      return 1;
-    } else if (v < 0) {
-      return 0;
-    } else {
-      return v;
-    }
-  }
-
   public playBgm(
     id: string,
     buffer: AudioBuffer,
@@ -111,19 +101,19 @@ class AudioManager {
   }
 
   public setMasterVolume(v: number): void {
-    this.masterGain.gain.value = this._resolveVolumeValue(v);
+    this.masterGain.gain.value = v;
   }
 
   public setSeVolume(v: number): void {
-    this.seBus.gain.value = this._resolveVolumeValue(v);
+    this.seBus.gain.value = v;
   }
 
   public setBgmVolume(v: number): void {
-    this.bgmBus.gain.value = this._resolveVolumeValue(v);
+    this.bgmBus.gain.value = v;
   }
 
   public setVoiceVolume(v: number): void {
-    this.voiceBus.gain.value = this._resolveVolumeValue(v);
+    this.voiceBus.gain.value = v;
   }
 
   public update(dt: number): void {
