@@ -46,7 +46,7 @@ export type EngineEvents = {
     volume?: number;
   };
   'audio:stop': {
-    id: string;
+    id?: string;
     type: 'bgm' | 'se' | 'voice' | 'ambient';
     fadeOut?: number;
   };
