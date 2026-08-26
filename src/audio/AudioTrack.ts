@@ -1,11 +1,12 @@
 class AudioTrack {
-  public readonly type: 'bgm' | 'se' | 'voice';
+  public readonly type: 'bgm' | 'se' | 'voice' | 'ambient';
   public gain: GainNode;
   public state: 'stopped' | 'playing' | 'paused' | 'fading';
   private source: AudioBufferSourceNode | null;
   private buffer: AudioBuffer | null;
   private context: AudioContext;
-  public progress: number;
+  private onFadeComplete: (() => void) | undefined;
+  private pausedOffset: number;
   private startTime: number;
   private volume: number;
   private fadeElapsed: number;
@@ -14,15 +15,19 @@ class AudioTrack {
   private fadeTo: number;
   private fadeTarget: 'playing' | 'stopped';
 
-  constructor(type: 'bgm' | 'se' | 'voice', audioContext: AudioContext) {
+  constructor(
+    type: 'bgm' | 'se' | 'voice' | 'ambient',
+    audioContext: AudioContext,
+    onFadeComplete?: () => void,
+  ) {
     this.type = type;
     this.context = audioContext;
+    this.onFadeComplete = onFadeComplete;
     this.gain = this.context.createGain();
-    this.gain.connect(this.context.destination);
     this.source = null;
     this.buffer = null;
     this.state = 'stopped';
-    this.progress = 0;
+    this.pausedOffset = 0;
     this.startTime = 0;
     this.volume = 1;
     this.fadeElapsed = 0;
@@ -84,7 +89,7 @@ class AudioTrack {
   public pause(): void {
     if (this.state !== 'playing' && this.state !== 'fading') return;
     this.stopSource();
-    this.progress = this.computeOffset();
+    this.pausedOffset = this.computeOffset();
     this.state = 'paused';
   }
 
@@ -93,7 +98,7 @@ class AudioTrack {
       this.source = this.context.createBufferSource();
       this.source.buffer = this.buffer;
       this.source.connect(this.gain);
-      this.source.start(0, this.progress);
+      this.source.start(0, this.pausedOffset);
       this.state = 'playing';
     } else {
       console.warn('Cannot resume audio track: no buffer or not paused.');
@@ -127,6 +132,7 @@ class AudioTrack {
     } else {
       this.state = 'playing';
     }
+    this.onFadeComplete?.();
   }
 
   private stopSource(): void {
@@ -142,19 +148,19 @@ class AudioTrack {
   }
 
   get currentProgress() {
-    return this.state === 'paused' ? this.progress : this.computeOffset();
+    return this.state === 'paused' ? this.pausedOffset : this.computeOffset();
   }
 
   set currentProgress(value: number) {
     if (this.buffer) {
-      this.progress = Math.max(0, Math.min(value, this.buffer.duration));
+      this.pausedOffset = Math.max(0, Math.min(value, this.buffer.duration));
       if (this.state === 'playing') {
         this.stopSource();
         this.source = this.context.createBufferSource();
         this.source.buffer = this.buffer;
         this.source.connect(this.gain);
-        this.startTime = this.context.currentTime - this.progress;
-        this.source.start(0, this.progress);
+        this.startTime = this.context.currentTime - this.pausedOffset;
+        this.source.start(0, this.pausedOffset);
       }
     }
   }
