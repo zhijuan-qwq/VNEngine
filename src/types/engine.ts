@@ -4,7 +4,7 @@ import type { Application, Container } from 'pixi.js';
 import type { VariableStore } from '@/script/VariableStore';
 import type ScriptEngine from '@/script/ScriptEngine';
 import type { IResourceManager } from './resource';
-import type { SaveManager } from './save';
+import type { ISaveManager } from './save';
 
 export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
 
@@ -90,7 +90,7 @@ export interface Plugin {
   uninstall?(engine: VNEngine): void;
 }
 
-export interface PluginManager {
+export interface IPluginManager {
   register(plugin: Plugin): void;
   unregister(name: string): void;
   get(name: string): Plugin | null;
@@ -98,7 +98,7 @@ export interface PluginManager {
 }
 
 // 渲染子系统契约（见架构文档 §4）：持有 LayerStack，把 bg/character/effect 事件映射为 pixi 显示对象
-export interface Renderer {
+export interface IRenderer {
   update(dt: number): void;
   getState(): unknown;
   setState(state: unknown): void;
@@ -106,7 +106,7 @@ export interface Renderer {
 }
 
 // 音频子系统契约（见架构文档 §7）：Web Audio API，多音轨混音与淡入淡出
-export interface AudioManager {
+export interface IAudioManager {
   update(dt: number): void;
   pause(): void;
   resume(): void;
@@ -116,7 +116,7 @@ export interface AudioManager {
 }
 
 // 输入子系统契约（见架构文档 §8.3）：pixi Federated Pointer Events → EventBus
-export interface InputManager {
+export interface IInputManager {
   setUIRoot(root: Container): void;
   destroy(): void;
 }
@@ -124,14 +124,14 @@ export interface InputManager {
 export interface VNEngine {
   app: Application;
   eventBus: EventBus<EngineEvents>;
-  plugins: PluginManager;
+  plugins: IPluginManager;
   variableStore: VariableStore;
   script: ScriptEngine;
   resource: IResourceManager;
-  renderer: Renderer;
-  audio: AudioManager;
-  input: InputManager;
-  save: SaveManager;
+  renderer: IRenderer;
+  audio: IAudioManager;
+  input: IInputManager;
+  save: ISaveManager;
   destroy(): void;
   pause(): void;
   resume(): void;

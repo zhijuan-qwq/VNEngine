@@ -778,20 +778,23 @@ interface CacheEntry<T> {
 AudioManager  (实现 Updatable)
 ├── context: AudioContext              // Web Audio API 上下文
 ├── masterGain: GainNode              // 主音量控制
-├── bgmBus: GainNode                  // BGM 总线音量
+├── bgmBus: GainNode                  // BGM/环境音 总线音量
 ├── seBus: GainNode                   // SE 总线音量
 ├── voiceBus: GainNode                // 语音总线音量
 ├── bgmTrack: AudioTrack              // BGM轨道（独占）
+├── ambientTrack: AudioTrack          // 环境音轨道（与 BGM 共享 bgmBus）
 ├── sePool: AudioTrackPool            // 音效轨道池
 ├── voiceTrack: AudioTrack            // 语音轨道（独占，同时只能播放一条）
 ├── eventBus: EventBus                // 事件总线（构造注入）
 │
 ├── playBgm(id: string, buffer: AudioBuffer, options?: { loop?: boolean; fadeIn?: number }): void
 ├── stopBgm(options?: { fadeOut?: number }): void
-├── playSe(id: string, buffer: AudioBuffer): void
-├── playVoice(id: string, buffer: AudioBuffer): void
+├── playAmbient(buffer: AudioBuffer, options?: { loop?: boolean; fadeIn?: number }): void
+├── stopAmbient(options?: { fadeOut?: number }): void
+├── playSe(id: string, buffer: AudioBuffer): AudioTrack | null
+├── playVoice(buffer: AudioBuffer): void
 ├── setMasterVolume(v: number): void  // 0-1，设 masterGain.gain.value
-├── setBgmVolume(v: number): void     // 0-1，设 bgmBus.gain.value
+├── setBgmVolume(v: number): void     // 0-1，设 bgmBus.gain.value（bgm 与 ambient 共用）
 ├── setSeVolume(v: number): void      // 0-1，设 seBus.gain.value
 ├── setVoiceVolume(v: number): void   // 0-1，设 voiceBus.gain.value
 ├── update(dt: number): void          // 驱动所有活跃 track 的 fade 渐变
@@ -805,18 +808,19 @@ AudioManager  (实现 Updatable)
 AudioTrack.buffer → sourceNode → trackGain → busGain → masterGain → destination
                                     (独立)    (类型总线)  (总控)
 
-bgmTrack.trackGain   → bgmBus   ─┐
-sePool 各 trackGain   → seBus    ─┼→ masterGain → context.destination
-voiceTrack.trackGain  → voiceBus ─┘
+bgmTrack.trackGain     → bgmBus   ─┐
+ambientTrack.trackGain → bgmBus    ─┤
+sePool 各 trackGain     → seBus    ─┼→ masterGain → context.destination
+voiceTrack.trackGain    → voiceBus ─┘
 ```
 
-`setBgmVolume/setSeVolume/setVoiceVolume` 控制总线级别音量，不覆盖 track 自身 gain（后者用于 fade 过程中的中间值）。
+`setBgmVolume/setSeVolume/setVoiceVolume` 控制总线级别音量，不覆盖 track 自身 gain（后者用于 fade 过程中的中间值）。ambient 与 BGM 共享 bgmBus，故 `setBgmVolume` 同时作用于两者；单个 track 的播放音量用 `AudioTrack.setVolume` 设定（DSL `volume=` 即映射到它）。
 
 ### 7.2 AudioTrack（音轨）
 
 ```ts
 class AudioTrack {
-  type: 'bgm' | 'se' | 'voice';
+  type: 'bgm' | 'se' | 'voice' | 'ambient';
   gain: GainNode; // 独立音量节点（fade 时修改此值）
   source: AudioBufferSourceNode | null;
   buffer: AudioBuffer | null;
@@ -844,7 +848,7 @@ playing ──stop(fadeOut=0)──→ stopped
 playing ──pause()──→ paused ──resume()──→ playing
 ```
 
-`fading` 状态下 `update(dt)` 每帧计算 fade 进度、修改 `gain.gain.value`，完成后切到目标状态并触发事件。
+`fading` 状态下 `update(dt)` 每帧计算 fade 进度、修改 `gain.gain.value`，完成后切到目标状态并调用构造注入的 `onFadeComplete` 回调（AudioTrack 不直接持有 EventBus；消费方在回调中按需响应，如 AudioManager 据此清理过期 id）。
 
 ### 7.3 音频池（SE轨道复用）
 
@@ -1337,6 +1341,7 @@ interface EngineEvents {
     volume?: number;
   };
   'audio:stop': {
+    id?: string;
     type: 'bgm' | 'se' | 'voice' | 'ambient';
     fadeOut?: number;
   };
