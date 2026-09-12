@@ -820,7 +820,7 @@ voiceTrack.trackGain    → voiceBus ─┘
 
 ```ts
 class AudioTrack {
-  type: 'bgm' | 'se' | 'voice';
+  type: 'bgm' | 'se' | 'voice' | 'ambient';
   gain: GainNode; // 独立音量节点（fade 时修改此值）
   source: AudioBufferSourceNode | null;
   buffer: AudioBuffer | null;
@@ -1341,6 +1341,7 @@ interface EngineEvents {
     volume?: number;
   };
   'audio:stop': {
+    id?: string;
     type: 'bgm' | 'se' | 'voice' | 'ambient';
     fadeOut?: number;
   };
