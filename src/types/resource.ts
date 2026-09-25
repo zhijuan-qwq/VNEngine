@@ -14,6 +14,8 @@ export interface IResourceManager {
   manifest: AssetManifest;
   loadManifest(manifest: AssetManifest): void;
   loadImage(id: string): Promise<Texture>;
+  /** 按 spritesheets[id].url 加载图集整图（子纹理由渲染层按 frames 裁出） */
+  loadSpritesheet(id: string): Promise<Texture>;
   loadAudio(id: string): Promise<AudioBuffer>;
   loadScript(id: string): Promise<Script>;
   loadGroup(group: string, onProgress?: ProgressCallback): Promise<void>;
