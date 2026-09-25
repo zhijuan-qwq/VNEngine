@@ -101,11 +101,19 @@ export interface IPluginManager {
   list(): Plugin[];
 }
 
+/** 渲染子系统状态（存档/读档快照，见架构文档 §9.3/§14.1） */
+export interface RendererState {
+  bgImage: string | null;
+  characters: CharacterState[];
+}
+
 // 渲染子系统契约（见架构文档 §4）：持有 LayerStack，把 bg/character/effect 事件映射为 pixi 显示对象
 export interface IRenderer {
   update(dt: number): void;
-  getState(): unknown;
-  setState(state: unknown): void;
+  getState(): RendererState;
+  setState(state: RendererState): void;
+  /** 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见架构文档 §4.8） */
+  resize(size: { width: number; height: number }): void;
   destroy(): void;
 }
 
