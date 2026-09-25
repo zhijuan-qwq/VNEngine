@@ -6,11 +6,9 @@ export const SHAKE_AMPLITUDE = 20;
 export interface ShakeEffectOptions {
   /** 毫秒 */
   duration: number;
-  /** 幅度倍率，缺省 1 */
   intensity?: number;
 }
 
-/** 屏幕震动：围绕基准位置随机抖动目标 Container，结束后复位 */
 export class ShakeEffect {
   private readonly target: Container;
   private readonly baseX: number;

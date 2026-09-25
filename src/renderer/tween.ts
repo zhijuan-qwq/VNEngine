@@ -22,7 +22,7 @@ interface TweenEntry {
   elapsed: number;
 }
 
-/** 由 `Renderer.update(dt)` 逐帧推进的补间引擎；dt 单位为秒（与 Updater/AudioManager 一致） */
+/** 由 `Renderer.update(dt)` 逐帧推进；dt 单位为秒（与 AudioManager 一致） */
 export class TweenEngine {
   /**
    * 在飞的补间。用 Set 而非「快照数组 + 逐帧重建」：重建会让 onComplete 里发出的

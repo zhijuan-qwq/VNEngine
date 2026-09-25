@@ -18,7 +18,7 @@ export interface RendererOptions {
   /** pixi 根容器（app.stage）；ScaleManager 直接作用于它 */
   stage: Container;
   eventBus: EventBus<EngineEvents>;
-  /** 资源访问面：manifest 查表 + 按 id 加载整图/图集（ResourceManager 满足其结构） */
+  /** 资源访问面，ResourceManager 满足其结构 */
   resource: TextureProvider;
   /** 逻辑分辨率 */
   width: number;
@@ -28,12 +28,7 @@ export interface RendererOptions {
   onError?(error: unknown): void;
 }
 
-/**
- * 渲染门面（架构文档 §4.1）：组织图层、订阅 bg/character/effect 事件，
- * 把领域概念映射为 pixi 显示对象；逐帧由 Updater 调用 update(dt)
- */
 export class Renderer implements IRenderer {
-  /** 图层栈（自身即画面根，屏幕震动的作用对象） */
   public readonly layers: LayerStack;
   public readonly tweens: TweenEngine;
   public readonly scale: ScaleManager;
@@ -72,13 +67,13 @@ export class Renderer implements IRenderer {
       tweens: this.tweens,
       size: this.size,
     });
-    // UI 图层由渲染器预建，供后续 UI 子系统挂载（见 §8）
+    // UI 图层由渲染器预建，供后续 UI 子系统挂载
     this.layers.addLayer('ui', LAYER_Z_INDEX.ui);
 
     this.bind(options.eventBus);
   }
 
-  /** dt 单位为秒（与 Updater/AudioManager 一致） */
+  /** dt 单位为秒（与 AudioManager 一致） */
   public update(dt: number): void {
     this.tweens.update(dt);
     this.effects.update(dt);
@@ -96,7 +91,6 @@ export class Renderer implements IRenderer {
     this.characters.setState(state.characters);
   }
 
-  /** 画布尺寸变化时重算缩放与居中（由 Game 在 resize 时调用） */
   public resize(containerSize: Size): void {
     this.scale.update(containerSize);
   }

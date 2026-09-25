@@ -10,7 +10,6 @@ import {
 import type { TweenEngine } from './tween';
 
 export interface BackgroundManagerDeps {
-  /** 背景层 Container */
   parent: Container;
   tweens: TweenEngine;
   size: Size;
@@ -24,7 +23,6 @@ interface BackgroundEntry {
   view: Sprite;
 }
 
-/** 背景切换：新背景叠在旧背景上入场，旧背景淡出后销毁 */
 export class BackgroundManager {
   private readonly deps: BackgroundManagerDeps;
   private current: BackgroundEntry | null = null;
@@ -44,12 +42,11 @@ export class BackgroundManager {
     void this.apply(payload.id, payload.transition, payload.duration, token);
   }
 
-  /** 当前背景 id（无背景为 null） */
   public getState(): string | null {
     return this.current?.id ?? null;
   }
 
-  /** 读档：清空后直接铺上背景，不走转场 */
+  /** 读档：不走转场，直接铺上背景 */
   public setState(id: string | null): void {
     const token = this.nextToken();
     if (this.current) {

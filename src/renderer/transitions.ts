@@ -3,7 +3,6 @@ import type { EasingFn } from '@/types/engine';
 import { easeOut } from '@/utils/easing';
 import type { TweenEngine } from './tween';
 
-/** 未指定 duration 的转场时长（毫秒） */
 export const DEFAULT_TRANSITION_DURATION = 300;
 /** zoom 转场的默认起始缩放（由大缩小；角色放大入场时传更小的 scaleFrom） */
 export const DEFAULT_ZOOM_FROM = 1.1;
@@ -45,13 +44,10 @@ export function parseTransition(name?: string): TransitionSpec {
 }
 
 export interface EnterSpec {
-  /** slide 入场起点 */
   from: PointData;
-  /** 落点 */
   to: PointData;
   /** 毫秒；<= 0 视为直切 */
   duration: number;
-  /** zoom 起始缩放，缺省 DEFAULT_ZOOM_FROM */
   scaleFrom?: number;
   /** 结束时的 alpha，缺省 1（读档恢复半透明立绘用） */
   alphaTo?: number;
@@ -59,7 +55,6 @@ export interface EnterSpec {
 }
 
 export interface LeaveSpec {
-  /** slide 退场终点（从当前位置滑向该点） */
   to: PointData;
   /** 毫秒；<= 0 视为直切 */
   duration: number;
@@ -68,7 +63,7 @@ export interface LeaveSpec {
   onComplete?: () => void;
 }
 
-/** 入场：摆好起始状态后补间到落点；结束后销毁由调用方负责 */
+/** 入场转场；结束后视图销毁由调用方负责 */
 export function playEnter(
   tweens: TweenEngine,
   view: Sprite,
@@ -108,7 +103,7 @@ export function playEnter(
   }
 }
 
-/** 退场：补间到屏幕外/透明后销毁视图，再回调 onComplete */
+/** 退场转场：先销毁视图再回调 onComplete */
 export function playLeave(
   tweens: TweenEngine,
   view: Sprite,

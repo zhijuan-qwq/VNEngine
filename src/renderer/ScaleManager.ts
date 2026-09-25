@@ -6,7 +6,7 @@ export interface Size {
   height: number;
 }
 
-/** 逻辑分辨率 → 画布映射（架构文档 §4.8），渲染与输入共用同一坐标基准 */
+/** 逻辑分辨率 → 画布映射；渲染与输入共用同一坐标基准 */
 export class ScaleManager {
   public readonly mode: ScaleMode;
   public readonly logical: Size;

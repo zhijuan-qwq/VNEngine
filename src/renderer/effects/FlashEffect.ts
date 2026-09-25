@@ -25,7 +25,6 @@ export interface FlashEffectOptions {
   onDone: () => void;
 }
 
-/** 全屏闪光：铺满特效层的一张纯色矩形，从全不透明淡出到透明 */
 export class FlashEffect {
   public readonly view: Graphics;
   private readonly handle: TweenHandle;

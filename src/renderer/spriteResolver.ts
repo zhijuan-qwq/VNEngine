@@ -1,18 +1,16 @@
 import { Rectangle, Texture } from 'pixi.js';
 import type { AssetManifest } from '@/types/engine';
 
-/** 渲染层需要的资源访问面：manifest 查表 + 按 id 加载整图 */
 export interface TextureProvider {
   manifest: AssetManifest;
   loadImage(id: string): Promise<Texture>;
   loadSpritesheet(id: string): Promise<Texture>;
 }
 
-/** 未指定 sprite 时的立绘名 */
 export const DEFAULT_SPRITE_NAME = 'default';
 
 /**
- * 立绘纹理解析链（见 §6.4/§14.1）：
+ * 立绘纹理解析链：
  * ① spritesheets[角色id].frames[立绘名] 从图集裁子纹理
  * ② images[角色id_立绘名]
  * ③ images[立绘名]
@@ -43,7 +41,6 @@ export async function resolveCharacterTexture(
   );
 }
 
-/** 背景纹理解析：images[背景id] */
 export async function resolveBackgroundTexture(
   provider: TextureProvider,
   backgroundId: string,

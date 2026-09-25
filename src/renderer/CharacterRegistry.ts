@@ -16,9 +16,7 @@ import type { TweenEngine } from './tween';
 
 /** 立绘锚点：底部中心（位置参数给出的是立绘脚底落点） */
 export const CHARACTER_ANCHOR = { x: 0.5, y: 1 };
-/**
- * 位置关键字 → 逻辑宽度占比。offLeft/offRight 在屏幕外，用于站在画外（探身/移出）
- */
+/** offLeft/offRight 在屏幕外，用于站在画外（探身/移出） */
 export const POSITION_RATIOS: Record<PositionKeyword, number> = {
   farLeft: 0.1,
   left: 0.25,
@@ -28,12 +26,9 @@ export const POSITION_RATIOS: Record<PositionKeyword, number> = {
   offLeft: -0.25,
   offRight: 1.25,
 };
-/** slide 转场时立绘在屏幕外的偏移量（逻辑像素） */
 export const SLIDE_IN_OFFSET = 200;
-/** zoom 入场时的起始缩放 */
 export const CHARACTER_ZOOM_FROM = 0.85;
 
-/** 位置参数 → 立绘脚底在逻辑分辨率中的落点 */
 export function positionToPoint(position: Position, size: Size): PointData {
   if (typeof position === 'object') {
     return { x: position.x, y: position.y };
@@ -43,13 +38,11 @@ export function positionToPoint(position: Position, size: Size): PointData {
   return { x: size.width * ratio, y: size.height };
 }
 
-/** 位置是否等价（对象形式按坐标比较） */
 function samePosition(a: Position, b: Position): boolean {
   if (typeof a === 'string' || typeof b === 'string') return a === b;
   return a.x === b.x && a.y === b.y;
 }
 
-/** 位置所属的屏幕侧别；center 与自定义坐标无侧别（返回 null） */
 function sideOfPosition(position: Position): SlideDirection | null {
   if (position === 'left' || position === 'farLeft' || position === 'offLeft') {
     return 'left';
@@ -64,10 +57,6 @@ function sideOfPosition(position: Position): SlideDirection | null {
   return null;
 }
 
-/**
- * slide 的屏幕外一端：显式方向（slideL/slideR）优先，
- * 否则 left 系从左侧、right 系从右侧，其余（center/自定义坐标）从下方
- */
 function slideFrom(
   position: Position,
   to: PointData,
@@ -80,7 +69,6 @@ function slideFrom(
 }
 
 export interface CharacterRegistryDeps {
-  /** 角色层 Container */
   parent: Container;
   tweens: TweenEngine;
   size: Size;
@@ -96,7 +84,6 @@ export interface CharacterRegistryDeps {
  */
 interface CharacterEntry {
   id: string;
-  /** 纹理解析完成前为 null */
   view: Sprite | null;
   /** 最近一次请求的立绘名（交叉淡入完成前也按目标记账） */
   spriteName: string;
@@ -106,11 +93,10 @@ interface CharacterEntry {
   opacity: number;
 }
 
-/** 角色 → pixi Sprite 的生命周期管理：show/hide/move/sprite */
 export class CharacterRegistry {
   private readonly deps: CharacterRegistryDeps;
   private readonly entries = new Map<string, CharacterEntry>();
-  /** 已退场但仍在外层补间中的立绘（补间结束即销毁并移出） */
+  /** 已退场但仍在退场补间中的立绘 */
   private readonly leaving = new Set<Sprite>();
   /** 每个角色一张的纹理解析结果，避免重复从图集裁子纹理 */
   private readonly textures = new Map<string, Texture>();
@@ -216,7 +202,7 @@ export class CharacterRegistry {
     }));
   }
 
-  /** 读档：清空当前立绘后按存档状态直接摆位，不走转场 */
+  /** 读档：按存档状态直接摆位，不走转场 */
   public setState(states: CharacterState[]): void {
     this.clear();
     for (const state of states) {
@@ -246,10 +232,7 @@ export class CharacterRegistry {
     this.textures.clear();
   }
 
-  /**
-   * 换立绘：有视图走交叉淡入（成功落地后才改记账名，失败保持画面上那张）；
-   * 视图还在加载则直接改记账名并按新名字重新发起（旧请求靠序号作废）
-   */
+  /** 有视图走交叉淡入（成功落地后才改记账名）；视图未建则改记账名并按新名字重新发起 */
   private applySpriteChange(
     entry: CharacterEntry,
     spriteName: string,
@@ -373,7 +356,6 @@ export class CharacterRegistry {
     });
   }
 
-  /** 取消该 Sprite 上所有补间后销毁 */
   private discard(view: Sprite): void {
     this.deps.tweens.cancelTarget(view);
     this.deps.tweens.cancelTarget(view.scale);

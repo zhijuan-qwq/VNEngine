@@ -10,9 +10,8 @@ export interface ParticleEffectOptions {
   size: Size;
   /** 毫秒；缺省时持续到 effect:stop */
   duration?: number;
-  /** 粒子数量倍率，缺省 1 */
   density?: number;
-  /** 测试用随机源，缺省 Math.random */
+  /** 测试用随机源 */
   random?: () => number;
 }
 
@@ -22,7 +21,7 @@ interface Particle {
   vy: number;
 }
 
-/** 雪/雨粒子：pixi v8 无兼容的粒子插件，用 Graphics 粒子在特效层自定义实现 */
+/** pixi v8 无兼容粒子插件，用 Graphics 在特效层自定义实现 */
 export class ParticleEffect {
   public readonly view: Container;
   private readonly particles: Particle[] = [];

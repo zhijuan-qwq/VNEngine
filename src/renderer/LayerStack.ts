@@ -1,7 +1,7 @@
 import type { DestroyOptions } from 'pixi.js';
 import { Container } from 'pixi.js';
 
-/** 图层 zIndex 约定（架构文档 §4.2）；Renderer 预建 bg/chara/effect/ui，其余按需 addLayer */
+/** 图层 zIndex 约定；Renderer 预建 bg/chara/effect/ui，其余按需 addLayer */
 export const LAYER_Z_INDEX = {
   bg: 0,
   cg: 100,
@@ -12,7 +12,6 @@ export const LAYER_Z_INDEX = {
   ui: 600,
 } as const;
 
-/** 根 Container + 按 zIndex 排序的图层 Container */
 export class LayerStack extends Container {
   public readonly layers: Map<string, Container>;
 

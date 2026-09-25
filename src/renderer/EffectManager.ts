@@ -6,13 +6,10 @@ import FlashEffect from './effects/FlashEffect';
 import ParticleEffect from './effects/ParticleEffect';
 import ShakeEffect from './effects/ShakeEffect';
 
-/** 未指定 duration 的震动时长（毫秒） */
 export const DEFAULT_SHAKE_DURATION = 500;
-/** 未指定 duration 的闪光时长（毫秒） */
 export const DEFAULT_FLASH_DURATION = 300;
 
 export interface EffectManagerDeps {
-  /** 特效层 Container */
   parent: Container;
   /** 屏幕震动作用对象：整个画面根（LayerStack） */
   shakeTarget: Container;
@@ -21,7 +18,7 @@ export interface EffectManagerDeps {
   random?: () => number;
 }
 
-/** 画面特效：shake/flash 一次性，snow/rain 无 duration 时持续到 effect:stop */
+/** snow/rain 无 duration 时持续到 effect:stop */
 export class EffectManager {
   private readonly deps: EffectManagerDeps;
   private shake: ShakeEffect | null = null;
