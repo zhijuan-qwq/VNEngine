@@ -6,7 +6,11 @@ import type ScriptEngine from '@/script/ScriptEngine';
 import type { IResourceManager } from './resource';
 import type { ISaveManager } from './save';
 
-export type Position = 'left' | 'center' | 'right' | { x: number; y: number };
+/** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
+export type PositionKeyword =
+  'farLeft' | 'left' | 'center' | 'right' | 'farRight' | 'offLeft' | 'offRight';
+
+export type Position = PositionKeyword | { x: number; y: number };
 
 export type ScaleMode = 'fit' | 'stretch' | 'fixed';
 
