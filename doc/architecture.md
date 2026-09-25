@@ -26,11 +26,11 @@
 │ │ Renderer  │  │  Script   │  │   Audio   │  │ Resource  │ │
 │ │ (PixiJS)  │  │  (脚本)   │  │  (音频)   │  │  (资源)   │ │
 │ │           │  │           │  │           │  │           │ │
-│ │ LayerStack│  │ Parser    │  │ BGM/BGS   │  │ Loader    │ │
-│ │ (Container│  │ Interpr   │  │ SE/Voice  │  │ Cache     │ │
+│ │ LayerStack│  │ Parser    │  │ BGM/SE    │  │ Loader    │ │
+│ │ (Container│  │ Interpr   │  │ Voice/Amb │  │ Cache     │ │
 │ │  zIndex)  │  │ Command   │  │ Fade控制  │  │ Preload   │ │
 │ │ Sprite    │  │ VarStore  │  │           │  │           │ │
-│ │ Text      │  │ Flow控制  │  │           │  │           │ │
+│ │ Tween     │  │ Flow控制  │  │           │  │           │ │
 │ │ Effect    │  │           │  │           │  │           │ │
 │ └───────────┘  └───────────┘  └───────────┘  └───────────┘ │
 │                                                            │
@@ -103,8 +103,9 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 2. 创建 VariableStore
 3. 创建 ResourceManager(eventBus, config.assets)
 4. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
-   并将 app.canvas 挂载到容器；构建 LayerStack（根 Container + 图层 Container）
-5. 创建 Renderer(app.stage, eventBus)         // 持有 LayerStack，订阅 bg/character/effect 事件
+   并将 app.canvas 挂载到容器
+5. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
+                                              // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件
 6. 创建 InputManager(app.stage, eventBus)      // pixi Federated Pointer Events
 7. 创建 AudioManager(eventBus)
 8. 创建 SaveManager(eventBus)
@@ -169,7 +170,7 @@ ticker 回调:
 
 **与 Game 的协作：** `start/stop` 用于引擎初始化/销毁，`pause/resume` 用于用户暂停/恢复。Game 的 `pause/resume/destroy` 直接委托给 Updater 对应方法（即 ticker 的 stop/start）。
 
-UI 渲染属于 Renderer 职责（最顶层 Layer），Updater 层面只负责逐帧更新与 `render:frame` 事件。
+UI 显示对象挂在 Renderer 的最顶层图层（§4.2 的 ui 层）；UI 自身的逐帧更新由 UI 子系统（§8）实现，Updater 层面只负责逐帧调用与 `render:frame` 事件。
 
 ### 3.3 EventBus（事件总线）
 
@@ -232,20 +233,24 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 渲染基于 **PixiJS v8**。Renderer 实现 `Updatable` 接口（见 §3.2），由 Updater（`app.ticker`）统一驱动。渲染对象树由 pixi 场景图承担：Renderer 只负责组织图层、订阅引擎事件，并把领域概念（背景/角色/特效）映射为 pixi 显示对象。
 
 ```
-Renderer
-├── app: Application                 // pixi Application（stage/ticker）
-├── eventBus: EventBus               // 订阅 bg/character/effect 事件
-├── layerStack: LayerStack           // 根 Container + 图层 Container（zIndex 排序）
+Renderer（依赖经构造函数注入）
+├── layers: LayerStack               // 根 Container + 图层 Container（zIndex 排序）
+├── scale: ScaleManager              // 缩放适配（作用于 app.stage）
 ├── characters: CharacterRegistry    // 角色 → pixi Sprite 生命周期
 ├── backgrounds: BackgroundManager   // 背景切换（淡入淡出）
 ├── effects: EffectManager           // shake/flash/snow/rain
-├── tween: TweenEngine               // 基于 ticker 的补间
+├── tweens: TweenEngine              // 补间（由 update(dt) 驱动）
 │
-├── init(stage: Container, eventBus): void   // 构建 LayerStack、订阅事件
-├── update(dt): void                 // 驱动 tween/特效/角色动画
+├── constructor({ stage, eventBus, resource, width, height, scaleMode, onError? })
+│                                    // 构建 LayerStack 挂到 stage、订阅 bg/character/effect 事件
+├── update(dt): void                 // 驱动 tween → 特效
 ├── getState(): RendererState        // 供存档
-└── setState(state): void            // 供读档
+├── setState(state): void            // 供读档
+├── resize(containerSize): void       // 画布尺寸变化时转发给 ScaleManager
+└── destroy(): void                  // 退订事件、销毁全部显示对象
 ```
+
+依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
 
 ### 4.2 图层架构（LayerStack）
 
@@ -281,11 +286,14 @@ class LayerStack extends Container {
   constructor() {
     super({ sortableChildren: true }); // 子节点按 zIndex 排序
   }
-  addLayer(id: string, zIndex: number): Container;
+  addLayer(id: string, zIndex: number): Container; // 同 id 重复调用只更新 zIndex
+  getLayer(id: string): Container | null;
   removeLayer(id: string): void;
   reorderLayer(id: string, newZIndex: number): void;
 }
 ```
+
+Renderer 在构造时预建 4 个图层：`bg`(0)、`chara`(300)、`effect`(500)、`ui`(600)——对应本子系统直接使用的层，UI 层供 §8 的 UI 子系统挂载；`cg`/`middle`/`fore` 由后续功能按需 `addLayer()` 创建。
 
 **注意（pixi v8 叶子节点规则）：** `Sprite`/`Text`/`Graphics` 是叶子节点，不能作为子节点容器；图层与分组一律用 `Container`。
 
@@ -309,6 +317,25 @@ sprite.eventMode = 'static'; // 需要接收交互事件时
 **尺寸公式：** 最终显示宽高由 pixi 按 `width/height/scale` 计算。图集子纹理用 `new Texture({ source, frame })` 裁出源区域。
 
 **精灵动画：** `moveTo(x, y, duration, easing)`、`fadeTo(alpha, duration)` 由引擎 tween 驱动（见 §4.6），作用于 `sprite.x`/`sprite.y`/`sprite.alpha` 等属性。
+
+**立绘约定（CharacterRegistry）：**
+
+- 锚点固定 `anchor.set(0.5, 1)`（脚底中心），位置参数给出的是立绘落点。
+- 位置关键字 → `x = 逻辑宽 × 占比`，`y = 逻辑高`（底部对齐）；占比表 `POSITION_RATIOS`（`renderer/CharacterRegistry.ts`）：
+
+  | 关键字 | `farLeft` | `left` | `center` | `right` | `farRight` | `offLeft` | `offRight` |
+  | ------ | --------- | ------ | -------- | ------- | ---------- | --------- | ---------- |
+  | 占比   | 0.1       | 0.25   | 0.5      | 0.75    | 0.9        | -0.25     | 1.25       |
+
+  `offLeft`/`offRight` 落在屏幕外（站在画外，如探身/移出）；DSL 的位置名不校验，未识别的关键字按 `center` 处理（避免 `NaN` 破坏场景图）。
+
+- `{ x, y }` → 直接作为脚底落点使用（可精确摆位）。
+- 纹理来源按 §6.4 的解析链（图集帧 → 散图），未指定 `sprite` 时取 `'default'`。
+- 同一角色重复 `character:show` 只更新立绘/位置，不重建 Sprite；`character:hide` 的 `id` 为 `'all'` 时全部退场。
+- 记账与视图分离：`character:show` 先登记目标（位置/立绘名）再异步加载纹理，视图（pixi `Sprite`）在纹理就绪后建立。加载途中到达的 `move`/`character:sprite`/重复 `show` 改的是记账值，建立视图时按最新值摆位——`ScriptEngine` 每帧只走一条命令，`@show` 后紧跟的 `@move` 可能早于纹理到达，丢弃它会让脚本状态与画面不一致。加载失败（资源缺失）时清掉记账并报错，不留「渲染不出来的角色」。
+- 记账语义：`position` 记最近一次请求的位置（补间中途按目标记账）；`spriteId` 记「画面上那张（或视图即将建立的）立绘」——交叉淡入期间仍是旧名，补间结束、纹理真正换掉时才记账；换立绘的素材加载失败则保持旧名并报错（存档不会因此丢角色）。
+
+**背景约定（BackgroundManager）：** 新背景以 `Sprite` 叠在旧背景之上入场（alpha 0→1），旧背景同时淡出并在补间结束后销毁；`transition: 'none'` 或 `duration <= 0` 时直切。背景按逻辑分辨率原尺寸摆放，不做缩放（美术资源按逻辑分辨率制作）。`slide` 从右、`slideL` 从左整屏滑入（见 §4.6）。每次 `bg:change` 都作废在途的背景加载（后到的命令为准）：重复指定当前背景是 no-op，但仍会拦下慢吞吞的旧请求。
 
 ### 4.4 纹理管理（pixi Assets）
 
@@ -338,7 +365,7 @@ pixi 的渲染由 `Application` 内部自动完成（`app.ticker` 驱动的 `app
 ```
 每帧（由 app.ticker 驱动）:
   1. 逻辑更新：Updater 逐个调用 update(dt)
-     → Renderer.update(dt)：驱动 tween / 特效 / 角色动画 / UI
+     → Renderer.update(dt)：驱动 tween（转场/移动）与画面特效
   2. pixi 渲染器自动重绘 app.stage 全部内容
      → 批渲染 + 纹理缓存优化（无需脏矩形）
   3. 发射 render:frame 事件
@@ -346,33 +373,50 @@ pixi 的渲染由 `Application` 内部自动完成（`app.ticker` 驱动的 `app
 
 ### 4.6 转场/过渡系统（tween）
 
-过渡不再用 `Transition.apply(ctx, sprite)` 手绘，而是由引擎 **tween 工具**驱动 pixi 显示对象的属性（`alpha`/`x`/`y`/`scale`）。tween 基于 `app.ticker` 逐帧推进，纯数学、可在 node 单测。
+过渡不再用 `Transition.apply(ctx, sprite)` 手绘，而是由引擎 **tween 工具**驱动 pixi 显示对象的属性（`alpha`/`x`/`y`/`scale`）。tween 由 `Renderer.update(dt)` 逐帧推进（dt 单位为秒，与 Updater/音频一致），纯数学、可在 node 单测。
 
 ```ts
 type EasingFn = (t: number) => number; // t ∈ [0, 1]
 
-function tween<T extends object>(
-  target: T,
-  prop: keyof T,
-  to: number,
-  duration: number, // 毫秒
-  easing: EasingFn,
-  ticker: Ticker,
-): { cancel(): void };
+class TweenEngine {
+  add<T extends object>(
+    target: T,
+    prop: keyof T & string, // 属性当前值必须是有限数字，否则抛 TypeError
+    to: number,
+    options: {
+      duration: number; // 毫秒（与事件载荷/DSL 的时长单位一致）
+      easing?: EasingFn; // 缺省 linear
+      onComplete?: () => void;
+    },
+  ): { cancel(): void };
+  update(dt: number): void; // 秒；duration <= 0 时立即赋值并回调
+  cancelTarget(target: object, prop?: string): void; // 取消对象上的补间；给定 prop 时只取消该属性
+  cancelAll(): void;
+}
 ```
 
-**示例：** 角色入场 = `tween(sprite, 'alpha', 1, 500, easeOut, ticker)`；退场 = 反向。背景淡入 = 新 `Sprite` 覆盖旧 `Sprite`，再 tween 旧 `alpha → 0` 后移除。
+缓动函数集在 `utils/easing.ts`：`linear` / `easeIn` / `easeOut` / `easeInOut` / `ease`，`getEasing(name?)` 缺省 `easeOut`、未知名称回退 `linear`（DSL 的 `easing` 参数即取这些名字）。
 
-**内置转场效果（映射为对 pixi 属性的 tween 组合）：**
+**示例：** 角色入场 = `tweens.add(sprite, 'alpha', 1, { duration: 500, easing: easeOut })`；退场 = 反向。背景淡入 = 新 `Sprite` 覆盖旧 `Sprite`，再 tween 旧 `alpha → 0` 后移除。
 
-| 类型       | 说明                            |
-| ---------- | ------------------------------- |
-| `fade`     | 淡入淡出（`alpha`）             |
-| `slide`    | 滑动（`x`/`y`）                 |
-| `zoom`     | 缩放切换（`scale`）             |
-| `wipe`     | 擦除转场，后续迭代（滤镜/遮罩） |
-| `pixelate` | 像素化溶解，后续迭代（滤镜）    |
-| `custom`   | 自定义回调                      |
+**注意：** `scale` 是 `ObservablePoint`，缩放类补间作用在 `sprite.scale` 的 `x`/`y` 上（`tweens.add(sprite.scale, 'x', 1, ...)`），取消时需一并 `cancelTarget(sprite.scale)`。
+
+**新指令先取消同类补间：** 显示对象被重新下发动画时，旧补间仍在逐帧写属性，会与新的打架（例如立绘重新 `@move` 后旧补间继续把它拖回旧目标；退场淡出的同时仍在漂移）。约定：重新移动前 `cancelTarget(view, 'x')`/`cancelTarget(view, 'y')`；开始退场前取消该视图（含 `view.scale`）上全部在飞补间，再由退场补间接管。
+
+**内置转场效果（映射为对 pixi 属性的 tween 组合，实现见 `renderer/transitions.ts`）：**
+
+| 类型       | 说明                            | 角色                                          | 背景                |
+| ---------- | ------------------------------- | --------------------------------------------- | ------------------- |
+| `fade`     | 淡入淡出（`alpha`），缺省转场   | alpha 0→1 / 退场 1→0                          | 新图淡入 + 旧图淡出 |
+| `slide`    | 滑动（`x`/`y`）                 | left 系从左侧、right 系从右侧、其余从下方升起 | 从右侧滑入          |
+| `slideL`   | 滑动，显式指定方向              | 从左侧滑入 / 向左侧滑出                       | 从左侧整屏滑入      |
+| `slideR`   | 滑动，显式指定方向              | 从右侧滑入 / 向右侧滑出                       | 从右侧整屏滑入      |
+| `zoom`     | 缩放切换（`scale`）             | 0.85→1 并淡入                                 | 1.1→1 并淡入        |
+| `wipe`     | 擦除转场，后续迭代（滤镜/遮罩） | —                                             | —                   |
+| `pixelate` | 像素化溶解，后续迭代（滤镜）    | —                                             | —                   |
+| `custom`   | 自定义回调                      | —                                             | —                   |
+
+转场名由 `parseTransition(name)`（`renderer/transitions.ts`）解析为 `{ kind, direction? }`：缺省（未指定/空串）按 `fade`；`slideL`/`slideR` 是带方向的 `slide`，显式方向优先于「按目标位置推断」的默认方向（角色的左右偏移量 `SLIDE_IN_OFFSET = 200` 逻辑像素；背景按整屏宽）。`wipe`/`pixelate` 等未实现的名字按直切（立即到位）处理，不报错。未指定 `duration` 时取默认 300ms（`DEFAULT_TRANSITION_DURATION`）。
 
 ### 4.7 文字渲染
 
@@ -406,14 +450,32 @@ DialogueBox（pixi Container）
 | `fixed`   | 不缩放，居中显示（原始分辨率）      |
 
 ```
-ScaleManager
+ScaleManager（构造注入 target: Container，即 app.stage）
 ├── mode: 'fit' | 'stretch' | 'fixed'
 ├── logical: { width, height }           // GameConfig 指定的逻辑分辨率
-├── update(containerSize): void          // 容器尺寸变化时重算 app.stage.scale / 偏移
+├── update(containerSize): void          // 容器尺寸变化时重算 target.scale / 偏移
 └── toLogical(global: Point): Point      // 屏幕坐标 → 逻辑坐标（供输入层）
 ```
 
-实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。
+实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`，之后由 Game 在画布尺寸变化时调用 `renderer.resize(containerSize)`（内部转发给 ScaleManager）。
+
+### 4.9 画面特效（EffectManager）
+
+EffectManager 订阅 `effect:play` / `effect:stop`，把特效映射为特效层（zIndex=500）上的显示对象：
+
+| 类型    | 实现             | 说明                                                       |
+| ------- | ---------------- | ---------------------------------------------------------- |
+| `shake` | 随机抖动画面根   | 幅度 `SHAKE_AMPLITUDE(20px) × intensity`，结束复位到基准位 |
+| `flash` | 全屏纯色矩形淡出 | `color` 非法/缺省回退白色，alpha 1→0 后销毁                |
+| `snow`  | 白色圆形粒子飘落 | 数量 `BASE_PARTICLE_COUNT(100) × density`，到底部环绕      |
+| `rain`  | 斜向线段粒子     | 同雪，横向速度更快并带倾斜                                 |
+
+- `shake`/`flash` 为一次性：未指定 `duration` 时分别取 500ms / 300ms。
+- `snow`/`rain` 未指定 `duration` 时持续播放，直到 `effect:stop`；指定 `duration` 则到时自动结束并清理。
+- 同类型特效重复 `effect:play` 会替换正在播放的同类特效；`effect:stop` 清空全部特效（`effect:play` 中的未知类型被忽略，不报错）。
+- `shake` 的作用对象是画面根（LayerStack），因此不影响 UI 之外的坐标系换算。
+
+粒子用 pixi `Graphics` 自绘（pixi v8 暂无兼容的粒子插件），逐帧由 `EffectManager.update(dt)` 积分位置；`random` 源可注入，便于确定性单测。
 
 ---
 
@@ -615,7 +677,8 @@ const myPlugin: Plugin = {
       type: '@shaketext',
       execute(ctx, args) {
         const duration = args.duration ?? 500;
-        game.renderer.addEffect(new ShakeEffect(duration));
+        // 子系统之间只通过事件通信：命令发事件，由 Renderer 订阅后执行
+        game.eventBus.emit('effect:play', { type: 'shake', duration });
       },
     });
   },
@@ -639,6 +702,7 @@ ResourceManager
 ├── preloader: Preloader             // 场景/分组预加载器
 │
 ├── loadImage(id: string): Promise<Texture>      // pixi Texture
+├── loadSpritesheet(id: string): Promise<Texture> // 图集整图，子纹理由渲染层按 frames 裁出
 ├── loadAudio(id: string): Promise<AudioBuffer>
 ├── loadScript(id: string): Promise<Script>
 ├── loadGroup(group: string, onProgress?: (p: { loaded: number; total: number }) => void): Promise<void>
@@ -653,6 +717,10 @@ loadImage(id):
   1. url = manifest.images[id]
   2. texture = assetLoader.loadImage(url)        // 内部委托 pixi Assets.load（缓存命中直接返回）
   3. 发射 resource:progress
+
+loadSpritesheet(id):
+  1. config = manifest.spritesheets[id]
+  2. texture = assetLoader.loadImage(config.url) // 整张图集，同样是 pixi Assets 缓存
 
 loadAudio(id):
   1. url = manifest.audio[id]
@@ -742,8 +810,8 @@ interface CacheEntry<T> {
     "ch_hero": {
       "url": "assets/char/hero/spritesheet.png",
       "frames": {
-        "default": { "x": 0, "y": 0, "w": 512, "h": 720 },
-        "smile": { "x": 512, "y": 0, "w": 512, "h": 720 }
+        "default": [0, 0, 512, 720],
+        "smile": [512, 0, 512, 720]
       }
     }
   },
@@ -766,7 +834,19 @@ interface CacheEntry<T> {
 }
 ```
 
-`spritesheets` 的 `frames` 字段与 `Texture.frame` (`{ x, y, w, h }`) 保持一致，无需格式转换。
+`spritesheets` 的 `frames` 字段是 `[x, y, width, height]` 元组，顺序与 `new Texture({ source, frame: new Rectangle(x, y, width, height) })` 一致，无需格式转换。
+
+**背景纹理解析：** `images[背景id]`。`@bg bg_classroom_day` → `loadImage('bg_classroom_day')`。
+
+**立绘纹理解析（按优先级）：**
+
+```
+① spritesheets[角色id].frames[立绘名]    // 图集：裁出子纹理（推荐，减少纹理切换）
+② images[`${角色id}_${立绘名}`]          // 散图：按 角色id_立绘名 约定命名
+③ images[立绘名]                         // 散图：立绘名全局唯一时可直接用
+```
+
+角色事件未指定 `sprite` 时立绘名取 `'default'`。三级都未命中时按资源缺失处理：报错并跳过该立绘，不影响其余画面（背景同理）。
 
 ---
 
@@ -887,7 +967,7 @@ class UIComponent extends Container {
 
 **坐标体系：** 沿用 pixi 场景图——父子 Container 的相对坐标由 pixi 变换系统自动累积，无需手写 `getAbsoluteX/Y`。**命中测试**由 pixi Federated Pointer Events 承担（`eventMode` + `hitArea`），无需手写递归 `hitTest`。
 
-**共享逻辑：** 自定义组件的公共逻辑（如富文本分段布局）放工具函数模块（`renderer/textLayout.ts` 等），各组件直接调用函数，不依赖基类继承。
+**共享逻辑：** 自定义组件的公共逻辑（如富文本分段布局，见 §4.7）放纯函数模块（`ui/` 下的解析与布局工具），各组件直接调用函数，不依赖基类继承。
 
 ### 8.2 内置 UI 组件
 
@@ -1006,7 +1086,7 @@ SaveManager.restore(engine, slot):
   4. 恢复各子系统状态：
      a. variableStore.restore(snapshot.variables, snapshot.flags)
      b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
-     c. renderer.setState(snapshot.bgImage, snapshot.characters)
+     c. renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
      d. audioManager.setState(snapshot.bgm)
      e. scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
   5. engine.resume()
@@ -1075,7 +1155,7 @@ class PluginManager {
 | 扩展点   | 接入方式                                                     | 用途           |
 | -------- | ------------------------------------------------------------ | -------------- |
 | 命令     | `CommandRegistry.register()`                                 | 自定义脚本命令 |
-| 转场     | 传入 `tween()` 的缓动参数 / 自定义 `EasingFn`                | 自定义转场效果 |
+| 转场     | 传入 `TweenEngine.add()` 的 `easing: EasingFn` 参数          | 自定义转场效果 |
 | 特效     | 自定义 pixi `Container`（挂到 Effect 图层）/ 着色器 `Filter` | 自定义画面特效 |
 | UI组件   | 继承 pixi `Container` 并实现 `UIComponent` 约定              | 自定义 UI 控件 |
 | 事件监听 | `EventBus.on()`                                              | 监听引擎事件   |
@@ -1110,15 +1190,20 @@ src/
 │   └── PluginManager.ts           # 插件管理器
 │
 ├── renderer/                      # 渲染系统（pixi）
-│   ├── Renderer.ts                # 渲染器（LayerStack + 角色/背景/特效/tween）
+│   ├── Renderer.ts                # 渲染门面（LayerStack + 角色/背景/特效/tween，订阅渲染事件）
 │   ├── LayerStack.ts              # 图层栈（zIndex 排序的 pixi Container）
 │   ├── ScaleManager.ts            # 缩放适配（fit|stretch|fixed）
-│   ├── TextRenderer.ts            # 富文本分段 + 打字机
-│   ├── tween.ts                   # 基于 ticker 的补间（转场/移动）
-│   └── effects/                   # 画面特效（自定义 pixi Container）
+│   ├── CharacterRegistry.ts       # 角色 → Sprite 生命周期（show/hide/move/sprite）
+│   ├── BackgroundManager.ts       # 背景切换（新图覆盖 + 旧图淡出）
+│   ├── EffectManager.ts           # 画面特效调度（shake/flash/snow/rain）
+│   ├── spriteResolver.ts          # 立绘/背景纹理解析链（图集帧 → 散图）
+│   ├── transitions.ts             # 转场名解析（parseTransition）+ fade/slide/zoom → tween 组合
+│   ├── tween.ts                   # 补间引擎（由 Renderer.update(dt) 驱动）
+│   └── effects/                   # 画面特效实现（自定义 pixi Container）
 │       ├── ShakeEffect.ts
 │       ├── FlashEffect.ts
 │       └── ParticleEffect.ts
+│                                  # 注：富文本分段 + 打字机属 UI 子系统（见 §4.7/§8.1）
 │
 ├── script/                        # 脚本系统
 │   ├── grammar.pegjs              # Peggy 文法定义（VNScript 语法权威来源）
@@ -1194,11 +1279,12 @@ src/
   → Interpreter.step()
     → CommandRegistry.execute(cmd, ctx)
       → 例如 SayCommand:
-        → renderer.ui.dialogueBox.show(text)
-        → EventBus 发送 'script:say'
-        → 逐字显示动画 → 完成后 state → 'waiting'
+        → EventBus 发送 'script:say' { speaker, text, voice?, speed? }
+        → DialogueBox（UI 子系统）订阅后逐字显示 → 完成后 state → 'waiting'
   → 循环...
 ```
+
+命令只发事件、不直接调用其他子系统：`@show/@hide/@bg/@effect` 等命令发渲染事件，Renderer 订阅后改画面。
 
 ### 13.2 渲染流
 
@@ -1207,9 +1293,8 @@ pixi app.ticker（内部用浏览器 RAF 驱动）
   → ticker 回调 tick(ticker)
     → Updater.update(dt)          // dt = ticker.deltaMS/1000，clamp 1/10s
       → Renderer.update(dt)
-        → 各图层 Container 内 Sprite/Text/Effect 更新
-        → tween() 补间推进
-        → UI 组件更新
+        → TweenEngine.update(dt)  // 转场/移动补间推进（毫秒时长，内部按 dt 秒折算）
+        → EffectManager.update(dt) // 屏幕震动、粒子
       → AudioManager.update(dt)   // 淡入淡出
       → PluginManager 各插件 update
     → pixi 自动渲染 app.stage（GPU 批渲染，无需手写 draw）
@@ -1255,7 +1340,7 @@ Game.init(config)
       → 版本迁移（如有）
       → variableStore.restore(snapshot.variables, snapshot.flags)
       → resourceManager.preloadScene(snapshot.currentScript)
-      → renderer.setState(snapshot.bgImage, snapshot.characters)
+      → renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
       → audioManager.setState(snapshot.bgm)
       → scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
       → engine.resume()
@@ -1279,6 +1364,7 @@ interface GameConfig {
   height: number;
   scaleMode: 'fit' | 'stretch' | 'fixed';
   fps: number; // 映射到 app.ticker.maxFPS
+  scripts: string[]; // 启动时预加载的脚本 id 列表
   assets: AssetManifest;
   plugins?: Plugin[];
 }
@@ -1288,6 +1374,8 @@ interface AssetManifest {
   audio: Record<string, string>;
   scripts: Record<string, string>;
   spritesheets: Record<string, SpritesheetConfig>;
+  scenes?: Record<string, ResourceGroupConfig>; // 供 preloadScene 使用（见 §6.4）
+  groups?: Record<string, ResourceGroupConfig>; // 供 loadGroup 使用
 }
 
 interface SpritesheetConfig {
@@ -1365,6 +1453,41 @@ interface EngineEvents {
 }
 ```
 
+渲染子系统相关类型：
+
+```ts
+// 位置关键字与 doc/script-dsl.md §5.3 的 PositionSpec 对齐（占比表见 §4.3）：
+// farLeft/left/center/right/farRight 为屏内五档，offLeft/offRight 在屏幕外
+type PositionKeyword =
+  'farLeft' | 'left' | 'center' | 'right' | 'farRight' | 'offLeft' | 'offRight';
+type Position = PositionKeyword | { x: number; y: number };
+type ScaleMode = 'fit' | 'stretch' | 'fixed';
+type EasingFn = (t: number) => number; // t ∈ [0, 1]
+
+interface CharacterState {
+  id: string;
+  // 画面上那张立绘的名字：视图未建立时是请求的目标名，交叉淡入期间仍是旧名（见 §4.3）
+  spriteId: string;
+  position: Position; // 最近一次请求的位置（补间中途也按目标位置记账）
+  opacity: number; // 当前 alpha（0-1）；视图还没建好时为请求的目标值
+}
+
+/** 渲染子系统快照（存档/读档） */
+interface RendererState {
+  bgImage: string | null;
+  characters: CharacterState[];
+}
+
+interface IRenderer {
+  update(dt: number): void;
+  getState(): RendererState;
+  setState(state: RendererState): void;
+  // 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见 §4.1/§4.8）
+  resize(size: { width: number; height: number }): void;
+  destroy(): void;
+}
+```
+
 ### 14.2 脚本类型
 
 ```ts
@@ -1408,6 +1531,7 @@ interface SaveData {
   thumbnail: Blob | string; // 缩略图，IndexedDB 存 Blob，localStorage 降级 base64
   slotLabel: string; // 存档标签（当前对话文本截取 ≤30 字）
   gameState: GameStateSnapshot;
+  settings: Settings; // 玩家设置（音量/文字速度等，随存档一起持久化）
 }
 
 interface GameStateSnapshot {
@@ -1415,24 +1539,26 @@ interface GameStateSnapshot {
   scriptPC: number;
   variables: Record<string, unknown>;
   flags: string[];
-  bgImage: string | null;
+  bgImage: string | null; // ↓ 两项即 RendererState（见 §14.1）
   characters: Array<{
     id: string;
     spriteId: string;
-    position: { x: number; y: number };
+    position: string | { x: number; y: number };
     opacity: number;
   }>;
   bgm: { id: string; progress: number } | null;
-  history: DialogueEntry[];
+  history: DialogueEntrySnapshot[];
   playTime: number; // 累计游玩时间（毫秒）
 }
 ```
+
+**已知类型缺口（待接线 SaveManager 时解决）：** `GameStateSnapshot.characters[].position` 是 `string | { x, y }`，比 `RendererState` 的 `Position` 关键字联合更宽，因此 `renderer.setState(snapshot.characters)` 目前过不了 `tsc`。二选一：把 `types/save.ts` 的该字段改为 `Position`，或在 `SaveManager.restore` 里收窄（`PositionKeyword` 之外的名字渲染层会按 `center` 兜底）。`getState()` 方向（渲染 → 存档）可直接赋值，不受影响。
 
 ---
 
 ## 十五、扩展与演进方向
 
-### 16.1 第一阶段（MVP）
+### 15.1 第一阶段（MVP）
 
 - [x] PixiJS v8 渲染管线（图层栈 + 精灵 + 纹理）
 - [x] 脚本解析与解释执行
@@ -1442,17 +1568,17 @@ interface GameStateSnapshot {
 - [x] 资源加载与缓存
 - [x] 存档/读档（localStorage）
 
-### 16.2 第二阶段
+### 15.2 第二阶段
 
-- [ ] 转场特效系统
-- [ ] 画面特效（震动、闪光、粒子）
+- [x] 转场特效系统（fade/slide/zoom，`renderer/transitions.ts`）
+- [x] 画面特效（震动、闪光、粒子）
 - [ ] 自动/快进模式
 - [ ] 对话历史/回看
 - [ ] 设置菜单（音量、文字速度等）
 - [ ] 多语言支持
 - [ ] IndexedDB 存档
 
-### 16.3 第三阶段
+### 15.3 第三阶段
 
 - [ ] 视觉编辑器（Electron / Web）
 - [ ] Live2D / Spine 骨骼动画支持
