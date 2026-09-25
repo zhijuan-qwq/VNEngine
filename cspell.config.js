@@ -34,6 +34,8 @@ export default {
     'cspell',
     'spritesheets',
     'Spritesheet',
+    'tweens',
+    'crossfades',
     'dedup',
     'fadein',
     'endchoice',

@@ -58,6 +58,13 @@ class ResourceManager implements IResourceManager {
     }
     return this.loader.loadImage(url);
   }
+  public async loadSpritesheet(id: string): Promise<Texture> {
+    const config = this.manifest.spritesheets[id];
+    if (!config) {
+      throw new Error(`Spritesheet with id "${id}" not found in manifest.`);
+    }
+    return this.loader.loadImage(config.url);
+  }
   public async loadAudio(id: string): Promise<AudioBuffer> {
     const url = this.manifest.audio[id];
     if (!url) {

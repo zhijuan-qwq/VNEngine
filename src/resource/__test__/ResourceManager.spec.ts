@@ -120,6 +120,23 @@ describe('ResourceManager', () => {
     });
   });
 
+  describe('loadSpritesheet', () => {
+    it('loads the whole sheet texture through its url', async () => {
+      assetsMock.load.mockResolvedValue(fakeTexture);
+
+      const texture = await rm.loadSpritesheet('hero');
+
+      expect(assetsMock.load).toHaveBeenCalledWith('assets/hero.png');
+      expect(texture).toBe(fakeTexture);
+    });
+
+    it('rejects when the spritesheet id is not in the manifest', async () => {
+      await expect(rm.loadSpritesheet('missing')).rejects.toThrow(
+        'Spritesheet with id "missing" not found in manifest.',
+      );
+    });
+  });
+
   describe('loadAudio', () => {
     it('fetches, decodes and caches the audio buffer', async () => {
       const arrayBuffer = new ArrayBuffer(8);
