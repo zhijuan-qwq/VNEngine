@@ -4,6 +4,7 @@ import AudioTrackPool from './AudioTrackPool';
 import type { EngineEvents } from '@/types/events';
 import type ResourceManager from '@/resource/ResourceManager';
 import type { IAudioManager } from '@/types/engine';
+import { createAudioContext } from '@/utils/APIHelper';
 
 class AudioManager implements IAudioManager {
   private context: AudioContext;
@@ -26,7 +27,7 @@ class AudioManager implements IAudioManager {
   ) {
     this.eventBus = eventBus;
     this.resourceManager = resourceManager;
-    this.context = this.createAudioContext();
+    this.context = createAudioContext();
     this.masterGain = this.context.createGain();
     this.bgmBus = this.context.createGain();
     this.seBus = this.context.createGain();
@@ -111,14 +112,6 @@ class AudioManager implements IAudioManager {
           break;
       }
     });
-  }
-
-  private createAudioContext(): AudioContext {
-    const AudioContextClass =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    return new AudioContextClass();
   }
 
   public playBgm(
