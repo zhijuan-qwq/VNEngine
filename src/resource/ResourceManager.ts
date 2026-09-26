@@ -12,6 +12,7 @@ import AssetLoader from './AssetLoader';
 import Preloader from './Preloader';
 import ResourceCache from './ResourceCache';
 import Parser from '@/script/Parser';
+import { createAudioContext } from '@/utils/APIHelper';
 
 type ResCache = {
   audioBuffer: ResourceCache<AudioBuffer>;
@@ -43,13 +44,6 @@ class ResourceManager implements IResourceManager {
   public loadManifest(manifest: AssetManifest): void {
     this.manifest = manifest;
   }
-  private _createAudioContext(): AudioContext {
-    const AudioContextClass =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    return new AudioContextClass();
-  }
 
   public async loadImage(id: string): Promise<Texture> {
     const url = this.manifest.images[id];
@@ -71,7 +65,7 @@ class ResourceManager implements IResourceManager {
       throw new Error(`Audio with id "${id}" not found in manifest.`);
     }
     const arrayBuffer = await this.loader.loadAudio(url);
-    const audioContext = this._createAudioContext();
+    const audioContext = createAudioContext();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     this.cache.audioBuffer.set(id, audioBuffer);
     return audioBuffer;
