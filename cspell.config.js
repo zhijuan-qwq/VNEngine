@@ -41,6 +41,7 @@ export default {
     'endchoice',
     'unstub',
     'updatables',
+    'indegree',
   ],
   ignorePaths: [
     'node_modules',
