@@ -60,6 +60,9 @@ export type EngineEvents = {
   'effect:stop': Record<string, never>;
   'game:save': { slot: number };
   'game:load': { slot: number };
+  'game:init': Record<string, never>;
+  'game:start': Record<string, never>;
+  'game:destroy': Record<string, never>;
   'game:pause': Record<string, never>;
   'game:resume': Record<string, never>;
   'input:click': { x: number; y: number };

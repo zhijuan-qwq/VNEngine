@@ -40,6 +40,8 @@ export default {
     'fadein',
     'endchoice',
     'unstub',
+    'updatables',
+    'indegree',
     'pointertap',
     'relayout',
     'boldmore',

@@ -90,8 +90,12 @@ export interface Settings {
 export interface Plugin {
   name: string;
   version: string;
+  /** 依赖的其他插件 name 列表（安装前拓扑排序用） */
+  dependencies?: string[];
   install(engine: VNEngine): void;
   uninstall?(engine: VNEngine): void;
+  /** 可选逐帧更新，由 PluginManager.update 分发 */
+  update?(dt: number): void;
 }
 
 export interface IPluginManager {
@@ -99,6 +103,10 @@ export interface IPluginManager {
   unregister(name: string): void;
   get(name: string): Plugin | null;
   list(): Plugin[];
+  /** 注册并拓扑排序后依次 install(engine) */
+  loadAll(plugins: Plugin[]): void;
+  /** 由 Updater 驱动，遍历已安装插件调用 update?(dt) */
+  update(dt: number): void;
 }
 
 /** 渲染子系统状态（存档/读档快照，见架构文档 §9.3/§14.1） */
