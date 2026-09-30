@@ -40,6 +40,7 @@ export default {
     'fadein',
     'endchoice',
     'unstub',
+    'updatables',
   ],
   ignorePaths: [
     'node_modules',
