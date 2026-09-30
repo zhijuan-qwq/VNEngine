@@ -118,7 +118,7 @@ npm run spell:check  # cSpell 拼写检查
 ### 3. Mock 与断言
 
 - 使用 `vi.fn()` 创建 mock 函数（全局可用，无需 import）
-- 禁止使用 `vi.mock()` 模块级 mock
+- 尽量不使用使用 `vi.mock()` 模块级 mock
 - 需要模拟时间时用 `vi.useFakeTimers()` / `vi.advanceTimersByTime()`
 - 异步测试用 `async/await`，断言拒绝用 `await expect(...).rejects.toThrow()`
 
