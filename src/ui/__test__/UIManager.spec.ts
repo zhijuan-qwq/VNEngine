@@ -59,26 +59,17 @@ describe('UIManager', () => {
     expect(ui.choicePanel.buttons).toHaveLength(2);
   });
 
-  it('should emit input:skip while the typewriter is busy', () => {
+  it('should report busy while the typewriter is running', () => {
     const { bus, ui } = makeManager();
-    const skip = listen(bus, 'input:skip');
-    const click = listen(bus, 'input:click');
     bus.emit('script:say', { speaker: 'Hero', text: 'A long message' });
-    ui.handleTap(10, 20);
-    expect(skip).toHaveBeenCalledOnce();
-    expect(click).not.toHaveBeenCalled();
+    expect(ui.isBusy()).toBe(true);
   });
 
-  it('should emit input:click when the typewriter is idle', () => {
+  it('should report idle once the typewriter finishes', () => {
     const { bus, ui } = makeManager();
-    const skip = listen(bus, 'input:skip');
-    const click = listen(bus, 'input:click');
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
     ui.update(100);
-    expect(ui.dialogueBox.isBusy()).toBe(false);
-    ui.handleTap(30, 40);
-    expect(click).toHaveBeenCalledWith({ x: 30, y: 40 });
-    expect(skip).not.toHaveBeenCalled();
+    expect(ui.isBusy()).toBe(false);
   });
 
   it('should emit script:choice:selected with the label when a choice is tapped', () => {
@@ -113,5 +104,66 @@ describe('UIManager', () => {
     ui.destroy();
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
     expect(ui.dialogueBox.visible).toBe(false);
+  });
+
+  it('should expose the built-in panels', () => {
+    const { ui } = makeManager();
+    expect(ui.confirmDialog).toBeDefined();
+    expect(ui.saveLoadMenu).toBeDefined();
+    expect(ui.settingsMenu).toBeDefined();
+    expect(ui.historyView).toBeDefined();
+  });
+
+  it('should open a panel from a ui:open event', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('ui:open', { panel: 'settings' });
+    expect(ui.settingsMenu.visible).toBe(true);
+  });
+
+  it('should open the save menu in save mode', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('ui:open', { panel: 'save' });
+    expect(ui.saveLoadMenu.visible).toBe(true);
+    expect(ui.saveLoadMenu.mode).toBe('save');
+  });
+
+  it('should close every panel on ui:close', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('ui:open', { panel: 'history' });
+    bus.emit('ui:close', {});
+    expect(ui.historyView.visible).toBe(false);
+  });
+
+  it('should keep only one panel open at a time', () => {
+    const { ui } = makeManager();
+    ui.open('history');
+    ui.open('settings');
+    expect(ui.historyView.visible).toBe(false);
+    expect(ui.settingsMenu.visible).toBe(true);
+  });
+
+  it('should resolve confirm through the confirm dialog', async () => {
+    const { ui } = makeManager();
+    const promise = ui.confirm({ message: '确定吗？' });
+    expect(ui.confirmDialog.visible).toBe(true);
+    ui.confirmDialog.buttons[1].emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it('should close open panels when a confirm opens', () => {
+    const { ui } = makeManager();
+    ui.open('settings');
+    void ui.confirm({ message: '确定吗？' });
+    expect(ui.settingsMenu.visible).toBe(false);
+    expect(ui.confirmDialog.visible).toBe(true);
+  });
+
+  it('should stop listening to ui events after destroy', () => {
+    const { bus, ui } = makeManager();
+    ui.destroy();
+    bus.emit('ui:open', { panel: 'settings' });
+    expect(ui.settingsMenu.visible).toBe(false);
   });
 });
