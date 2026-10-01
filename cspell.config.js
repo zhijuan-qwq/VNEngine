@@ -43,6 +43,8 @@ export default {
     'updatables',
     'indegree',
     'pointertap',
+    'pointerwheel',
+    'pointerupoutside',
     'relayout',
     'boldmore',
   ],
