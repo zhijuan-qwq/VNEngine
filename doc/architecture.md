@@ -62,12 +62,14 @@ Game
 ├── updater: Updater                 // 逐帧驱动器（包一层 app.ticker）
 ├── eventBus: EventBus               // 事件总线
 ├── renderer: Renderer               // 渲染器（持有 LayerStack，驱动 bg/character/effect）
+├── input: InputManager | null       // 输入分发（pixi 指针事件 → input:* 事件）
+├── ui: UIManager | null             // UI 门面（对话核心 + 四个内置面板）
 ├── script: ScriptEngine             // 脚本引擎
 ├── audio: AudioManager              // 音频管理
 ├── resource: ResourceManager        // 资源管理
 ├── plugins: PluginManager           // 插件管理
 ├── variableStore: VariableStore     // 变量与旗标存储
-├── saveManager: SaveManager         // 存档管理器
+├── save: ISaveManager | null        // 存档管理器（M5 实现，当前缺省为 null）
 │
 ├── async init(config: GameConfig): Promise<void>  // 初始化引擎（详见下方 init 流程）
 ├── start(): void                    // 启动游戏循环（app.ticker.start()）
@@ -105,19 +107,25 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 4. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
    并将 app.canvas 挂载到容器
 5. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
-                                              // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件
-6. 创建 InputManager(app.stage, eventBus)      // pixi Federated Pointer Events
+                                              // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件；预建 ui 图层
+6. 创建 InputManager(eventBus, { width, height, toLogical, isTypewriterBusy })
+                                              // toLogical 委托 renderer.toLogical；isTypewriterBusy 惰性读取 ui.isBusy()
 7. 创建 AudioManager(eventBus)
-8. 创建 SaveManager(eventBus)
-9. 创建 ScriptEngine(eventBus, variableStore)
-10. 创建 PluginManager(eventBus)
-11. 注册 config.plugins → PluginManager.loadAll()
-12. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager])，内部 app.ticker.add(...)
-13. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
-14. 发射 game:init 事件
+8. 创建 SaveManager(eventBus)                 // 尚未实现，缺省工厂返回 null
+9. 创建 UIManager(eventBus, { width, height, autoTick: false, resolveVar })
+   → renderer.getUILayer()?.addChild(ui.root) // 把 UI 根挂到渲染器预建的 ui 图层
+   → input.setUIRoot(ui.root)                 // 命中层作为 ui.root 的首个子节点（最底层）
+10. 创建 ScriptEngine(eventBus, variableStore)
+11. 创建 PluginManager(eventBus)
+12. 注册 config.plugins → PluginManager.loadAll()
+13. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager, ui])，内部 app.ticker.add(...)
+14. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
+15. 发射 game:init 事件
 ```
 
-依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；Updater 最后创建，接收 `Updatable[]`。
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 预建的 `ui` 图层，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
+
+**destroy 顺序：** `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。
 
 **GameConfig 结构：**
 
@@ -949,11 +957,19 @@ class AudioTrackPool {
 
 ---
 
-## 八、UI 系统（pixi Container + @pixi/ui）
+## 八、UI 系统（pixi Container + 手写控件）
 
 ### 8.1 设计思路
 
-UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Container`（子类或持有 Container），挂载在 UI Layer（§4.2，zIndex=600）上。**VN 专属组件**（对话框/选项/存读档/设置/历史）用自定义 pixi Container 实现；**通用交互控件**（按钮/滑动条/列表/滚动视图）复用 `@pixi/ui`。
+UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Container`（子类或持有 Container），挂载在 UI Layer（§4.2，zIndex=600）上。**VN 专属组件**（对话框/选项/存读档/设置/历史）与**通用交互控件**（按钮/滑动条/开关/滚动视图）均用自定义 pixi Container 实现，不引入 `@pixi/ui`。
+
+**UIManager（UI 门面）** 持有全部 UI 组件并对外提供统一入口：
+
+- 持有 `root: Container`（挂到 `ui` 图层的根）、`dialogueBox`、`choicePanel` 与四个内置面板（§8.2）；
+- 订阅脚本事件（`script:say` / `script:clear` / `script:choice` / `script:end`）驱动对话核心；
+- 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；面板互斥（打开一个先关掉其它）；
+- `isBusy()` 委托 `dialogueBox.isBusy()`，供 InputManager（§8.3）判定点击语义；
+- 由 `Updater` 驱动（`update(dt)` 推进打字机）；构造时传 `autoTick: false` 关闭内部 RAF，避免与 Updater 双重循环。
 
 ```ts
 import { Container } from 'pixi.js';
@@ -962,6 +978,9 @@ class UIComponent extends Container {
   id: string;
   // pixi Container 已提供 x/y/width/height/visible/children/alpha
   update(dt: number): void;
+  show(...args: unknown[]): void;
+  hide(...args: unknown[]): void;
+  // bind(emitter, event, handler) 自动退订，destroy 时清理订阅
 }
 ```
 
@@ -971,52 +990,65 @@ class UIComponent extends Container {
 
 ### 8.2 内置 UI 组件
 
-核心组件（自定义 pixi Container）：
+对话核心与四个面板（均继承 `UIComponent`）：
 
-| 组件            | 说明                                                                    |
-| --------------- | ----------------------------------------------------------------------- |
-| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete` |
-| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`    |
-| `SaveLoadMenu`  | 存读档菜单：槽位列表（`@pixi/ui` ScrollBox/List + FancyButton）         |
-| `SettingsMenu`  | 设置菜单：音量/文字速度（`@pixi/ui` Slider）、开关（`@pixi/ui` Toggle） |
-| `HistoryView`   | 对话历史：`@pixi/ui` ScrollBox                                          |
-| `ConfirmDialog` | 确认弹窗：`@pixi/ui` FancyButton 确认/取消                              |
+| 组件            | 说明                                                                                                                                                                             |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`                                                                                                          |
+| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                             |
+| `SaveLoadMenu`  | 存读档菜单：`show('save'\|'load')`，槽位网格 + `ScrollView`；注入 `{ slots?, getSlots?, onSave?, onLoad? }`（UI 局部契约 `SaveSlotInfo`，缺省时空态）                            |
+| `SettingsMenu`  | 设置菜单：4 个音量 `Slider`、`textSpeed` `Slider`、`skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController }`，缺省时显示 `DEFAULT_SETTINGS`、`onChange` no-op |
+| `HistoryView`   | 对话历史：注入 `getEntries?: () => readonly DialogueEntry[]`，`show()` 刷新并滚动到底部                                                                                          |
+| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束                                                                    |
 
-通用控件（来自 `@pixi/ui`，`@pixi/ui@^2.3` 兼容 pixi v8）：
+**对契约编程：** 四个面板只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`），不直接依赖 `SaveManager` / `Settings` 持久化。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。真正的存档实现、设置持久化与历史数据生产链路留待 M5。
 
-| 控件                      | 说明                               |
-| ------------------------- | ---------------------------------- |
-| `FancyButton` / `Button`  | 文本/图片按钮（hover/click/press） |
-| `Slider` / `DoubleSlider` | 滑动条（音量/速度调节）            |
-| `CheckBox` / `Switcher`   | 开关 / 单选                        |
-| `ScrollBox` / `List`      | 滚动视图（含遮罩裁剪与滚动偏移）   |
-| `Input`                   | 文本输入框                         |
-| `ProgressBar`             | 进度条（资源加载）                 |
+通用控件位于 `src/ui/controls/`（纯手写；pixi `Container`/`Graphics`/`Text`，不使用 `@pixi/ui`）：
+
+| 控件         | 说明                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `Slider`     | 横向滑动条：`value`/`setValue`（clamp 到 `[min,max]`、按 `step` 吸附、NaN 保持当前值）、`handlePointerDown/Move/Up` |
+| `Toggle`     | 两态开关：`value`/`setValue`/`toggle`；`disabled` 时 `toggle` no-op                                                 |
+| `ScrollView` | 遮罩裁剪 + 垂直滚动偏移：`content`/`setContentHeight`/`scrollBy`/`setScroll`/`scrollTop`/`maxScroll`                |
+
+`src/ui/overlay.ts` 提供面板共用的绘制助手：`createBackdrop`（全屏吞噬点击的模态遮罩）/ `createPanelBox` / `createButton`。
 
 ### 8.3 输入事件分发
 
-InputManager 由 Game 持有，在 init 时创建（Renderer 之后、AudioManager 之前）。事件源为 **pixi Federated Pointer Events**。
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、UIManager 之前）。它把 UI 根的第一个子节点占为全屏命中层（最底层），事件源为 **pixi Federated Pointer Events**。
 
 ```
 pixi Federated Events → InputManager 路由
-  → 全屏命中层（eventMode='static'）收到 pointerdown
+  → 全屏命中层（eventMode='static' + 全屏 hitArea）收到 pointertap
   → toLogical(e.global)                 // 逻辑坐标：ScaleManager.toLogical（app.stage.toLocal）
-  → 打字机进行中?
+  → isTypewriterBusy()?
       → 是：发射 input:skip（补全当前文本）
-      → 否：命中 UI 组件 → 组件内部处理（按钮 onClick 等）
-           未命中 → 发射 input:click（全局命令：点击继续对话）
-  → pointermove → 发射 input:hover
+      → 否：发射 input:click { x, y }（全局命令：点击继续对话）
+  → pointermove → 发射 input:hover { x, y }
 ```
+
+命中层位于 UI 根的第一个子节点：只有当指针下没有更上层的交互对象（按钮、模态遮罩等）时才会命中。模态面板的全屏 backdrop 在更高层且 `stopPropagation`，因此天然屏蔽底层点击，无需额外的「模态是否开启」布尔门控。
 
 ```ts
-class InputManager {
-  eventBus: EventBus;
-  uiRoot: Container | null; // UI Layer 就绪后设置
+class InputManager implements IInputManager {
+  constructor(
+    bus: EventBus<EngineEvents>,
+    options: {
+      width: number;
+      height: number;
+      toLogical(point: PointData): { x: number; y: number }; // 复用 renderer.toLogical
+      isTypewriterBusy?: () => boolean; // 缺省 () => false
+    },
+  );
 
+  // 命中层以 addChildAt(hit, 0) 挂为 root 的首个子节点；重复调用先移除旧命中层
   setUIRoot(root: Container): void;
-  // 交互组件自身 eventMode='static'，由 pixi 负责命中测试，无需全局监听 MouseEvent
+  // 移除监听并销毁命中层
+  destroy(): void;
 }
 ```
+
+点击语义采用 **`pointertap`**（而非文档旧稿的 `pointerdown`）：拖动滑条或滚动列表时不会误触发 `input:click` 而推进对话。组件内部命中由 pixi 负责（各交互组件 `eventMode='static'`），无需全局监听 `MouseEvent`。
 
 坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。
 
@@ -1026,7 +1058,7 @@ class InputManager {
 
 ### 9.1 游戏状态设计
 
-引擎不维护集中式 `GameState` 运行时对象——各子系统自有状态（ScriptEngine.pc、Renderer 的角色/背景、AudioManager 的 BGM、VariableStore 的变量/旗标等），Game 仅持有 `variableStore` 和 `saveManager`。
+引擎不维护集中式 `GameState` 运行时对象——各子系统自有状态（ScriptEngine.pc、Renderer 的角色/背景、AudioManager 的 BGM、VariableStore 的变量/旗标、UIManager 的面板显隐等），Game 仅持有 `variableStore`、`input`、`ui` 与 `save`。
 
 存档时 `SaveManager` 遍历各子系统收集数据，组装为 `GameStateSnapshot`（类型定义见 §14.3）：
 
@@ -1232,15 +1264,23 @@ src/
 │   ├── ResourceCache.ts           # LRU缓存
 │   └── Preloader.ts               # 预加载器
 │
-├── ui/                            # UI 组件（pixi Container + @pixi/ui）
+├── ui/                            # UI 组件（pixi Container + 手写控件）
 │   ├── UIComponent.ts             # UI组件基类（extends pixi Container）
+│   ├── UIManager.ts               # UI门面（持有对话核心与四个面板，open/close/confirm）
 │   ├── DialogueBox.ts             # 对话框（富文本分段 + 打字机）
 │   ├── ChoicePanel.ts             # 选项面板
-│   ├── SaveLoadMenu.ts            # 存档/读档菜单
-│   ├── SettingsMenu.ts            # 设置菜单
-│   ├── HistoryView.ts             # 对话历史
-│   └── ConfirmDialog.ts           # 确认弹窗
-│   # 通用控件（按钮/滑动条/滚动列表）由 @pixi/ui 提供
+│   ├── SaveLoadMenu.ts            # 存档/读档菜单（槽位网格 + ScrollView）
+│   ├── SettingsMenu.ts            # 设置菜单（音量/文字速度 Slider + Toggle）
+│   ├── HistoryView.ts             # 对话历史（ScrollView）
+│   ├── ConfirmDialog.ts           # 确认弹窗（模态 backdrop）
+│   ├── overlay.ts                 # 面板共用绘制助手（backdrop/panel/button）
+│   ├── richtext.ts                # 富文本分段（纯函数）
+│   ├── textLayout.ts              # 文本布局（纯函数）
+│   ├── typewriter.ts              # 打字机状态机（纯逻辑）
+│   └── controls/                  # 通用控件（纯手写，不使用 @pixi/ui）
+│       ├── Slider.ts              # 横向滑动条
+│       ├── Toggle.ts              # 两态开关
+│       └── ScrollView.ts          # 遮罩裁剪 + 垂直滚动
 │
 ├── input/                         # 输入管理
 │   └── InputManager.ts            # 输入事件分发（pixi Federated Events）
@@ -1383,6 +1423,9 @@ interface SpritesheetConfig {
   frames: Record<string, [number, number, number, number]>;
 }
 
+// 可被打开/关闭的内置 UI 面板（§8.2）
+type UiPanel = 'settings' | 'history' | 'save' | 'load';
+
 // 事件类型（string → 泛型映射）
 interface EngineEvents {
   'script:command': { cmd: string; args: Record<string, any> };
@@ -1448,6 +1491,8 @@ interface EngineEvents {
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
   'input:skip': {}; // 打字机进行中点击：跳过/完成当前打字，而非推进对话
+  'ui:open': { panel: UiPanel }; // 打开某个面板（互斥：先关闭其它面板）
+  'ui:close': { panel?: UiPanel }; // 关闭面板；缺省关闭全部
   'resource:progress': { loaded: number; total: number; percent: number };
   'resource:ready': {};
 }
@@ -1484,6 +1529,10 @@ interface IRenderer {
   setState(state: RendererState): void;
   // 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见 §4.1/§4.8）
   resize(size: { width: number; height: number }): void;
+  // UI 层容器（Renderer 预建，可能为 null），供 UIManager 挂载 root（见 §8.1）
+  getUILayer(): Container | null;
+  // 屏幕坐标 → 逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
+  toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
 }
 ```
@@ -1573,8 +1622,9 @@ interface GameStateSnapshot {
 - [x] 转场特效系统（fade/slide/zoom，`renderer/transitions.ts`）
 - [x] 画面特效（震动、闪光、粒子）
 - [ ] 自动/快进模式
-- [ ] 对话历史/回看
-- [ ] 设置菜单（音量、文字速度等）
+- [x] 对话历史/回看（`HistoryView`，对注入的 `getEntries` 契约编程）
+- [x] 设置菜单（音量、文字速度等；`SettingsMenu`，`@pixi/ui` → 手写 Slider/Toggle）
+- [x] 存读档菜单与确认弹窗（`SaveLoadMenu` / `ConfirmDialog`；持久化仍待 M5）
 - [ ] 多语言支持
 - [ ] IndexedDB 存档
 
@@ -1591,20 +1641,20 @@ interface GameStateSnapshot {
 
 ## 十六、设计决策记录
 
-| 决策      | 选择                                      | 原因                                            |
-| --------- | ----------------------------------------- | ----------------------------------------------- |
-| 渲染方案  | PixiJS v8（WebGL/WebGPU）                 | 场景图/批渲染/纹理缓存成熟，替代手写 Canvas 2D  |
-| 文字方案  | pixi `Text` + 引擎侧富文本分段            | Canvas 同步渲染，避免 DOM-vs-WebGL 分层同步问题 |
-| UI 方案   | pixi `Container` 组件 + @pixi/ui          | 帧同步一致，无 DOM 布局抖动；通用控件直接复用   |
-| 音频方案  | Web Audio API                             | 精确控制，多音轨混音                            |
-| 脚本格式  | 自定义 `.vns`                             | 简洁，面向 VN 场景优化                          |
-| 状态管理  | 引擎内置 GameState                        | 框架无关，可直接序列化                          |
-| 资源加载  | pixi `Assets`（`AssetManifest` 为真源）   | 统一纹理缓存/图集/加载进度，Audio 走 fetch+解码 |
-| 转场/特效 | 基于 ticker 的 tween + 自定义 `Container` | 无需额外动画库，对齐现有 `EasingFn`             |
-| 通信方式  | EventBus                                  | 模块解耦，可测试                                |
-| 资源解码  | pixi `Assets` 异步上传为 GPU 纹理         | 图片异步解码，不阻塞主线程                      |
-| 存档格式  | JSON + IndexedDB                          | 可读可迁移，容量大                              |
-| 模块化    | 引擎纯 TS                                 | 可测试，可移植                                  |
+| 决策      | 选择                                      | 原因                                                  |
+| --------- | ----------------------------------------- | ----------------------------------------------------- |
+| 渲染方案  | PixiJS v8（WebGL/WebGPU）                 | 场景图/批渲染/纹理缓存成熟，替代手写 Canvas 2D        |
+| 文字方案  | pixi `Text` + 引擎侧富文本分段            | Canvas 同步渲染，避免 DOM-vs-WebGL 分层同步问题       |
+| UI 方案   | pixi `Container` 组件 + 手写通用控件      | 帧同步一致，无 DOM 布局抖动；控件轻量可测，免额外依赖 |
+| 音频方案  | Web Audio API                             | 精确控制，多音轨混音                                  |
+| 脚本格式  | 自定义 `.vns`                             | 简洁，面向 VN 场景优化                                |
+| 状态管理  | 引擎内置 GameState                        | 框架无关，可直接序列化                                |
+| 资源加载  | pixi `Assets`（`AssetManifest` 为真源）   | 统一纹理缓存/图集/加载进度，Audio 走 fetch+解码       |
+| 转场/特效 | 基于 ticker 的 tween + 自定义 `Container` | 无需额外动画库，对齐现有 `EasingFn`                   |
+| 通信方式  | EventBus                                  | 模块解耦，可测试                                      |
+| 资源解码  | pixi `Assets` 异步上传为 GPU 纹理         | 图片异步解码，不阻塞主线程                            |
+| 存档格式  | JSON + IndexedDB                          | 可读可迁移，容量大                                    |
+| 模块化    | 引擎纯 TS                                 | 可测试，可移植                                        |
 
 ---
 

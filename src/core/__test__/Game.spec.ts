@@ -1,3 +1,4 @@
+import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import EventBus from '@/core/EventBus';
 import ResourceManager from '@/resource/ResourceManager';
@@ -5,11 +6,13 @@ import ScriptEngine from '@/script/ScriptEngine';
 import type {
   GameConfig,
   IAudioManager,
+  IInputManager,
   IRenderer,
   Plugin,
 } from '@/types/engine';
 import type { Script } from '@/types/script';
 import type { ISaveManager } from '@/types/save';
+import type { UIManager } from '@/ui/UIManager';
 import Game, { type GameFactories } from '../Game';
 import type { TickerLike } from '../Updater';
 
@@ -41,13 +44,38 @@ function makeTicker() {
   };
 }
 
-function makeRenderer(): IRenderer {
+function makeRenderer(uiLayer: Container | null = null): IRenderer {
   return {
     update: vi.fn(),
     getState: vi.fn(),
     setState: vi.fn(),
     resize: vi.fn(),
+    getUILayer: vi.fn(() => uiLayer),
+    toLogical: vi.fn((point: { x: number; y: number }) => point),
     destroy: vi.fn(),
+  };
+}
+
+function makeFakeUI(): UIManager {
+  return {
+    root: new Container(),
+    update: vi.fn(),
+    isBusy: vi.fn(() => false),
+    destroy: vi.fn(),
+  } as unknown as UIManager;
+}
+
+function makeFakeInput(): {
+  input: IInputManager;
+  setUIRoot: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+} {
+  const setUIRoot = vi.fn();
+  const destroy = vi.fn();
+  return {
+    input: { setUIRoot, destroy } as unknown as IInputManager,
+    setUIRoot,
+    destroy,
   };
 }
 
@@ -75,17 +103,21 @@ interface Harness {
 function makeHarness(options: {
   config?: Partial<GameConfig>;
   save?: ISaveManager | null;
+  ui?: UIManager | null;
+  input?: IInputManager | null;
+  uiLayer?: Container | null;
 }): Harness {
   const { ticker, fire } = makeTicker();
   const appDestroy = vi.fn();
   const app = { stage: {}, canvas: {}, ticker, destroy: appDestroy };
-  const renderer = makeRenderer();
+  const renderer = makeRenderer(options.uiLayer ?? null);
   const audio = makeAudio();
   const factories: Partial<GameFactories> = {
     createApplication: async () => app as unknown as Application,
     createRenderer: () => renderer,
     createAudio: () => audio,
-    createInput: () => null,
+    createInput: () => options.input ?? null,
+    createUI: () => options.ui ?? null,
     createSave: () => options.save ?? null,
   };
   const game = new Game(factories);
@@ -329,7 +361,7 @@ describe('Game', () => {
     it('should delegate to the injected SaveManager', async () => {
       const capture = vi.fn(async () => ({}) as never);
       const restore = vi.fn(async () => {});
-      const save: ISaveManager = { capture, restore };
+      const save: ISaveManager = { capture, restore, list: vi.fn(() => []) };
       const h = makeHarness({ save });
 
       await h.game.init(h.config);
@@ -349,6 +381,7 @@ describe('Game', () => {
           throw new Error('disk full');
         }),
         restore: vi.fn(async () => {}),
+        list: vi.fn(() => []),
       };
       const h = makeHarness({ save });
       await h.game.init(h.config);
@@ -364,12 +397,70 @@ describe('Game', () => {
         restore: vi.fn(async () => {
           throw new Error('slot missing');
         }),
+        list: vi.fn(() => []),
       };
       const h = makeHarness({ save });
       await h.game.init(h.config);
 
       expect(() => h.game.loadGame(3)).not.toThrow();
       await vi.waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    });
+  });
+
+  describe('ui wiring', () => {
+    it('should mount the ui root on the renderer ui layer', async () => {
+      const layer = new Container();
+      const ui = makeFakeUI();
+      const { input, setUIRoot } = makeFakeInput();
+      const h = makeHarness({ ui, input, uiLayer: layer });
+
+      await h.game.init(h.config);
+
+      expect(layer.children).toContain(ui.root);
+      expect(setUIRoot).toHaveBeenCalledWith(ui.root);
+    });
+
+    it('should skip ui wiring when no UI is created', async () => {
+      const { input, setUIRoot } = makeFakeInput();
+      const h = makeHarness({ input });
+
+      await h.game.init(h.config);
+
+      expect(setUIRoot).not.toHaveBeenCalled();
+      expect(h.game.ui).toBeNull();
+    });
+
+    it('should drive the ui through the updater', async () => {
+      const ui = makeFakeUI();
+      const h = makeHarness({ ui });
+
+      await h.game.init(h.config);
+      h.game.start();
+      h.ticker.fire(16.6667);
+
+      expect(ui.update).toHaveBeenCalled();
+    });
+
+    it('should destroy ui and input before the renderer', async () => {
+      const order: string[] = [];
+      const ui = makeFakeUI();
+      vi.mocked(ui.destroy).mockImplementation(() => {
+        order.push('ui');
+      });
+      const { input, destroy } = makeFakeInput();
+      destroy.mockImplementation(() => {
+        order.push('input');
+      });
+      const h = makeHarness({ ui, input, uiLayer: new Container() });
+      await h.game.init(h.config);
+      vi.mocked(h.renderer.destroy).mockImplementation(() => {
+        order.push('renderer');
+      });
+
+      h.game.destroy();
+
+      expect(order).toEqual(['ui', 'input', 'renderer']);
+      expect(h.game.ui).toBeNull();
     });
   });
 });

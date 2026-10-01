@@ -1,4 +1,4 @@
-import type { Container } from 'pixi.js';
+import type { Container, PointData } from 'pixi.js';
 import type EventBus from '@/core/EventBus';
 import type { IRenderer, RendererState, ScaleMode } from '@/types/engine';
 import type { EngineEvents } from '@/types/events';
@@ -93,6 +93,14 @@ export class Renderer implements IRenderer {
 
   public resize(containerSize: Size): void {
     this.scale.update(containerSize);
+  }
+
+  public getUILayer(): Container | null {
+    return this.layers.getLayer('ui');
+  }
+
+  public toLogical(point: PointData): { x: number; y: number } {
+    return this.scale.toLogical(point);
   }
 
   public destroy(): void {

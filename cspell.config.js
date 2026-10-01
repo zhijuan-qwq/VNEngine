@@ -42,6 +42,11 @@ export default {
     'unstub',
     'updatables',
     'indegree',
+    'pointertap',
+    'pointerwheel',
+    'pointerupoutside',
+    'relayout',
+    'boldmore',
   ],
   ignorePaths: [
     'node_modules',

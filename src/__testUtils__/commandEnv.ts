@@ -9,7 +9,7 @@ import type { VNEngine } from '@/types/engine';
 
 export interface CommandWaitState {
   event: string | undefined;
-  handler: (() => void) | undefined;
+  handler: ((payload?: unknown) => void) | undefined;
 }
 
 export interface CommandEnv {
@@ -29,7 +29,7 @@ export function makeCommandEnv(): CommandEnv {
   const wait: CommandWaitState = { event: undefined, handler: undefined };
   const jumps: string[] = [];
   const interpreter = {
-    wait: vi.fn((event: string, handler: () => void) => {
+    wait: vi.fn((event: string, handler: (payload?: unknown) => void) => {
       wait.event = event;
       wait.handler = handler;
     }),

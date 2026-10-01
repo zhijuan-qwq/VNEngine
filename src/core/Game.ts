@@ -6,7 +6,12 @@ import ScriptEngine from '@/script/ScriptEngine';
 import VariableStore from '@/script/VariableStore';
 import EventBus from '@/core/EventBus';
 import PluginManager from '@/core/PluginManager';
-import Updater from '@/core/Updater';
+import Updater, { type Updatable } from '@/core/Updater';
+import InputManager from '@/input/InputManager';
+import { UIManager } from '@/ui/UIManager';
+import { DEFAULT_SETTINGS } from '@/ui/SettingsMenu';
+import SaveManager from '@/save/SaveManager';
+import { LocalStorageProvider } from '@/save/SaveStorage';
 import type { EngineEvents } from '@/types/events';
 import type { Script } from '@/types/script';
 import type {
@@ -33,6 +38,7 @@ export interface GameFactories {
   createRenderer(options: RendererOptions): IRenderer;
   createAudio(engine: VNEngine): IAudioManager;
   createInput(engine: VNEngine): IInputManager | null;
+  createUI(engine: VNEngine, config: GameConfig): UIManager | null;
   createSave(engine: VNEngine): ISaveManager | null;
 }
 
@@ -58,8 +64,32 @@ const defaultFactories: GameFactories = {
       DEFAULT_MAX_SE_TRACKS,
       engine.resource as ResourceManager,
     ),
-  createInput: () => null,
-  createSave: () => null,
+  createInput: (engine) =>
+    new InputManager(engine.eventBus, {
+      width: engine.app.screen.width,
+      height: engine.app.screen.height,
+      toLogical: (point) => engine.renderer.toLogical(point),
+      // 惰性：ui 在本工厂之后才创建，点击时才求值
+      isTypewriterBusy: () => engine.ui?.isBusy() ?? false,
+    }),
+  createUI: (engine, config) =>
+    new UIManager(engine.eventBus, {
+      width: config.width,
+      height: config.height,
+      autoTick: false,
+      resolveVar: (name) => engine.variableStore.get(name),
+      // 存读档菜单对契约编程：槽位/回调延迟求值，读取时 engine.save 必已就位
+      saveLoadMenu: {
+        getSlots: () => engine.save.list(),
+        onSave: (slot) => engine.saveGame(slot),
+        onLoad: (slot) => engine.loadGame(slot),
+      },
+    }),
+  createSave: () =>
+    new SaveManager({
+      storage: new LocalStorageProvider(),
+      getSettings: () => DEFAULT_SETTINGS,
+    }),
 };
 
 class Game {
@@ -72,9 +102,11 @@ class Game {
   public resource!: ResourceManager;
   public plugins!: PluginManager;
   public variableStore!: VariableStore;
-  /** 输入子系统尚未实现，保留为 null */
+  /** 输入子系统；未创建时为 null */
   public input: IInputManager | null = null;
-  /** 存档子系统尚未实现，保留为 null */
+  /** UI 门面；未创建时为 null */
+  public ui: UIManager | null = null;
+  /** 存档子系统；工厂未提供时为 null */
   public save: ISaveManager | null = null;
 
   private state: GameStatus = 'uninitialized';
@@ -117,15 +149,30 @@ class Game {
     this.audio = this.factories.createAudio(this.engine);
     this.save = this.factories.createSave(this.engine);
 
+    // UI 挂到渲染器预建的 ui 图层，并把命中层交给输入子系统
+    this.ui = this.factories.createUI(this.engine, config);
+    if (this.ui) {
+      this.renderer.getUILayer()?.addChild(this.ui.root);
+      this.input?.setUIRoot(this.ui.root);
+    }
+
     this.script = new ScriptEngine(this.eventBus, this.variableStore);
 
     this.plugins = new PluginManager(this.engine);
     this.plugins.loadAll(config.plugins ?? []);
 
+    const updatables: Updatable[] = [
+      this.renderer,
+      this.script,
+      this.audio,
+      this.plugins,
+    ];
+    if (this.ui) updatables.push(this.ui);
+
     this.updater = new Updater({
       app: this.app,
       eventBus: this.eventBus,
-      updatables: [this.renderer, this.script, this.audio, this.plugins],
+      updatables,
       fps: config.fps,
     });
 
@@ -174,12 +221,16 @@ class Game {
 
     this.eventBus.emit('game:destroy', {});
     this.updater.destroy();
+    // ui/input 先于 renderer：renderer 会以 { children: true } 销毁 ui 图层
+    this.ui?.destroy();
+    this.input?.destroy();
     this.renderer.destroy();
     this.audio.destroy();
     this.resource.clear();
     this.app.destroy(true);
 
     this.input = null;
+    this.ui = null;
     this.save = null;
     this.state = 'uninitialized';
   }
