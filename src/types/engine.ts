@@ -1,10 +1,11 @@
 import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents } from './events';
-import type { Application, Container } from 'pixi.js';
+import type { Application, Container, PointData } from 'pixi.js';
 import type { VariableStore } from '@/script/VariableStore';
 import type ScriptEngine from '@/script/ScriptEngine';
 import type { IResourceManager } from './resource';
 import type { ISaveManager } from './save';
+import type { UIManager } from '@/ui/UIManager';
 
 /** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
 export type PositionKeyword =
@@ -122,6 +123,10 @@ export interface IRenderer {
   setState(state: RendererState): void;
   /** 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见架构文档 §4.8） */
   resize(size: { width: number; height: number }): void;
+  /** UI 层容器，供 §8 的 UI 子系统挂载（Renderer 预建，可能为 null） */
+  getUILayer(): Container | null;
+  /** 屏幕坐标 → 逻辑坐标，供输入层复用渲染的同一换算（见架构文档 §4.8） */
+  toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
 }
 
@@ -152,6 +157,8 @@ export interface VNEngine {
   audio: IAudioManager;
   input: IInputManager;
   save: ISaveManager;
+  /** UI 门面；尚未实现时为 null */
+  ui: UIManager | null;
   destroy(): void;
   pause(): void;
   resume(): void;

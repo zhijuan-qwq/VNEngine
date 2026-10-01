@@ -1,6 +1,9 @@
 import type { Position } from './engine';
 import type { Choice } from './script';
 
+/** 可被打开/关闭的 UI 面板（§8.2 的内置组件） */
+export type UiPanel = 'settings' | 'history' | 'save' | 'load';
+
 export type EngineEvents = {
   'script:command': { cmd: string; args: Record<string, unknown> };
   'script:choice': { choices: Choice[]; mode?: 'adv' | 'nvl' };
@@ -68,6 +71,8 @@ export type EngineEvents = {
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
   'input:skip': Record<string, never>;
+  'ui:open': { panel: UiPanel };
+  'ui:close': { panel?: UiPanel };
   'resource:progress': { loaded: number; total: number; percent: number };
   'resource:ready': Record<string, never>;
 };
