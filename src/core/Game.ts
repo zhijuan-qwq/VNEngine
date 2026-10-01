@@ -9,6 +9,9 @@ import PluginManager from '@/core/PluginManager';
 import Updater, { type Updatable } from '@/core/Updater';
 import InputManager from '@/input/InputManager';
 import { UIManager } from '@/ui/UIManager';
+import { DEFAULT_SETTINGS } from '@/ui/SettingsMenu';
+import SaveManager from '@/save/SaveManager';
+import { LocalStorageProvider } from '@/save/SaveStorage';
 import type { EngineEvents } from '@/types/events';
 import type { Script } from '@/types/script';
 import type {
@@ -75,8 +78,18 @@ const defaultFactories: GameFactories = {
       height: config.height,
       autoTick: false,
       resolveVar: (name) => engine.variableStore.get(name),
+      // 存读档菜单对契约编程：槽位/回调延迟求值，读取时 engine.save 必已就位
+      saveLoadMenu: {
+        getSlots: () => engine.save.list(),
+        onSave: (slot) => engine.saveGame(slot),
+        onLoad: (slot) => engine.loadGame(slot),
+      },
     }),
-  createSave: () => null,
+  createSave: () =>
+    new SaveManager({
+      storage: new LocalStorageProvider(),
+      getSettings: () => DEFAULT_SETTINGS,
+    }),
 };
 
 class Game {
@@ -93,7 +106,7 @@ class Game {
   public input: IInputManager | null = null;
   /** UI 门面；未创建时为 null */
   public ui: UIManager | null = null;
-  /** 存档子系统尚未实现，保留为 null */
+  /** 存档子系统；工厂未提供时为 null */
   public save: ISaveManager | null = null;
 
   private state: GameStatus = 'uninitialized';
