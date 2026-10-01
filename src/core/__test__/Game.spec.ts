@@ -361,7 +361,7 @@ describe('Game', () => {
     it('should delegate to the injected SaveManager', async () => {
       const capture = vi.fn(async () => ({}) as never);
       const restore = vi.fn(async () => {});
-      const save: ISaveManager = { capture, restore };
+      const save: ISaveManager = { capture, restore, list: vi.fn(() => []) };
       const h = makeHarness({ save });
 
       await h.game.init(h.config);
@@ -381,6 +381,7 @@ describe('Game', () => {
           throw new Error('disk full');
         }),
         restore: vi.fn(async () => {}),
+        list: vi.fn(() => []),
       };
       const h = makeHarness({ save });
       await h.game.init(h.config);
@@ -396,6 +397,7 @@ describe('Game', () => {
         restore: vi.fn(async () => {
           throw new Error('slot missing');
         }),
+        list: vi.fn(() => []),
       };
       const h = makeHarness({ save });
       await h.game.init(h.config);
