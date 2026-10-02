@@ -1,4 +1,4 @@
-import type { VNEngine } from '@/types/engine';
+import type { DialogueEntry, VNEngine } from '@/types/engine';
 import type { StorageProvider } from '../SaveStorage';
 import { SAVE_VERSION, SaveManager, migrate } from '../SaveManager';
 
@@ -21,6 +21,7 @@ interface Parts {
   audioSetState: ReturnType<typeof vi.fn>;
   variableRestore: ReturnType<typeof vi.fn>;
   loadScript: ReturnType<typeof vi.fn>;
+  historyRestore: ReturnType<typeof vi.fn>;
 }
 
 interface Harness {
@@ -37,6 +38,7 @@ function makeHarness(
     currentText?: string;
     audioId?: string;
     storage?: StorageProvider;
+    history?: DialogueEntry[];
   } = {},
 ): Harness {
   const storage = options.storage ?? makeStorage();
@@ -49,6 +51,7 @@ function makeHarness(
     audioSetState: vi.fn(),
     variableRestore: vi.fn(),
     loadScript: vi.fn(async () => ({ name: 'chapter1' })),
+    historyRestore: vi.fn(),
   };
 
   const engine = {
@@ -70,7 +73,13 @@ function makeHarness(
       restore: parts.variableRestore,
     },
     resource: { loadScript: parts.loadScript },
-    ui: { dialogueBox: { currentText: options.currentText ?? '你好，世界' } },
+    ui: {
+      dialogueBox: { currentText: options.currentText ?? '你好，世界' },
+      history: {
+        entries: () => options.history ?? [],
+        restore: parts.historyRestore,
+      },
+    },
   } as unknown as VNEngine;
 
   const manager = new SaveManager({
@@ -119,6 +128,15 @@ describe('SaveManager', () => {
       const data = await h.manager.capture(h.engine, 0);
 
       expect(data.gameState.bgm).toBeNull();
+    });
+
+    it('should capture history entries from the ui', async () => {
+      const entries = [{ speaker: 'Hero', text: 'Hi', timestamp: 1 }];
+      const h = makeHarness({ history: entries });
+
+      const data = await h.manager.capture(h.engine, 0);
+
+      expect(data.gameState.history).toEqual(entries);
     });
 
     it('should persist the save as JSON under the slot key', async () => {
@@ -171,7 +189,30 @@ describe('SaveManager', () => {
         characters: [],
       });
       expect(h.parts.loadScript).toHaveBeenCalledWith('chapter1');
-      expect(h.parts.scriptLoad).toHaveBeenCalledWith({ name: 'chapter1' }, 7);
+      expect(h.parts.scriptLoad).toHaveBeenCalledWith(
+        'chapter1',
+        { name: 'chapter1' },
+        7,
+      );
+    });
+
+    it('should reload the script by the id stored during capture', async () => {
+      const h = makeHarness();
+      const data = await h.manager.capture(h.engine, 0);
+
+      // The engine has since moved on; restore must use the saved id.
+      h.parts.scriptGetState.mockReturnValue({ currentScript: 'other', pc: 0 });
+
+      await h.manager.restore(h.engine, 0);
+
+      const savedId = data.gameState.currentScript;
+      expect(savedId).toBe('chapter1');
+      expect(h.parts.loadScript).toHaveBeenCalledWith(savedId);
+      expect(h.parts.scriptLoad).toHaveBeenCalledWith(
+        savedId,
+        { name: 'chapter1' },
+        7,
+      );
     });
 
     it('should replay the saved BGM', async () => {
@@ -201,6 +242,16 @@ describe('SaveManager', () => {
         type: 'bgm',
       });
       expect(h.parts.audioSetState).toHaveBeenCalledWith(null);
+    });
+
+    it('should restore history into the ui', async () => {
+      const entries = [{ speaker: 'Hero', text: 'Hi', timestamp: 1 }];
+      const h = makeHarness({ history: entries });
+      await h.manager.capture(h.engine, 0);
+
+      await h.manager.restore(h.engine, 0);
+
+      expect(h.parts.historyRestore).toHaveBeenCalledWith(entries);
     });
 
     it('should reject an empty slot', async () => {

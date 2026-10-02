@@ -121,7 +121,7 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 12. 创建 PluginManager(eventBus)
 13. 注册 config.plugins → PluginManager.loadAll()
 14. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager, ui])，内部 app.ticker.add(...)
-15. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
+15. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(id, script)
 16. settings.emitAll()                        // 各子系统已就绪，推送初始设置使其应用当前值
 17. 发射 game:init 事件
 ```
@@ -1067,13 +1067,13 @@ class InputManager implements IInputManager {
 
 存档时 `SaveManager` 遍历各子系统收集数据，组装为 `GameStateSnapshot`（类型定义见 §14.3）：
 
-| 来源          | 收集内容          | 方法               |
-| ------------- | ----------------- | ------------------ |
-| ScriptEngine  | 当前脚本名、pc    | `getState()`       |
-| Renderer      | 背景 id、角色列表 | `getState()`       |
-| AudioManager  | BGM id、播放进度  | `getState()`       |
-| VariableStore | variables、flags  | `dump()`           |
-| Updater       | 累计游玩时间      | `elapsedTime` 字段 |
+| 来源          | 收集内容            | 方法               |
+| ------------- | ------------------- | ------------------ |
+| ScriptEngine  | 当前脚本资源 id、pc | `getState()`       |
+| Renderer      | 背景 id、角色列表   | `getState()`       |
+| AudioManager  | BGM id、播放进度    | `getState()`       |
+| VariableStore | variables、flags    | `dump()`           |
+| Updater       | 累计游玩时间        | `elapsedTime` 字段 |
 
 各子系统提供 `getState()`（或等效方法）返回各自领域的可序列化快照片段，`SaveManager` 在 capture() 中拼接为完整的 `GameStateSnapshot`。
 
@@ -1135,7 +1135,7 @@ SaveManager.restore(engine, slot):
      b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
      c. renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
      d. audioManager.setState(snapshot.bgm)
-     e. scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
+     e. scriptEngine.load(snapshot.currentScript, await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
   5. engine.resume()
   6. eventBus.emit('game:loaded', { slot })
 ```
@@ -1417,7 +1417,7 @@ Game.init(config)
       → resourceManager.preloadScene(snapshot.currentScript)
       → renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
       → audioManager.setState(snapshot.bgm)
-      → scriptEngine.load(await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
+      → scriptEngine.load(snapshot.currentScript, await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
       → engine.resume()
       → EventBus 发送 'game:loaded'
 ```

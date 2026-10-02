@@ -115,6 +115,23 @@ describe('UIManager', () => {
     expect(ui.menuBar).toBeDefined();
   });
 
+  it('should record dialogue into the history buffer', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    expect(ui.history.entries()).toHaveLength(1);
+    expect(ui.history.entries()[0]).toMatchObject({
+      speaker: 'Hero',
+      text: 'Hi',
+    });
+  });
+
+  it('should default the history view to the history buffer', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    ui.open('history');
+    expect(ui.historyView.rowTexts).toEqual(['Hero：Hi']);
+  });
+
   it('should open a panel from a ui:open event', () => {
     const { bus, ui } = makeManager();
     bus.emit('ui:open', { panel: 'settings' });

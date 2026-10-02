@@ -14,6 +14,7 @@ import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuOptions } from './SettingsMenu';
 import { HistoryView } from './HistoryView';
 import type { HistoryViewOptions } from './HistoryView';
+import { DialogueHistory } from './DialogueHistory';
 import { MenuBar } from './MenuBar';
 import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
@@ -49,6 +50,7 @@ export class UIManager {
   readonly settingsMenu: SettingsMenu;
   readonly historyView: HistoryView;
   readonly menuBar: MenuBar;
+  readonly history: DialogueHistory;
 
   private readonly bus: EventBus<EngineEvents>;
   private rafId: number | null = null;
@@ -86,8 +88,10 @@ export class UIManager {
       ...size,
       ...options.settingsMenu,
     });
+    this.history = new DialogueHistory(bus);
     this.historyView = new HistoryView({
       ...size,
+      getEntries: () => this.history.entries(),
       ...options.historyView,
     });
     this.confirmDialog = new ConfirmDialog({
@@ -180,6 +184,7 @@ export class UIManager {
     this.saveLoadMenu.destroy();
     this.settingsMenu.destroy();
     this.historyView.destroy();
+    this.history.destroy();
     this.confirmDialog.destroy();
     this.menuBar.destroy();
   }
