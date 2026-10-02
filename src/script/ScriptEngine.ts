@@ -25,8 +25,8 @@ class ScriptEngine {
     this.interpreter.step();
   }
 
-  public load(script: Script, startPc: number = 0): void {
-    this.currentScript = script.name;
+  public load(id: string, script: Script, startPc: number = 0): void {
+    this.currentScript = id;
     this.interpreter.load(script, startPc);
   }
 
