@@ -77,7 +77,7 @@ class SaveManager implements ISaveManager {
       bgImage: renderer.bgImage,
       characters: renderer.characters,
       bgm: audio && audio.id !== '' ? audio : null,
-      history: [],
+      history: [...(engine.ui?.history?.entries() ?? [])],
       playTime: 0,
     };
 
@@ -112,6 +112,7 @@ class SaveManager implements ISaveManager {
 
     // 变量先于脚本 load：分支条件按恢复后的变量求值
     engine.variableStore.restore({ variables: gs.variables, flags: gs.flags });
+    engine.ui?.history?.restore(gs.history);
     engine.renderer.setState({
       bgImage: gs.bgImage,
       characters: gs.characters,
