@@ -1067,13 +1067,13 @@ class InputManager implements IInputManager {
 
 存档时 `SaveManager` 遍历各子系统收集数据，组装为 `GameStateSnapshot`（类型定义见 §14.3）：
 
-| 来源          | 收集内容          | 方法               |
-| ------------- | ----------------- | ------------------ |
+| 来源          | 收集内容            | 方法               |
+| ------------- | ------------------- | ------------------ |
 | ScriptEngine  | 当前脚本资源 id、pc | `getState()`       |
-| Renderer      | 背景 id、角色列表 | `getState()`       |
-| AudioManager  | BGM id、播放进度  | `getState()`       |
-| VariableStore | variables、flags  | `dump()`           |
-| Updater       | 累计游玩时间      | `elapsedTime` 字段 |
+| Renderer      | 背景 id、角色列表   | `getState()`       |
+| AudioManager  | BGM id、播放进度    | `getState()`       |
+| VariableStore | variables、flags    | `dump()`           |
+| Updater       | 累计游玩时间        | `elapsedTime` 字段 |
 
 各子系统提供 `getState()`（或等效方法）返回各自领域的可序列化快照片段，`SaveManager` 在 capture() 中拼接为完整的 `GameStateSnapshot`。
 
