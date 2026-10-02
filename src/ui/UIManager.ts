@@ -14,6 +14,8 @@ import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuOptions } from './SettingsMenu';
 import { HistoryView } from './HistoryView';
 import type { HistoryViewOptions } from './HistoryView';
+import { MenuBar } from './MenuBar';
+import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 
 export interface UIManagerOptions {
@@ -28,6 +30,7 @@ export interface UIManagerOptions {
   saveLoadMenu?: Partial<SaveLoadMenuOptions>;
   historyView?: Partial<HistoryViewOptions>;
   confirmDialog?: Partial<ConfirmDialogOptions>;
+  menuBar?: Partial<MenuBarOptions>;
   autoTick?: boolean;
 }
 
@@ -45,6 +48,7 @@ export class UIManager {
   readonly saveLoadMenu: SaveLoadMenu;
   readonly settingsMenu: SettingsMenu;
   readonly historyView: HistoryView;
+  readonly menuBar: MenuBar;
 
   private readonly bus: EventBus<EngineEvents>;
   private rafId: number | null = null;
@@ -91,9 +95,18 @@ export class UIManager {
       ...options.confirmDialog,
     });
 
+    // 层级：按钮栏夹在对话核心与四个模态面板之间。这样无面板时按钮可点
+    // （盖住对话框/选项），有面板时面板的全屏背板又盖住按钮（见 InputManager
+    // 的命中层位于 root 首个子节点，最底层）。
+    this.menuBar = new MenuBar(bus, {
+      ...size,
+      ...options.menuBar,
+    });
+
     this.root.addChild(
       this.dialogueBox,
       this.choicePanel,
+      this.menuBar,
       this.saveLoadMenu,
       this.settingsMenu,
       this.historyView,
@@ -168,6 +181,7 @@ export class UIManager {
     this.settingsMenu.destroy();
     this.historyView.destroy();
     this.confirmDialog.destroy();
+    this.menuBar.destroy();
   }
 
   private readonly handleSay = (payload: EngineEvents['script:say']): void => {
