@@ -20,6 +20,29 @@ class AudioManager implements IAudioManager {
   private eventBus: EventBus<EngineEvents>;
   private currentBgmId: string;
 
+  /** 订阅 `game:settings`：把设置里的音量落到对应混音总线 */
+  private readonly onSettingsChange = (
+    payload: EngineEvents['game:settings'],
+  ): void => {
+    if (typeof payload.value !== 'number') return;
+    switch (payload.key) {
+      case 'masterVolume':
+        this.setMasterVolume(payload.value);
+        break;
+      case 'bgmVolume':
+        this.setBgmVolume(payload.value);
+        break;
+      case 'seVolume':
+        this.setSeVolume(payload.value);
+        break;
+      case 'voiceVolume':
+        this.setVoiceVolume(payload.value);
+        break;
+      default:
+        break;
+    }
+  };
+
   constructor(
     eventBus: EventBus<EngineEvents>,
     maxSeTracks: number,
@@ -112,6 +135,8 @@ class AudioManager implements IAudioManager {
           break;
       }
     });
+
+    this.eventBus.on('game:settings', this.onSettingsChange);
   }
 
   public playBgm(
@@ -199,6 +224,7 @@ class AudioManager implements IAudioManager {
   }
 
   public destroy(): void {
+    this.eventBus.off('game:settings', this.onSettingsChange);
     this.bgmTrack.stop();
     this.ambientTrack.stop();
     this.voiceTrack.stop();
