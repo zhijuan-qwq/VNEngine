@@ -32,15 +32,12 @@ interface ResolvedOptions {
   height: number;
   x: number;
   y: number;
-  fontSize: number;
   fontFamily: string;
   textColor: number;
   speakerColor: number;
   backgroundColor: number;
   backgroundAlpha: number;
   padding: number;
-  lineHeight: number;
-  defaultSpeed: number;
   eventBus?: EventBus<EngineEvents>;
   resolveVar?: VarResolver;
 }
@@ -55,6 +52,10 @@ export class DialogueBox extends UIComponent {
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
+  /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
+  private fontSize: number;
+  private lineHeight: number;
+  private defaultSpeed: number;
 
   constructor(options: DialogueBoxOptions) {
     super({ id: 'dialogue-box' });
@@ -63,19 +64,19 @@ export class DialogueBox extends UIComponent {
       height: options.height,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      fontSize: options.fontSize ?? 28,
       fontFamily: options.fontFamily ?? 'sans-serif',
       textColor: options.textColor ?? 0xffffff,
       speakerColor: options.speakerColor ?? 0xffe082,
       backgroundColor: options.backgroundColor ?? 0x000000,
       backgroundAlpha: options.backgroundAlpha ?? 0.7,
       padding: options.padding ?? 20,
-      lineHeight:
-        options.lineHeight ?? Math.round((options.fontSize ?? 28) * 1.4),
-      defaultSpeed: options.defaultSpeed ?? 40,
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
+    this.fontSize = options.fontSize ?? 28;
+    this.lineHeight =
+      options.lineHeight ?? Math.round((options.fontSize ?? 28) * 1.4);
+    this.defaultSpeed = options.defaultSpeed ?? 40;
 
     this.x = this.opts.x;
     this.y = this.opts.y;
@@ -88,7 +89,7 @@ export class DialogueBox extends UIComponent {
     this.speakerText = new Text({
       text: '',
       style: {
-        fontSize: this.opts.fontSize,
+        fontSize: this.fontSize,
         fontFamily: this.opts.fontFamily,
         fill: this.opts.speakerColor,
       },
@@ -100,19 +101,15 @@ export class DialogueBox extends UIComponent {
     this.indicator = new Text({
       text: '▼',
       style: {
-        fontSize: Math.round(this.opts.fontSize * 0.8),
+        fontSize: Math.round(this.fontSize * 0.8),
         fontFamily: this.opts.fontFamily,
         fill: this.opts.textColor,
       },
     });
     this.indicator.x =
-      this.opts.width -
-      this.opts.padding -
-      Math.round(this.opts.fontSize * 0.8);
+      this.opts.width - this.opts.padding - Math.round(this.fontSize * 0.8);
     this.indicator.y =
-      this.opts.height -
-      this.opts.padding -
-      Math.round(this.opts.fontSize * 0.8);
+      this.opts.height - this.opts.padding - Math.round(this.fontSize * 0.8);
     this.indicator.visible = false;
     this.addChild(this.indicator);
 
@@ -123,6 +120,9 @@ export class DialogueBox extends UIComponent {
 
     if (this.opts.eventBus) {
       this.bind(this.opts.eventBus, 'input:skip', () => this.complete());
+      this.bind(this.opts.eventBus, 'game:settings', (payload) =>
+        this.applySetting(payload),
+      );
     }
 
     this.hide();
@@ -133,7 +133,7 @@ export class DialogueBox extends UIComponent {
     this.typewriter = new TypewriterState({
       totalChars: this.parsed.plain.length,
       hints: this.parsed.hints,
-      speed: speed ?? this.opts.defaultSpeed,
+      speed: speed ?? this.defaultSpeed,
     });
     this.speakerText.text = speaker;
     this.speakerText.visible = speaker.length > 0;
@@ -187,7 +187,7 @@ export class DialogueBox extends UIComponent {
 
   private bodyTextStyle(): TextStyleOptions {
     return {
-      fontSize: this.opts.fontSize,
+      fontSize: this.fontSize,
       fontFamily: this.opts.fontFamily,
       fill: this.opts.textColor,
       wordWrap: false,
@@ -199,18 +199,53 @@ export class DialogueBox extends UIComponent {
   }
 
   private get textTop(): number {
-    return this.opts.padding * 2 + Math.round(this.opts.fontSize * 1.2);
+    return this.opts.padding * 2 + Math.round(this.fontSize * 1.2);
   }
 
   private measureText(text: string, style: TextStyle): number {
     this.scratchText.style = {
       ...this.bodyTextStyle(),
-      fontSize: style.size ?? this.opts.fontSize,
+      fontSize: style.size ?? this.fontSize,
       ...(style.bold ? { fontWeight: 'bold' as const } : {}),
       ...(style.italic ? { fontStyle: 'italic' as const } : {}),
     };
     this.scratchText.text = text;
     return this.scratchText.width;
+  }
+
+  /** 应用 `game:settings` 变更：文字速度改默认打字速度，字号重设样式并重排 */
+  private applySetting(payload: EngineEvents['game:settings']): void {
+    if (payload.key === 'textSpeed') {
+      if (typeof payload.value === 'number') this.defaultSpeed = payload.value;
+      return;
+    }
+    if (payload.key === 'fontSize') {
+      if (typeof payload.value !== 'number') return;
+      this.fontSize = payload.value;
+      this.lineHeight = Math.round(payload.value * 1.4);
+      this.applyFontSize();
+    }
+  }
+
+  private applyFontSize(): void {
+    this.speakerText.style = {
+      fontSize: this.fontSize,
+      fontFamily: this.opts.fontFamily,
+      fill: this.opts.speakerColor,
+    };
+    const indicatorSize = Math.round(this.fontSize * 0.8);
+    this.indicator.style = {
+      fontSize: indicatorSize,
+      fontFamily: this.opts.fontFamily,
+      fill: this.opts.textColor,
+    };
+    this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
+    this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
+    this.scratchText.style = this.bodyTextStyle();
+    for (const text of this.bodyTexts) {
+      text.style = this.bodyTextStyle();
+    }
+    this.relayout();
   }
 
   private relayout(): void {
@@ -220,7 +255,7 @@ export class DialogueBox extends UIComponent {
     const items = computeTextLayout(
       this.parsed,
       this.typewriter.revealed,
-      { width: this.bodyWidth, lineHeight: this.opts.lineHeight },
+      { width: this.bodyWidth, lineHeight: this.lineHeight },
       (text, style) => this.measureText(text, style),
     );
     this.renderItems(items);
