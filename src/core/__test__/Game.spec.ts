@@ -13,6 +13,9 @@ import type {
 import type { Script } from '@/types/script';
 import type { ISaveManager } from '@/types/save';
 import type { UIManager } from '@/ui/UIManager';
+import * as UIManagerModule from '@/ui/UIManager';
+import SettingsManager from '@/settings/SettingsManager';
+import * as APIHelper from '@/utils/APIHelper';
 import Game, { type GameFactories } from '../Game';
 import type { TickerLike } from '../Updater';
 
@@ -86,6 +89,10 @@ function makeAudio(): IAudioManager {
     resume: vi.fn(),
     getState: vi.fn(),
     setState: vi.fn(),
+    setMasterVolume: vi.fn(),
+    setBgmVolume: vi.fn(),
+    setSeVolume: vi.fn(),
+    setVoiceVolume: vi.fn(),
     destroy: vi.fn(),
   };
 }
@@ -106,6 +113,7 @@ function makeHarness(options: {
   ui?: UIManager | null;
   input?: IInputManager | null;
   uiLayer?: Container | null;
+  settings?: SettingsManager;
 }): Harness {
   const { ticker, fire } = makeTicker();
   const appDestroy = vi.fn();
@@ -119,6 +127,9 @@ function makeHarness(options: {
     createInput: () => options.input ?? null,
     createUI: () => options.ui ?? null,
     createSave: () => options.save ?? null,
+    // 无 storage → 不碰 localStorage，node 下安全
+    createSettings: (engine) =>
+      options.settings ?? new SettingsManager({ bus: engine.eventBus }),
   };
   const game = new Game(factories);
   const config: GameConfig = {
@@ -195,6 +206,110 @@ describe('Game', () => {
       expect(loadScript).toHaveBeenCalledWith('a');
       expect(loadScript).toHaveBeenCalledWith('b');
       expect(load).toHaveBeenCalledWith(first);
+    });
+  });
+
+  describe('settings', () => {
+    const baseConfig: GameConfig = {
+      width: 640,
+      height: 480,
+      scaleMode: 'fit',
+      fps: 60,
+      scripts: [],
+      assets: { images: {}, audio: {}, scripts: {}, spritesheets: {} },
+    };
+
+    it('should create a SettingsManager during init', async () => {
+      const h = makeHarness({});
+      await h.game.init(h.config);
+
+      expect(h.game.settings).toBeInstanceOf(SettingsManager);
+    });
+
+    it('should pass the settings controller to the UI factory', async () => {
+      const uiCtor = vi
+        .spyOn(UIManagerModule, 'UIManager')
+        .mockImplementation(function () {
+          return makeFakeUI();
+        });
+      const { ticker } = makeTicker();
+      const app = { stage: {}, canvas: {}, ticker, destroy: vi.fn() };
+      // 缺省 createUI → 走真实工厂以验证 settingsMenu.controller 接线
+      const game = new Game({
+        createApplication: async () => app as unknown as Application,
+        createRenderer: () => makeRenderer(null),
+        createAudio: () => makeAudio(),
+        createInput: () => null,
+        createSave: () => null,
+      });
+
+      await game.init(baseConfig);
+
+      const options = uiCtor.mock.calls[0]?.[1] as
+        { settingsMenu?: { controller?: unknown } } | undefined;
+      expect(options?.settingsMenu?.controller).toBe(game.settings);
+    });
+
+    it('should broadcast the initial settings before game:init', async () => {
+      const h = makeHarness({});
+      await h.game.init(h.config);
+
+      const names = h.emitSpy.mock.calls.map(
+        (call: unknown[]) => call[0] as string,
+      );
+      expect(names).toContain('game:settings');
+      expect(names.indexOf('game:settings')).toBeLessThan(
+        names.indexOf('game:init'),
+      );
+    });
+
+    it('should enter fullscreen when the setting turns on', async () => {
+      const toFullscreen = vi.spyOn(APIHelper, 'setFullscreen');
+      const h = makeHarness({});
+      await h.game.init(h.config);
+
+      h.game.settings.onChange({ fullscreen: true });
+
+      expect(toFullscreen).toHaveBeenCalledWith(true);
+    });
+
+    it('should not exit fullscreen on the initial broadcast when not fullscreen', async () => {
+      const toFullscreen = vi.spyOn(APIHelper, 'setFullscreen');
+      const isFull = vi.spyOn(APIHelper, 'isFullscreen').mockReturnValue(false);
+      const h = makeHarness({});
+      await h.game.init(h.config);
+
+      expect(isFull).toHaveBeenCalled();
+      expect(toFullscreen).not.toHaveBeenCalled();
+    });
+
+    it('should stop reacting to settings after destroy', async () => {
+      const toFullscreen = vi.spyOn(APIHelper, 'setFullscreen');
+      const h = makeHarness({});
+      await h.game.init(h.config);
+      h.game.destroy();
+      toFullscreen.mockClear();
+
+      h.game.settings.onChange({ fullscreen: true });
+
+      expect(toFullscreen).not.toHaveBeenCalled();
+    });
+
+    it('should init with the default settings factory when storage is unavailable', async () => {
+      const { ticker } = makeTicker();
+      const app = { stage: {}, canvas: {}, ticker, destroy: vi.fn() };
+      const game = new Game({
+        createApplication: async () => app as unknown as Application,
+        createRenderer: () => makeRenderer(null),
+        createAudio: () => makeAudio(),
+        createInput: () => null,
+        createUI: () => null,
+        createSave: () => null,
+      });
+
+      await game.init(baseConfig);
+
+      expect(game.settings).toBeInstanceOf(SettingsManager);
     });
   });
 
