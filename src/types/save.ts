@@ -1,4 +1,4 @@
-import type { CharacterState, Settings, VNEngine } from './engine';
+import type { CharacterState, VNEngine } from './engine';
 
 export interface SaveData {
   version: number;
@@ -6,7 +6,6 @@ export interface SaveData {
   thumbnail: Blob | string; // IndexedDB 存 Blob，localStorage 降级 base64
   slotLabel: string;
   gameState: GameStateSnapshot;
-  settings: Settings;
 }
 
 export interface GameStateSnapshot {

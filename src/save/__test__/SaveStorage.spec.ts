@@ -63,4 +63,27 @@ describe('LocalStorageProvider', () => {
 
     expect(fake.getItem('save_1')).toBe('x');
   });
+
+  describe('when storage is unavailable', () => {
+    it('should read as null instead of throwing', () => {
+      vi.stubGlobal('localStorage', undefined);
+      const provider = new LocalStorageProvider();
+
+      expect(provider.getItem('save_0')).toBeNull();
+    });
+
+    it('should accept a write as a no-op', () => {
+      vi.stubGlobal('localStorage', undefined);
+      const provider = new LocalStorageProvider();
+
+      expect(() => provider.setItem('save_0', 'x')).not.toThrow();
+    });
+
+    it('should list no keys', () => {
+      vi.stubGlobal('localStorage', undefined);
+      const provider = new LocalStorageProvider();
+
+      expect(provider.keys()).toEqual([]);
+    });
+  });
 });

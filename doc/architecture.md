@@ -69,7 +69,8 @@ Game
 ├── resource: ResourceManager        // 资源管理
 ├── plugins: PluginManager           // 插件管理
 ├── variableStore: VariableStore     // 变量与旗标存储
-├── save: ISaveManager | null        // 存档管理器（M5 实现，当前缺省为 null）
+├── settings: SettingsManager        // 设置子系统（全局独立持久化 + game:settings 广播）
+├── save: ISaveManager | null        // 存档管理器（可缺省为 null）
 │
 ├── async init(config: GameConfig): Promise<void>  // 初始化引擎（详见下方 init 流程）
 ├── start(): void                    // 启动游戏循环（app.ticker.start()）
@@ -101,31 +102,33 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 **init 初始化顺序（async，PixiJS v8）：**
 
 ```
-1. 创建 EventBus
+1. 创建 EventBus，并订阅 game:settings（全屏生效）
 2. 创建 VariableStore
 3. 创建 ResourceManager(eventBus, config.assets)
-4. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
+4. 创建 SettingsManager({ bus: eventBus, storage })  // 从独立键恢复设置，广播 game:settings
+5. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
    并将 app.canvas 挂载到容器
-5. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
+6. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
                                               // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件；预建 ui 图层
-6. 创建 InputManager(eventBus, { width, height, toLogical, isTypewriterBusy })
+7. 创建 InputManager(eventBus, { width, height, toLogical, isTypewriterBusy })
                                               // toLogical 委托 renderer.toLogical；isTypewriterBusy 惰性读取 ui.isBusy()
-7. 创建 AudioManager(eventBus)
-8. 创建 SaveManager(eventBus)                 // 尚未实现，缺省工厂返回 null
-9. 创建 UIManager(eventBus, { width, height, autoTick: false, resolveVar })
+8. 创建 AudioManager(eventBus)
+9. 创建 SaveManager({ storage })              // 无可写存储时工厂返回 null
+10. 创建 UIManager(eventBus, { width, height, autoTick: false, resolveVar, settingsMenu })
    → renderer.getUILayer()?.addChild(ui.root) // 把 UI 根挂到渲染器预建的 ui 图层
    → input.setUIRoot(ui.root)                 // 命中层作为 ui.root 的首个子节点（最底层）
-10. 创建 ScriptEngine(eventBus, variableStore)
-11. 创建 PluginManager(eventBus)
-12. 注册 config.plugins → PluginManager.loadAll()
-13. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager, ui])，内部 app.ticker.add(...)
-14. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
-15. 发射 game:init 事件
+11. 创建 ScriptEngine(eventBus, variableStore)
+12. 创建 PluginManager(eventBus)
+13. 注册 config.plugins → PluginManager.loadAll()
+14. 创建 Updater([renderer, scriptEngine, audioManager, pluginManager, ui])，内部 app.ticker.add(...)
+15. 预加载 config.scripts → resourceManager.loadScript(id) → scriptEngine.load(script)
+16. settings.emitAll()                        // 各子系统已就绪，推送初始设置使其应用当前值
+17. 发射 game:init 事件
 ```
 
-依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 预建的 `ui` 图层，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；SettingsManager 先于消费它的音频/UI 创建（后者的 `settingsMenu` 直接以它为 controller）；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 预建的 `ui` 图层，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
 
-**destroy 顺序：** `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。
+**destroy 顺序：** 先退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。
 
 **GameConfig 结构：**
 
@@ -211,7 +214,7 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `game:destroy`           | 引擎销毁前     | `{}`                                                                                               |
 | `game:save`              | 存档完成       | `{ slot: number }`                                                                                 |
 | `game:load`              | 读档完成       | `{ slot: number }`                                                                                 |
-| `game:settings`          | 设置变更       | `{ key: string; value: unknown }`                                                                  |
+| `game:settings`          | 设置变更       | `{ key: keyof Settings; value: unknown }`（逐键派发；`SettingsManager` 变更时发射）                |
 | `script:command`         | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`                                                   |
 | `script:say`             | 显示对话       | `{ speaker: string; text: string; voice?; speed?; mode? }`                                         |
 | `script:choice`          | 显示选项时     | `{ choices: Choice[]; mode?: 'adv' \| 'nvl' }`                                                     |
@@ -904,6 +907,8 @@ voiceTrack.trackGain    → voiceBus ─┘
 
 `setBgmVolume/setSeVolume/setVoiceVolume` 控制总线级别音量，不覆盖 track 自身 gain（后者用于 fade 过程中的中间值）。ambient 与 BGM 共享 bgmBus，故 `setBgmVolume` 同时作用于两者；单个 track 的播放音量用 `AudioTrack.setVolume` 设定（DSL `volume=` 即映射到它）。
 
+四个总线音量由 **Settings 驱动**：`AudioManager` 在构造时订阅 `game:settings`（`destroy()` 时退订），按 `key` 分派到对应的音量 setter，故设置菜单的改动无需经过 Game 中介即可落到混音总线。
+
 ### 7.2 AudioTrack（音轨）
 
 ```ts
@@ -992,16 +997,16 @@ class UIComponent extends Container {
 
 对话核心与四个面板（均继承 `UIComponent`）：
 
-| 组件            | 说明                                                                                                                                                                             |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`                                                                                                          |
-| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                             |
-| `SaveLoadMenu`  | 存读档菜单：`show('save'\|'load')`，槽位网格 + `ScrollView`；注入 `{ slots?, getSlots?, onSave?, onLoad? }`（UI 局部契约 `SaveSlotInfo`，缺省时空态）                            |
-| `SettingsMenu`  | 设置菜单：4 个音量 `Slider`、`textSpeed` `Slider`、`skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController }`，缺省时显示 `DEFAULT_SETTINGS`、`onChange` no-op |
-| `HistoryView`   | 对话历史：注入 `getEntries?: () => readonly DialogueEntry[]`，`show()` 刷新并滚动到底部                                                                                          |
-| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束                                                                    |
+| 组件            | 说明                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`；订阅 `game:settings` 响应 `textSpeed`/`fontSize`                                                                                      |
+| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                                                           |
+| `SaveLoadMenu`  | 存读档菜单：`show('save'\|'load')`，槽位网格 + `ScrollView`；注入 `{ slots?, getSlots?, onSave?, onLoad? }`（UI 局部契约 `SaveSlotInfo`，缺省时空态）                                                          |
+| `SettingsMenu`  | 设置菜单：4 个音量 `Slider`、`textSpeed` `Slider`、`skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController }`，生产端接线 `SettingsManager`，缺省时显示 `DEFAULT_SETTINGS`、`onChange` no-op |
+| `HistoryView`   | 对话历史：注入 `getEntries?: () => readonly DialogueEntry[]`，`show()` 刷新并滚动到底部                                                                                                                        |
+| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束                                                                                                  |
 
-**对契约编程：** 四个面板只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`），不直接依赖 `SaveManager` / `Settings` 持久化。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。真正的存档实现、设置持久化与历史数据生产链路留待 M5。
+**对契约编程：** 四个面板只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`），不直接依赖 `SaveManager` / `SettingsManager` 的持久化实现。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。存档实现与设置持久化已接线（§9.3 / §9.1）；历史数据生产链路仍留待 M5。
 
 通用控件位于 `src/ui/controls/`（纯手写；pixi `Container`/`Graphics`/`Text`，不使用 `@pixi/ui`）：
 
@@ -1080,7 +1085,7 @@ interface Settings {
   bgmVolume: number; // 0-1
   seVolume: number; // 0-1
   voiceVolume: number; // 0-1
-  textSpeed: number; // 毫秒/字
+  textSpeed: number; // 字符/秒（打字机 speed；见 src/ui/typewriter.ts）
   autoSpeed: number; // 自动模式下等待毫秒数
   skipMode: 'all' | 'read';
   fullscreen: boolean;
@@ -1089,11 +1094,21 @@ interface Settings {
 }
 ```
 
-Settings 独立持久化（全局一份），不嵌入每个存档槽中。类型定义见 §14.3 `SettingsSnapshot`。
+Settings **独立持久化（全局一份），不嵌入每个存档槽中**。实现为 `src/settings/SettingsManager.ts`，独立性体现在：
+
+- **存储键独立**：以 `settings` 单键写入存储，与存档槽的 `save_<n>` 键无关；`SaveData` 不含 `settings` 字段（见 §14.3），`SaveManager.restore()` 也不触碰设置。
+- **构造即恢复**：`new SettingsManager({ bus, storage? })` 时读取并**逐键校验**，任何失败（无存档 / 坏 JSON / 非法值）静默回落 `DEFAULT_SETTINGS`，绝不抛。
+- **变更即广播**：`onChange(patch)` 校验→合并→持久化→**逐键**发射 `game:settings { key, value }`；`emitAll()` 广播当前全部键，供 `Game.init` 末尾推送初始态（见 §3.1 第 16 步）。
+- **校验语义**：音量 clamp 到 `0..1`、`textSpeed` clamp 到 `5..100`、`autoSpeed`/`fontSize` 取正数，NaN/Infinity 一律拒绝并保留原值；`skipMode` 仅接受 `'all'`/`'read'`；未知键忽略。
+- **存储不可用时静默降级**：仅内存生效、不持久化，引擎照常启动（node / SSR / 隐私模式）。
+
+生效范围 = 音量（master/bgm/se/voice，由 `AudioManager` 订阅应用，见 §7.1）+ `textSpeed`/`fontSize`（由 `DialogueBox` 订阅应用）+ `fullscreen`（由 `Game` 订阅应用）。`autoSpeed`/`language` 当前无消费者，暂未接线。
+
+`SettingsManager` 结构性地满足 §8.2 的 `SettingsController`（`get()` / `onChange()`），故 `SettingsMenu` 直接以它为 controller。
 
 ### 9.2 Save/Load 数据格式
 
-`SaveData` 和 `GameStateSnapshot` 的权威类型定义见 §14.3。
+`SaveData` 和 `GameStateSnapshot` 的权威类型定义见 §14.3。`SaveData` **不含 settings** —— 设置走独立持久化（§9.1），不随存档槽读写。
 
 ### 9.3 存档流程（SaveManager）
 
@@ -1285,9 +1300,12 @@ src/
 ├── input/                         # 输入管理
 │   └── InputManager.ts            # 输入事件分发（pixi Federated Events）
 │
+├── settings/                      # 设置子系统（全局独立持久化）
+│   └── SettingsManager.ts         # 设置加载/校验/持久化 + game:settings 广播
+│
 ├── save/                          # 存档系统
 │   ├── SaveManager.ts             # 存档管理器
-│   └── SaveData.ts                # 存档数据结构
+│   └── SaveStorage.ts             # 存储后端（StorageProvider + LocalStorageProvider）
 │
 ├── types/                         # 共享类型定义
 │   ├── engine.ts                  # 引擎核心类型
@@ -1297,6 +1315,7 @@ src/
 │   └── events.ts                  # 事件类型定义
 │
 ├── utils/                         # 工具函数
+│   ├── APIHelper.ts               # DOM/全局 API 唯一访问 seam（见下方契约）
 │   ├── easing.ts                  # 缓动函数集
 │   ├── objectPool.ts              # 通用对象池
 │   ├── lruCache.ts                # 通用LRU缓存
@@ -1304,6 +1323,22 @@ src/
 │
 ├── main.ts                        # 入口
 ```
+
+**DOM / 全局 API 访问契约：** 业务代码一律经 `src/utils/APIHelper.ts` 访问 `window` / `document` / `localStorage` / `requestAnimationFrame` / `performance`，不直接引用，以保证 node / SSR / 隐私模式下的兼容性，并让测试用 `vi.stubGlobal` 集中打桩。该模块以具名函数导出，附带的降级语义：
+
+| 函数                    | 语义                                                                      |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `createAudioContext()`  | 建 `AudioContext`（含 `webkitAudioContext` 回落）；均为缺时抛 `TypeError` |
+| `getStorage()`          | 返回 Web Storage；不可用（缺失/访问抛错）→ `null`                         |
+| `getDevicePixelRatio()` | 无 `window` → `1`                                                         |
+| `getElementById(id)`    | 无 `document` → `null`                                                    |
+| `now()`                 | `performance.now()`；无 `performance` → `Date.now()`                      |
+| `requestFrame(cb)`      | 无 `requestAnimationFrame` → **抛描述性 `Error`**（不回落 `setTimeout`）  |
+| `cancelFrame(handle)`   | 无 `cancelAnimationFrame` → 空操作                                        |
+| `isFullscreen()`        | 无 `document` → `false`                                                   |
+| `setFullscreen(on)`     | 无 `document` → 空操作；拒绝的 Promise 一律 `.catch` 吞掉                 |
+
+`requestFrame` 刻意**不**回落到 `setTimeout`：缺 rAF 的环境本就跑不了帧循环，静默空转会把 node 进程钉住。`LocalStorageProvider`（`save/SaveStorage.ts`）经 `getStorage()` 取存储，不可用时静默降级（读→`null`、写空操作、`keys()`→`[]`）。
 
 ---
 
@@ -1488,6 +1523,7 @@ interface EngineEvents {
   'game:load': { slot: number };
   'game:pause': {};
   'game:resume': {};
+  'game:settings': { key: keyof Settings; value: unknown }; // 逐键派发（见 §9.1）
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
   'input:skip': {}; // 打字机进行中点击：跳过/完成当前打字，而非推进对话
@@ -1535,6 +1571,41 @@ interface IRenderer {
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
 }
+
+// 音频子系统契约（§7）；四个音量 setter 由 Settings 经 game:settings 驱动（§7.1）
+interface IAudioManager {
+  update(dt: number): void;
+  pause(): void;
+  resume(): void;
+  getState(): { id: string; progress: number } | null;
+  setState(state: { id: string; progress: number } | null): void;
+  setMasterVolume(volume: number): void;
+  setBgmVolume(volume: number): void;
+  setSeVolume(volume: number): void;
+  setVoiceVolume(volume: number): void;
+  destroy(): void;
+}
+
+// 引擎门面：构造注入各子系统，作为脚本/插件的上下文（见 §3.1）
+interface VNEngine {
+  app: Application;
+  eventBus: EventBus<EngineEvents>;
+  plugins: IPluginManager;
+  variableStore: VariableStore;
+  script: ScriptEngine;
+  resource: IResourceManager;
+  renderer: IRenderer;
+  audio: IAudioManager;
+  input: IInputManager;
+  save: ISaveManager;
+  settings: SettingsManager; // 全局持久化 + game:settings 广播（见 §9.1）
+  ui: UIManager | null;
+  destroy(): void;
+  pause(): void;
+  resume(): void;
+  saveGame(slot: number): void;
+  loadGame(slot: number): void;
+}
 ```
 
 ### 14.2 脚本类型
@@ -1580,7 +1651,7 @@ interface SaveData {
   thumbnail: Blob | string; // 缩略图，IndexedDB 存 Blob，localStorage 降级 base64
   slotLabel: string; // 存档标签（当前对话文本截取 ≤30 字）
   gameState: GameStateSnapshot;
-  settings: Settings; // 玩家设置（音量/文字速度等，随存档一起持久化）
+  // 注：不含 settings —— 设置走独立持久化（见 §9.1）
 }
 
 interface GameStateSnapshot {
@@ -1624,7 +1695,8 @@ interface GameStateSnapshot {
 - [ ] 自动/快进模式
 - [x] 对话历史/回看（`HistoryView`，对注入的 `getEntries` 契约编程）
 - [x] 设置菜单（音量、文字速度等；`SettingsMenu`，`@pixi/ui` → 手写 Slider/Toggle）
-- [x] 存读档菜单与确认弹窗（`SaveLoadMenu` / `ConfirmDialog`；持久化仍待 M5）
+- [x] 设置持久化（`SettingsManager`，全局独立一份 + `game:settings` 广播；音量/文字速度/字号/全屏已接线）
+- [x] 存读档菜单与确认弹窗（`SaveLoadMenu` / `ConfirmDialog`；`SaveManager` 已接线，缩略图/历史仍待 M5）
 - [ ] 多语言支持
 - [ ] IndexedDB 存档
 
@@ -1641,20 +1713,22 @@ interface GameStateSnapshot {
 
 ## 十六、设计决策记录
 
-| 决策      | 选择                                      | 原因                                                  |
-| --------- | ----------------------------------------- | ----------------------------------------------------- |
-| 渲染方案  | PixiJS v8（WebGL/WebGPU）                 | 场景图/批渲染/纹理缓存成熟，替代手写 Canvas 2D        |
-| 文字方案  | pixi `Text` + 引擎侧富文本分段            | Canvas 同步渲染，避免 DOM-vs-WebGL 分层同步问题       |
-| UI 方案   | pixi `Container` 组件 + 手写通用控件      | 帧同步一致，无 DOM 布局抖动；控件轻量可测，免额外依赖 |
-| 音频方案  | Web Audio API                             | 精确控制，多音轨混音                                  |
-| 脚本格式  | 自定义 `.vns`                             | 简洁，面向 VN 场景优化                                |
-| 状态管理  | 引擎内置 GameState                        | 框架无关，可直接序列化                                |
-| 资源加载  | pixi `Assets`（`AssetManifest` 为真源）   | 统一纹理缓存/图集/加载进度，Audio 走 fetch+解码       |
-| 转场/特效 | 基于 ticker 的 tween + 自定义 `Container` | 无需额外动画库，对齐现有 `EasingFn`                   |
-| 通信方式  | EventBus                                  | 模块解耦，可测试                                      |
-| 资源解码  | pixi `Assets` 异步上传为 GPU 纹理         | 图片异步解码，不阻塞主线程                            |
-| 存档格式  | JSON + IndexedDB                          | 可读可迁移，容量大                                    |
-| 模块化    | 引擎纯 TS                                 | 可测试，可移植                                        |
+| 决策       | 选择                                        | 原因                                                  |
+| ---------- | ------------------------------------------- | ----------------------------------------------------- |
+| 渲染方案   | PixiJS v8（WebGL/WebGPU）                   | 场景图/批渲染/纹理缓存成熟，替代手写 Canvas 2D        |
+| 文字方案   | pixi `Text` + 引擎侧富文本分段              | Canvas 同步渲染，避免 DOM-vs-WebGL 分层同步问题       |
+| UI 方案    | pixi `Container` 组件 + 手写通用控件        | 帧同步一致，无 DOM 布局抖动；控件轻量可测，免额外依赖 |
+| 音频方案   | Web Audio API                               | 精确控制，多音轨混音                                  |
+| 脚本格式   | 自定义 `.vns`                               | 简洁，面向 VN 场景优化                                |
+| 状态管理   | 引擎内置 GameState                          | 框架无关，可直接序列化                                |
+| 资源加载   | pixi `Assets`（`AssetManifest` 为真源）     | 统一纹理缓存/图集/加载进度，Audio 走 fetch+解码       |
+| 转场/特效  | 基于 ticker 的 tween + 自定义 `Container`   | 无需额外动画库，对齐现有 `EasingFn`                   |
+| 通信方式   | EventBus                                    | 模块解耦，可测试                                      |
+| 资源解码   | pixi `Assets` 异步上传为 GPU 纹理           | 图片异步解码，不阻塞主线程                            |
+| 存档格式   | JSON + IndexedDB                            | 可读可迁移，容量大                                    |
+| 设置持久化 | 全局独立一份（`settings` 单键），不入存档槽 | 玩家设置跨存档生效，不随读档回退（§9.1）              |
+| DOM 访问   | 统一经 `utils/APIHelper.ts`                 | node/SSR/隐私模式降级确定，测试集中打桩（§12）        |
+| 模块化     | 引擎纯 TS                                   | 可测试，可移植                                        |
 
 ---
 

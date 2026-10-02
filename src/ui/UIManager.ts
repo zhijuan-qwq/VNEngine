@@ -14,6 +14,7 @@ import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuOptions } from './SettingsMenu';
 import { HistoryView } from './HistoryView';
 import type { HistoryViewOptions } from './HistoryView';
+import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 
 export interface UIManagerOptions {
   width: number;
@@ -198,19 +199,19 @@ export class UIManager {
   };
 
   private startTicking(): void {
-    this.lastTime = performance.now();
-    const tick = (now: number): void => {
-      const dt = Math.min(now - this.lastTime, MAX_FRAME_MS);
-      this.lastTime = now;
+    this.lastTime = now();
+    const tick = (time: number): void => {
+      const dt = Math.min(time - this.lastTime, MAX_FRAME_MS);
+      this.lastTime = time;
       this.update(dt);
-      this.rafId = requestAnimationFrame(tick);
+      this.rafId = requestFrame(tick);
     };
-    this.rafId = requestAnimationFrame(tick);
+    this.rafId = requestFrame(tick);
   }
 
   private stopTicking(): void {
     if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
+      cancelFrame(this.rafId);
       this.rafId = null;
     }
   }

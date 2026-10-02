@@ -238,6 +238,40 @@ describe('AudioManager', () => {
     expect(asFakeGain(m.voiceBus).gain.value).toBe(0.9);
   });
 
+  it('should apply volume settings from game:settings events', () => {
+    const m = internals(manager);
+
+    bus.emit('game:settings', { key: 'masterVolume', value: 0.2 });
+    bus.emit('game:settings', { key: 'bgmVolume', value: 0.3 });
+    bus.emit('game:settings', { key: 'seVolume', value: 0.7 });
+    bus.emit('game:settings', { key: 'voiceVolume', value: 0.9 });
+
+    expect(asFakeGain(m.masterGain).gain.value).toBe(0.2);
+    expect(asFakeGain(m.bgmBus).gain.value).toBe(0.3);
+    expect(asFakeGain(m.seBus).gain.value).toBe(0.7);
+    expect(asFakeGain(m.voiceBus).gain.value).toBe(0.9);
+  });
+
+  it('should ignore non-volume settings and non-numeric values', () => {
+    const m = internals(manager);
+    manager.setMasterVolume(0.5);
+
+    bus.emit('game:settings', { key: 'textSpeed', value: 50 });
+    bus.emit('game:settings', { key: 'masterVolume', value: 'loud' });
+
+    expect(asFakeGain(m.masterGain).gain.value).toBe(0.5);
+  });
+
+  it('should stop applying settings after destroy', () => {
+    const m = internals(manager);
+    manager.setMasterVolume(0.5);
+
+    manager.destroy();
+    bus.emit('game:settings', { key: 'masterVolume', value: 0.9 });
+
+    expect(asFakeGain(m.masterGain).gain.value).toBe(0.5);
+  });
+
   it('should report the current bgm id and progress', () => {
     cache.set('bgm', makeAudioBuffer());
     bus.emit('audio:play', { id: 'bgm', type: 'bgm' });

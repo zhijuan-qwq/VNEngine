@@ -79,4 +79,51 @@ describe('DialogueBox', () => {
     expect(box.currentText).toBe('Skip me');
     expect(box.isBusy()).toBe(false);
   });
+
+  it('should use the textSpeed setting as the default typing speed', () => {
+    const bus = new EventBus<EngineEvents>();
+    const box = new DialogueBox({ width: 600, height: 180, eventBus: bus });
+    bus.emit('game:settings', { key: 'textSpeed', value: 100 });
+
+    box.show('Hero', 'Hello world');
+    box.update(16);
+
+    // 默认速度 40 时 16ms 不足 1 字，100 时才推进
+    expect(box.currentText.length).toBeGreaterThan(0);
+  });
+
+  it('should apply a fontSize setting to the speaker and body text', () => {
+    const bus = new EventBus<EngineEvents>();
+    const box = new DialogueBox({ width: 600, height: 180, eventBus: bus });
+    box.show('Hero', 'Resize me', 1);
+    box.complete();
+
+    bus.emit('game:settings', { key: 'fontSize', value: 40 });
+
+    const speaker = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hero',
+    ) as unknown as { style: { fontSize?: number } };
+    expect(speaker.style.fontSize).toBe(40);
+    const body = box.children.find(
+      (child) => (child as { text?: string }).text === 'Resize me',
+    ) as unknown as { style: { fontSize?: number } };
+    expect(body.style.fontSize).toBe(40);
+  });
+
+  it('should ignore non-numeric textSpeed and fontSize settings', () => {
+    const bus = new EventBus<EngineEvents>();
+    const box = new DialogueBox({ width: 600, height: 180, eventBus: bus });
+
+    expect(() => {
+      bus.emit('game:settings', {
+        key: 'textSpeed',
+        value: 'fast' as unknown as number,
+      });
+      bus.emit('game:settings', {
+        key: 'fontSize',
+        value: 'big' as unknown as number,
+      });
+    }).not.toThrow();
+    expect(box.visible).toBe(false);
+  });
 });

@@ -1,4 +1,4 @@
-import type { Settings, VNEngine } from '@/types/engine';
+import type { VNEngine } from '@/types/engine';
 import type {
   GameStateSnapshot,
   ISaveManager,
@@ -16,8 +16,6 @@ const LABEL_MAX_LENGTH = 30;
 
 export interface SaveManagerOptions {
   storage: StorageProvider;
-  /** 采集随档持久化的玩家设置（Settings 子系统尚未实现，生产端传默认值） */
-  getSettings: () => Settings;
   /** 槽位总数，list() 会补全空槽；缺省 12 */
   slotCount?: number;
   /** 时间源，缺省 Date.now，便于测试 */
@@ -53,13 +51,11 @@ export function migrate(raw: unknown): SaveData {
  */
 class SaveManager implements ISaveManager {
   private readonly storage: StorageProvider;
-  private readonly getSettings: () => Settings;
   private readonly slotCount: number;
   private readonly now: () => number;
 
   constructor(options: SaveManagerOptions) {
     this.storage = options.storage;
-    this.getSettings = options.getSettings;
     this.slotCount = options.slotCount ?? DEFAULT_SLOT_COUNT;
     this.now = options.now ?? Date.now;
   }
@@ -91,7 +87,6 @@ class SaveManager implements ISaveManager {
       thumbnail: '',
       slotLabel: label.slice(0, LABEL_MAX_LENGTH),
       gameState,
-      settings: this.getSettings(),
     };
 
     this.storage.setItem(this.keyFor(slot), JSON.stringify(data));

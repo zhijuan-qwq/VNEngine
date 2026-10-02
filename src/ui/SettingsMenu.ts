@@ -1,23 +1,10 @@
 import { Text } from 'pixi.js';
 import type { Settings } from '@/types/engine';
+import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
 import { Slider } from './controls/Slider';
 import { Toggle } from './controls/Toggle';
 import { UIComponent } from './UIComponent';
 import { createBackdrop, createButton, createPanelBox } from './overlay';
-
-/** 设置子系统缺省值（真正的持久化由后续 SettingsManager 负责） */
-export const DEFAULT_SETTINGS: Settings = {
-  masterVolume: 1,
-  bgmVolume: 1,
-  seVolume: 1,
-  voiceVolume: 1,
-  textSpeed: 25,
-  autoSpeed: 1500,
-  skipMode: 'read',
-  fullscreen: false,
-  language: 'zh-CN',
-  fontSize: 28,
-};
 
 export interface SettingsController {
   get(): Settings;

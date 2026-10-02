@@ -1,4 +1,4 @@
-import type { Position } from './engine';
+import type { Position, Settings } from './engine';
 import type { Choice } from './script';
 
 /** 可被打开/关闭的 UI 面板（§8.2 的内置组件） */
@@ -68,6 +68,7 @@ export type EngineEvents = {
   'game:destroy': Record<string, never>;
   'game:pause': Record<string, never>;
   'game:resume': Record<string, never>;
+  'game:settings': { key: keyof Settings; value: unknown };
   'input:click': { x: number; y: number };
   'input:hover': { x: number; y: number };
   'input:skip': Record<string, never>;

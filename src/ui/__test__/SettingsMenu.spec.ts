@@ -1,5 +1,6 @@
 import type { Settings } from '@/types/engine';
-import { DEFAULT_SETTINGS, SettingsMenu } from '../SettingsMenu';
+import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
+import { SettingsMenu } from '../SettingsMenu';
 import type { SettingsController } from '../SettingsMenu';
 
 vi.mock('pixi.js', async (importOriginal) => {
