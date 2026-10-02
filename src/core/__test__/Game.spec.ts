@@ -205,7 +205,7 @@ describe('Game', () => {
 
       expect(loadScript).toHaveBeenCalledWith('a');
       expect(loadScript).toHaveBeenCalledWith('b');
-      expect(load).toHaveBeenCalledWith(first);
+      expect(load).toHaveBeenCalledWith('a', first);
     });
   });
 
@@ -419,7 +419,7 @@ describe('Game', () => {
       await h.game.loadScript('chapter2');
 
       expect(loadScript).toHaveBeenCalledWith('chapter2');
-      expect(load).toHaveBeenCalledWith(script);
+      expect(load).toHaveBeenCalledWith('chapter2', script);
     });
 
     it('should propagate a script load failure', async () => {

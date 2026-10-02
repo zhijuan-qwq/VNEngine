@@ -9,11 +9,10 @@ function makeBus(): EventBus<EngineEvents> {
   return new EventBus<EngineEvents>();
 }
 
-// Simulate the resource system: parse source and name the script.
-function makeScript(source: string, name: string): Script {
-  const script = new Parser().parseScript(source);
-  script.name = name;
-  return script;
+// Parse source into a Script; the resource id is tracked by the engine, not
+// stored on the Script (Parser leaves name empty).
+function makeScript(source: string): Script {
+  return new Parser().parseScript(source);
 }
 
 describe('ScriptEngine', () => {
@@ -35,7 +34,7 @@ describe('ScriptEngine', () => {
       const busSpy = vi.fn();
       bus.on('script:say', busSpy);
 
-      engine.load(makeScript('Hero "Hello"\n', 'test'));
+      engine.load('test', makeScript('Hero "Hello"\n'));
       engine.update();
 
       expect(busSpy).toHaveBeenCalledWith(
@@ -49,27 +48,30 @@ describe('ScriptEngine', () => {
   });
 
   describe('load', () => {
-    it('should load a script, setting currentScript from script.name', () => {
-      engine.load(makeScript('@set $a 1\n', 'variables'));
+    it('should record the resource id as currentScript, not script.name', () => {
+      const script = makeScript('@set $a 1\n');
 
-      expect(engine.getState().currentScript).toBe('variables');
+      engine.load('bg-01', script);
+
+      expect(engine.getState().currentScript).toBe('bg-01');
+      expect(script.name).toBe('');
     });
 
     it('should set pc to the given startPc', () => {
-      engine.load(makeScript('@set $a 1\n@set $b 2\n', 'vars'), 1);
+      engine.load('vars', makeScript('@set $a 1\n@set $b 2\n'), 1);
 
       expect(engine.getState().pc).toBe(1);
     });
 
     it('should default pc to 0 when startPc is not provided', () => {
-      engine.load(makeScript('@set $a 1\n', 'vars'));
+      engine.load('vars', makeScript('@set $a 1\n'));
 
       expect(engine.getState().pc).toBe(0);
     });
 
     it('should reload the same script object at a different startPc', () => {
-      const script = makeScript('@set $a 1\n@set $b 2\n@set $c 3\n', 'vars');
-      engine.load(script);
+      const script = makeScript('@set $a 1\n@set $b 2\n@set $c 3\n');
+      engine.load('vars', script);
       // Advance pc to 2 by stepping twice
       engine.update();
       engine.update();
@@ -77,7 +79,7 @@ describe('ScriptEngine', () => {
 
       // Reload the same parsed script at startPc 1 (caching lives in
       // ResourceManager; ScriptEngine just re-executes the provided script)
-      engine.load(script, 1);
+      engine.load('vars', script, 1);
       expect(engine.getState().pc).toBe(1);
 
       // Should still run from the same 3-command script
@@ -86,7 +88,7 @@ describe('ScriptEngine', () => {
     });
 
     it('should handle empty script source', () => {
-      engine.load(makeScript('\n', 'empty'));
+      engine.load('empty', makeScript('\n'));
       expect(engine.getState().currentScript).toBe('empty');
       // Calling update on empty script should trigger script:end
       const endSpy = vi.fn();
@@ -98,13 +100,13 @@ describe('ScriptEngine', () => {
 
   describe('getState', () => {
     it('should reflect the current script name after load', () => {
-      engine.load(makeScript('@set $x 1\n', 'chapter1'));
+      engine.load('chapter1', makeScript('@set $x 1\n'));
 
       expect(engine.getState().currentScript).toBe('chapter1');
     });
 
     it('should reflect pc advances after update calls', () => {
-      engine.load(makeScript('@set $x 1\n@set $y 2\n@set $z 3\n', 'vars'));
+      engine.load('vars', makeScript('@set $x 1\n@set $y 2\n@set $z 3\n'));
 
       expect(engine.getState().pc).toBe(0);
       engine.update();
@@ -116,7 +118,7 @@ describe('ScriptEngine', () => {
 
   describe('update', () => {
     it('should execute non-blocking commands and advance pc', () => {
-      engine.load(makeScript('@set $x 42\n@set $y 99\n', 'vars'));
+      engine.load('vars', makeScript('@set $x 42\n@set $y 99\n'));
 
       engine.update();
       expect(store.get('x')).toBe(42);
@@ -131,7 +133,7 @@ describe('ScriptEngine', () => {
       const endSpy = vi.fn();
       bus.on('script:end', endSpy);
 
-      engine.load(makeScript('@set $x 1\n', 'short'));
+      engine.load('short', makeScript('@set $x 1\n'));
       engine.update(); // executes @set
       expect(endSpy).toHaveBeenCalledTimes(1);
 
@@ -142,10 +144,8 @@ describe('ScriptEngine', () => {
 
     it('should handle flag commands', () => {
       engine.load(
-        makeScript(
-          '@flag seen_intro\n@toggle music\n@unflag seen_intro\n',
-          'flags',
-        ),
+        'flags',
+        makeScript('@flag seen_intro\n@toggle music\n@unflag seen_intro\n'),
       );
 
       engine.update();
@@ -160,7 +160,7 @@ describe('ScriptEngine', () => {
 
     it('should handle arithmetic commands', () => {
       store.set('score', 10);
-      engine.load(makeScript('@add $score 5\n@mul $score 2\n', 'math'));
+      engine.load('math', makeScript('@add $score 5\n@mul $score 2\n'));
 
       engine.update();
       expect(store.get('score')).toBe(15);
@@ -170,7 +170,7 @@ describe('ScriptEngine', () => {
     });
 
     it('should set a variable with @set', () => {
-      engine.load(makeScript('@set $name "Alice"\n@set $count 42\n', 'vars'));
+      engine.load('vars', makeScript('@set $name "Alice"\n@set $count 42\n'));
 
       engine.update();
       expect(store.get('name')).toBe('Alice');
@@ -183,7 +183,7 @@ describe('ScriptEngine', () => {
       const bgSpy = vi.fn();
       bus.on('bg:change', bgSpy);
 
-      engine.load(makeScript('@bg classroom_day fade\n', 'scene'));
+      engine.load('scene', makeScript('@bg classroom_day fade\n'));
       engine.update();
 
       expect(bgSpy).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe('ScriptEngine', () => {
       const showSpy = vi.fn();
       bus.on('character:show', showSpy);
 
-      engine.load(makeScript('@show ch_hero center sprite=neutral\n', 'scene'));
+      engine.load('scene', makeScript('@show ch_hero center sprite=neutral\n'));
       engine.update();
 
       expect(showSpy).toHaveBeenCalledWith(
@@ -207,7 +207,7 @@ describe('ScriptEngine', () => {
       const saySpy = vi.fn();
       bus.on('script:say', saySpy);
 
-      engine.load(makeScript('Narrator "一切从这里开始。"\n', 'dialogue'));
+      engine.load('dialogue', makeScript('Narrator "一切从这里开始。"\n'));
       engine.update();
 
       expect(saySpy).toHaveBeenCalledWith(
@@ -221,9 +221,9 @@ describe('ScriptEngine', () => {
     it('should handle conditional branching with @if', () => {
       store.set('score', 100);
       engine.load(
+        'branch',
         makeScript(
           '@if $score > 50\n  @set $passed 1\n@else\n  @set $passed 0\n@endif\n',
-          'branch',
         ),
       );
 
@@ -238,9 +238,9 @@ describe('ScriptEngine', () => {
     it('should take else branch when condition is false', () => {
       store.set('score', 10);
       engine.load(
+        'branch',
         makeScript(
           '@if $score > 50\n  @set $passed 1\n@else\n  @set $passed 0\n@endif\n',
-          'branch',
         ),
       );
 
@@ -253,9 +253,9 @@ describe('ScriptEngine', () => {
 
     it('should handle @label and @jump for looping', () => {
       engine.load(
+        'loop',
         makeScript(
           '@set $i 0\n@label loop\n@add $i 1\n@if $i < 3\n  @jump loop\n@endif\n',
-          'loop',
         ),
       );
 
@@ -268,7 +268,7 @@ describe('ScriptEngine', () => {
     });
 
     it('should handle inline dialogue and waiting state', () => {
-      engine.load(makeScript('Hero "你好"\nHeroine "早上好"\n', 'dialogue'));
+      engine.load('dialogue', makeScript('Hero "你好"\nHeroine "早上好"\n'));
 
       // First dialogue: enters waiting state for input:click
       engine.update();
@@ -291,9 +291,9 @@ describe('ScriptEngine', () => {
       bus.on('script:choice', choiceSpy);
 
       engine.load(
+        'choose',
         makeScript(
           '@choice\n  -> "打招呼": greet\n  -> "离开": leave\n@endchoice\n',
-          'choose',
         ),
       );
       engine.update();
@@ -317,7 +317,7 @@ describe('ScriptEngine', () => {
         execute: executeSpy,
       });
 
-      engine.load(makeScript('@custom hello world\n', 'test'));
+      engine.load('test', makeScript('@custom hello world\n'));
       engine.update();
 
       expect(executeSpy).toHaveBeenCalledOnce();
@@ -328,7 +328,7 @@ describe('ScriptEngine', () => {
 
       // After unregistering, @set should warn but not throw
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      engine.load(makeScript('@set $x 1\n', 'test'));
+      engine.load('test', makeScript('@set $x 1\n'));
       expect(() => engine.update()).not.toThrow();
       expect(store.get('x')).toBeUndefined();
       warnSpy.mockRestore();
@@ -338,11 +338,8 @@ describe('ScriptEngine', () => {
   describe('save/restore scenario', () => {
     it('should support reloading a script at a specific pc', () => {
       // First load: execute partially
-      const script = makeScript(
-        '@set $a 1\n@set $b 2\n@set $c 3\n@set $d 4\n',
-        'saveTest',
-      );
-      engine.load(script);
+      const script = makeScript('@set $a 1\n@set $b 2\n@set $c 3\n@set $d 4\n');
+      engine.load('saveTest', script);
       engine.update(); // a = 1
       engine.update(); // b = 2
 
@@ -350,7 +347,7 @@ describe('ScriptEngine', () => {
       expect(state).toEqual({ currentScript: 'saveTest', pc: 2 });
 
       // Simulate restore: reload the same (resource-managed) script at saved pc
-      engine.load(script, state.pc);
+      engine.load(state.currentScript, script, state.pc);
 
       engine.update(); // c = 3
       expect(store.get('c')).toBe(3);

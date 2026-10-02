@@ -132,7 +132,7 @@ class SaveManager implements ISaveManager {
     }
 
     const script = await engine.resource.loadScript(gs.currentScript);
-    engine.script.load(script, gs.scriptPC);
+    engine.script.load(gs.currentScript, script, gs.scriptPC);
   }
 
   public list(): SaveSlotInfo[] {

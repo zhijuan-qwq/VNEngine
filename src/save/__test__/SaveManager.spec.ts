@@ -189,7 +189,30 @@ describe('SaveManager', () => {
         characters: [],
       });
       expect(h.parts.loadScript).toHaveBeenCalledWith('chapter1');
-      expect(h.parts.scriptLoad).toHaveBeenCalledWith({ name: 'chapter1' }, 7);
+      expect(h.parts.scriptLoad).toHaveBeenCalledWith(
+        'chapter1',
+        { name: 'chapter1' },
+        7,
+      );
+    });
+
+    it('should reload the script by the id stored during capture', async () => {
+      const h = makeHarness();
+      const data = await h.manager.capture(h.engine, 0);
+
+      // The engine has since moved on; restore must use the saved id.
+      h.parts.scriptGetState.mockReturnValue({ currentScript: 'other', pc: 0 });
+
+      await h.manager.restore(h.engine, 0);
+
+      const savedId = data.gameState.currentScript;
+      expect(savedId).toBe('chapter1');
+      expect(h.parts.loadScript).toHaveBeenCalledWith(savedId);
+      expect(h.parts.scriptLoad).toHaveBeenCalledWith(
+        savedId,
+        { name: 'chapter1' },
+        7,
+      );
     });
 
     it('should replay the saved BGM', async () => {
