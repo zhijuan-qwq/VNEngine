@@ -9,9 +9,16 @@ import PluginManager from '@/core/PluginManager';
 import Updater, { type Updatable } from '@/core/Updater';
 import InputManager from '@/input/InputManager';
 import { UIManager } from '@/ui/UIManager';
-import { DEFAULT_SETTINGS } from '@/ui/SettingsMenu';
+import SettingsManager from '@/settings/SettingsManager';
 import SaveManager from '@/save/SaveManager';
 import { LocalStorageProvider } from '@/save/SaveStorage';
+import {
+  getDevicePixelRatio,
+  getElementById,
+  getStorage,
+  isFullscreen,
+  setFullscreen,
+} from '@/utils/APIHelper';
 import type { EngineEvents } from '@/types/events';
 import type { Script } from '@/types/script';
 import type {
@@ -40,6 +47,7 @@ export interface GameFactories {
   createInput(engine: VNEngine): IInputManager | null;
   createUI(engine: VNEngine, config: GameConfig): UIManager | null;
   createSave(engine: VNEngine): ISaveManager | null;
+  createSettings(engine: VNEngine): SettingsManager;
 }
 
 const defaultFactories: GameFactories = {
@@ -50,10 +58,10 @@ const defaultFactories: GameFactories = {
       width: config.width,
       height: config.height,
       autoDensity: true,
-      resolution: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+      resolution: getDevicePixelRatio(),
     });
-    if (!config.canvas && typeof document !== 'undefined') {
-      document.getElementById('app')?.appendChild(app.canvas);
+    if (!config.canvas) {
+      getElementById('app')?.appendChild(app.canvas);
     }
     return app;
   },
@@ -78,6 +86,8 @@ const defaultFactories: GameFactories = {
       height: config.height,
       autoTick: false,
       resolveVar: (name) => engine.variableStore.get(name),
+      // 设置菜单对契约编程：直接以 SettingsManager 作为 controller
+      settingsMenu: { controller: engine.settings },
       // 存读档菜单对契约编程：槽位/回调延迟求值，读取时 engine.save 必已就位
       saveLoadMenu: {
         getSlots: () => engine.save.list(),
@@ -85,10 +95,12 @@ const defaultFactories: GameFactories = {
         onLoad: (slot) => engine.loadGame(slot),
       },
     }),
-  createSave: () =>
-    new SaveManager({
-      storage: new LocalStorageProvider(),
-      getSettings: () => DEFAULT_SETTINGS,
+  createSave: () => new SaveManager({ storage: new LocalStorageProvider() }),
+  createSettings: (engine) =>
+    new SettingsManager({
+      bus: engine.eventBus,
+      // 存储不可用（node / 隐私模式）时仅内存生效，不持久化
+      storage: getStorage() ? new LocalStorageProvider() : undefined,
     }),
 };
 
@@ -102,6 +114,8 @@ class Game {
   public resource!: ResourceManager;
   public plugins!: PluginManager;
   public variableStore!: VariableStore;
+  /** 设置子系统：全局持久化 + `game:settings` 广播 */
+  public settings!: SettingsManager;
   /** 输入子系统；未创建时为 null */
   public input: IInputManager | null = null;
   /** UI 门面；未创建时为 null */
@@ -111,6 +125,19 @@ class Game {
 
   private state: GameStatus = 'uninitialized';
   private readonly factories: GameFactories;
+
+  /** 订阅 `game:settings` 的 fullscreen 键。点亮时进入全屏；关闭时仅在确已全屏才退出，
+   * 避免启动阶段 `emitAll` 的 `false` 误触发 `document.exitFullscreen()`。 */
+  private readonly onSettingsChange = (
+    payload: EngineEvents['game:settings'],
+  ): void => {
+    if (payload.key !== 'fullscreen') return;
+    if (payload.value === true) {
+      setFullscreen(true);
+    } else if (payload.value === false && isFullscreen()) {
+      setFullscreen(false);
+    }
+  };
 
   constructor(factories: Partial<GameFactories> = {}) {
     this.factories = { ...defaultFactories, ...factories };
@@ -132,8 +159,12 @@ class Game {
     }
 
     this.eventBus = new EventBus<EngineEvents>();
+    this.eventBus.on('game:settings', this.onSettingsChange);
     this.variableStore = new VariableStore();
     this.resource = new ResourceManager(this.eventBus, config.assets);
+
+    // 设置先于消费它的子系统（渲染/音频/UI）创建，其 get() 立即可用
+    this.settings = this.factories.createSettings(this.engine);
 
     this.app = await this.factories.createApplication(config);
 
@@ -178,6 +209,9 @@ class Game {
 
     await this.preloadScripts(config.scripts);
 
+    // 各子系统已就绪，推送初始设置使其应用当前值
+    this.settings.emitAll();
+
     this.state = 'ready';
     this.eventBus.emit('game:init', {});
   }
@@ -219,6 +253,7 @@ class Game {
   public destroy(): void {
     if (this.state === 'uninitialized') return;
 
+    this.eventBus.off('game:settings', this.onSettingsChange);
     this.eventBus.emit('game:destroy', {});
     this.updater.destroy();
     // ui/input 先于 renderer：renderer 会以 { children: true } 销毁 ui 图层
