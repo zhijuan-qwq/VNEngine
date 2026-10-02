@@ -112,6 +112,7 @@ describe('UIManager', () => {
     expect(ui.saveLoadMenu).toBeDefined();
     expect(ui.settingsMenu).toBeDefined();
     expect(ui.historyView).toBeDefined();
+    expect(ui.menuBar).toBeDefined();
   });
 
   it('should record dialogue into the history buffer', () => {
