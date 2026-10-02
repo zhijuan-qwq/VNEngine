@@ -273,7 +273,7 @@ class Game {
   /** 运行时动态加载脚本并交由 ScriptEngine 执行 */
   public async loadScript(id: string): Promise<void> {
     const script = await this.resource.loadScript(id);
-    this.script.load(script);
+    this.script.load(id, script);
   }
 
   public async saveSlot(slot: number): Promise<void> {
@@ -311,11 +311,15 @@ class Game {
   /** 预加载配置中的脚本到资源缓存，并把首个脚本载入解释器 */
   private async preloadScripts(ids: string[]): Promise<void> {
     let first: Script | null = null;
+    let firstId = '';
     for (const id of ids) {
       const script = await this.resource.loadScript(id);
-      first ??= script;
+      if (!first) {
+        first = script;
+        firstId = id;
+      }
     }
-    if (first) this.script.load(first);
+    if (first) this.script.load(firstId, first);
   }
 }
 
