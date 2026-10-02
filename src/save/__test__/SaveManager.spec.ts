@@ -1,19 +1,6 @@
-import type { Settings, VNEngine } from '@/types/engine';
+import type { VNEngine } from '@/types/engine';
 import type { StorageProvider } from '../SaveStorage';
 import { SAVE_VERSION, SaveManager, migrate } from '../SaveManager';
-
-const SETTINGS: Settings = {
-  masterVolume: 1,
-  bgmVolume: 1,
-  seVolume: 1,
-  voiceVolume: 1,
-  textSpeed: 25,
-  autoSpeed: 1500,
-  skipMode: 'read',
-  fullscreen: false,
-  language: 'zh-CN',
-  fontSize: 28,
-};
 
 function makeStorage(): StorageProvider {
   const map = new Map<string, string>();
@@ -88,7 +75,6 @@ function makeHarness(
 
   const manager = new SaveManager({
     storage,
-    getSettings: () => SETTINGS,
     now: options.now,
     slotCount: options.slotCount,
   });
@@ -106,7 +92,6 @@ describe('SaveManager', () => {
       expect(data.version).toBe(SAVE_VERSION);
       expect(data.timestamp).toBe(1234);
       expect(data.slotLabel).toBe('你好，世界');
-      expect(data.settings).toBe(SETTINGS);
       expect(data.gameState).toEqual({
         currentScript: 'chapter1',
         scriptPC: 7,
