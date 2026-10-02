@@ -6,6 +6,7 @@ import type ScriptEngine from '@/script/ScriptEngine';
 import type { IResourceManager } from './resource';
 import type { ISaveManager } from './save';
 import type { UIManager } from '@/ui/UIManager';
+import type { SettingsManager } from '@/settings/SettingsManager';
 
 /** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
 export type PositionKeyword =
@@ -137,6 +138,10 @@ export interface IAudioManager {
   resume(): void;
   getState(): { id: string; progress: number } | null;
   setState(state: { id: string; progress: number } | null): void;
+  setMasterVolume(volume: number): void;
+  setBgmVolume(volume: number): void;
+  setSeVolume(volume: number): void;
+  setVoiceVolume(volume: number): void;
   destroy(): void;
 }
 
@@ -157,6 +162,8 @@ export interface VNEngine {
   audio: IAudioManager;
   input: IInputManager;
   save: ISaveManager;
+  /** 设置子系统：全局持久化 + `game:settings` 广播（见架构文档 §9.1） */
+  settings: SettingsManager;
   /** UI 门面；尚未实现时为 null */
   ui: UIManager | null;
   destroy(): void;
