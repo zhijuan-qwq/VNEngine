@@ -80,9 +80,15 @@ class Interpreter {
     };
     this.registry.execute(ctx, command);
     this.pc++;
-    if (this.pc >= this.script.commands.length && this.state !== 'waiting') {
+    if (this.pc >= this.script.commands.length && !this.isWaiting()) {
       this.endScript();
     }
+  }
+
+  // A command's handler may switch the interpreter into 'waiting' while it runs,
+  // so the state must be re-read through a call rather than a narrowed local.
+  private isWaiting(): boolean {
+    return this.state === 'waiting';
   }
 
   private handleFlowCommand(command: Command): boolean {
