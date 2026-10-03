@@ -315,12 +315,12 @@ ChoiceMode "choice mode"
 
 ChoiceOptionLine "choice option"
   = _ "->" __ text:StringLiteral _ ":" _ label:Identifier
-    condition:(__ "if" __ cond:$([^\r\n]*) { return cond.trim(); })?
+    condition:(__ "if" __ expr:OrExpr { return expr; })?
     EndOfLine
   {
     const choice = { text, label };
     if (condition !== null) {
-      choice.condition = condition || undefined;
+      choice.condition = condition;
     }
     return choice;
   }

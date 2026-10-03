@@ -468,11 +468,11 @@ function peg$parse(input, options) {
     };
   }
   function peg$f36(m) {    return m;  }
-  function peg$f37(text, label, cond) {    return cond.trim();  }
+  function peg$f37(text, label, expr) {    return expr;  }
   function peg$f38(text, label, condition) {
     const choice = { text, label };
     if (condition !== null) {
-      choice.condition = condition || undefined;
+      choice.condition = condition;
     }
     return choice;
   }
@@ -2744,7 +2744,7 @@ function peg$parse(input, options) {
   }
 
   function peg$parseChoiceOptionLine() {
-    let s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15;
+    let s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13;
 
     peg$silentFails++;
     s0 = peg$currPos;
@@ -2786,28 +2786,14 @@ function peg$parse(input, options) {
                 if (s11 !== peg$FAILED) {
                   s12 = peg$parse__();
                   if (s12 !== peg$FAILED) {
-                    s13 = peg$currPos;
-                    s14 = [];
-                    s15 = input.charAt(peg$currPos);
-                    if (peg$r2.test(s15)) {
-                      peg$currPos++;
+                    s13 = peg$parseOrExpr();
+                    if (s13 !== peg$FAILED) {
+                      peg$savedPos = s9;
+                      s9 = peg$f37(s4, s8, s13);
                     } else {
-                      s15 = peg$FAILED;
-                      if (peg$silentFails === 0) { peg$fail(peg$e7); }
+                      peg$currPos = s9;
+                      s9 = peg$FAILED;
                     }
-                    while (s15 !== peg$FAILED) {
-                      s14.push(s15);
-                      s15 = input.charAt(peg$currPos);
-                      if (peg$r2.test(s15)) {
-                        peg$currPos++;
-                      } else {
-                        s15 = peg$FAILED;
-                        if (peg$silentFails === 0) { peg$fail(peg$e7); }
-                      }
-                    }
-                    s13 = input.substring(s13, peg$currPos);
-                    peg$savedPos = s9;
-                    s9 = peg$f37(s4, s8, s13);
                   } else {
                     peg$currPos = s9;
                     s9 = peg$FAILED;

@@ -123,7 +123,12 @@ describe('Parser', () => {
     expect(choices[2]).toMatchObject({
       text: '恶作剧',
       label: 'prank',
-      condition: '$confidence >= 50',
+      condition: {
+        type: 'binary',
+        op: '>=',
+        left: { type: 'var', name: 'confidence' },
+        right: 50,
+      },
     });
   });
 

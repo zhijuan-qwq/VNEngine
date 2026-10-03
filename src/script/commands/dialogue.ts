@@ -1,4 +1,5 @@
 import type { Choice, CommandHandler } from '@/types/script';
+import { evaluateExpression, isTruthy } from '../ExpressionEvaluator';
 import { asNumber, asString, toMs } from './utils';
 
 function asMode(value: unknown): 'adv' | 'nvl' {
@@ -32,9 +33,17 @@ export const dialogueCommands: CommandHandler[] = [
   {
     type: 'choice',
     execute: (ctx, args) => {
-      const choices = Array.isArray(args.choices)
-        ? (args.choices as Choice[])
-        : [];
+      const raw = Array.isArray(args.choices) ? (args.choices as Choice[]) : [];
+      const choices = raw.map((choice) =>
+        choice.condition === undefined
+          ? choice
+          : {
+              ...choice,
+              enabled: isTruthy(
+                evaluateExpression(choice.condition, ctx.store),
+              ),
+            },
+      );
       ctx.engine.eventBus.emit('script:choice', {
         choices,
         mode: asMode(args.mode),

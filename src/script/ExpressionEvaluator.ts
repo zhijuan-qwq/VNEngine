@@ -1,6 +1,6 @@
 import type { VariableStore } from './VariableStore';
 
-interface ExprNode {
+export interface ExpressionNode {
   type: 'binary' | 'unary' | 'var' | 'flag';
   op?: string;
   left?: unknown;
@@ -9,7 +9,7 @@ interface ExprNode {
   name?: string;
 }
 
-function isExprNode(value: unknown): value is ExprNode {
+function isExprNode(value: unknown): value is ExpressionNode {
   if (typeof value !== 'object' || value === null) return false;
   const node = value as Record<string, unknown>;
   return (

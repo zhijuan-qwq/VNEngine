@@ -92,6 +92,54 @@ describe('dialogue commands', () => {
       env.wait.handler?.({ label: 'respond' });
       expect(env.jumps).toEqual(['respond']);
     });
+
+    it('should mark a choice enabled when its condition is truthy', () => {
+      const spy = listen('script:choice');
+      env.store.set('confidence', 60);
+      execute('choice', {
+        choices: [
+          {
+            text: '恶作剧',
+            label: 'prank',
+            condition: {
+              type: 'binary',
+              op: '>=',
+              left: { type: 'var', name: 'confidence' },
+              right: 50,
+            },
+          },
+        ],
+      });
+
+      const payload = spy.mock.calls[0][0] as {
+        choices: { enabled?: boolean }[];
+      };
+      expect(payload.choices[0].enabled).toBe(true);
+    });
+
+    it('should mark a choice disabled when its condition is falsy', () => {
+      const spy = listen('script:choice');
+      env.store.set('confidence', 10);
+      execute('choice', {
+        choices: [
+          {
+            text: '恶作剧',
+            label: 'prank',
+            condition: {
+              type: 'binary',
+              op: '>=',
+              left: { type: 'var', name: 'confidence' },
+              right: 50,
+            },
+          },
+        ],
+      });
+
+      const payload = spy.mock.calls[0][0] as {
+        choices: { enabled?: boolean }[];
+      };
+      expect(payload.choices[0].enabled).toBe(false);
+    });
   });
 
   describe('@wait', () => {
