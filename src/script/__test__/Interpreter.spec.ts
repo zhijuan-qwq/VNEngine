@@ -188,6 +188,40 @@ describe('Interpreter', () => {
       expect(interpreter.getPc()).toBe(1);
     });
 
+    it('should emit script:end only once after completion', () => {
+      const handler = vi.fn();
+      bus.on('script:end', handler);
+      registry.register({ type: 'say', execute: vi.fn() });
+      interpreter.load(makeScript([{ type: 'say', args: {}, line: 1 }]));
+      interpreter.step();
+      expect(handler).toHaveBeenCalledTimes(1);
+      interpreter.step();
+      interpreter.step();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not end while waiting, and end once the wait resolves', () => {
+      const handler = vi.fn();
+      bus.on('script:end', handler);
+      registry.register({
+        type: 'say',
+        execute: (ctx) => {
+          ctx.interpreter.wait('input:click', () => {});
+        },
+      });
+      interpreter.load(makeScript([{ type: 'say', args: {}, line: 1 }]));
+      interpreter.step(); // executes @say -> waiting, pc past the end
+      expect(handler).not.toHaveBeenCalled();
+      interpreter.step(); // still waiting
+      expect(handler).not.toHaveBeenCalled();
+
+      bus.emit('input:click', { x: 0, y: 0 });
+      interpreter.step(); // wait resolved -> end
+      expect(handler).toHaveBeenCalledTimes(1);
+      interpreter.step();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
     it('should emit script:end and stop advancing on @end', () => {
       const handler = vi.fn();
       bus.on('script:end', handler);

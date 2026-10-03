@@ -58,7 +58,9 @@ class Interpreter {
 
   public step(): void {
     if (this.pc >= this.script.commands.length) {
-      this.endScript();
+      if (this.state !== 'idle' && this.state !== 'waiting') {
+        this.endScript();
+      }
       return;
     }
     if (this.state === 'waiting') {
@@ -78,7 +80,7 @@ class Interpreter {
     };
     this.registry.execute(ctx, command);
     this.pc++;
-    if (this.pc >= this.script.commands.length) {
+    if (this.pc >= this.script.commands.length && this.state !== 'waiting') {
       this.endScript();
     }
   }

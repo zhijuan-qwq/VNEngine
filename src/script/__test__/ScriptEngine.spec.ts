@@ -148,17 +148,39 @@ describe('ScriptEngine', () => {
       expect(engine.getState().pc).toBe(2);
     });
 
-    it('should emit script:end when script completes', () => {
+    it('should emit script:end exactly once when script completes', () => {
       const endSpy = vi.fn();
       bus.on('script:end', endSpy);
 
       engine.load('short', makeScript('@set $x 1\n'));
-      engine.update(); // executes @set
+      engine.update(); // executes @set and completes
       expect(endSpy).toHaveBeenCalledTimes(1);
 
-      // script:end fires every step after completion (pc stays at end)
+      // calling update again must not re-emit
       engine.update();
-      expect(endSpy).toHaveBeenCalledTimes(2);
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not end while the last @say is still waiting for a click', () => {
+      const endSpy = vi.fn();
+      bus.on('script:end', endSpy);
+
+      engine.load('last', makeScript('Hero "最后一句"\n'));
+      engine.update(); // emits script:say and enters waiting
+      expect(endSpy).not.toHaveBeenCalled();
+
+      // still waiting — no premature end on subsequent frames
+      engine.update();
+      expect(endSpy).not.toHaveBeenCalled();
+
+      // the click resolves the wait, then the script ends exactly once
+      bus.emit('input:click', { x: 0, y: 0 });
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
+
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should handle flag commands', () => {
