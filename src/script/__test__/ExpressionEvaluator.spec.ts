@@ -294,6 +294,23 @@ describe('ExpressionEvaluator', () => {
         expect(evaluateExpression(expr, store)).toBe(true);
       });
     });
+
+    describe('error paths', () => {
+      it('should throw on an unknown unary operator', () => {
+        expect(() =>
+          evaluateExpression({ type: 'unary', op: '??', expr: 1 }, store),
+        ).toThrow('Unknown unary operator: ??');
+      });
+
+      it('should throw on an unknown binary operator', () => {
+        expect(() =>
+          evaluateExpression(
+            { type: 'binary', op: '??', left: 1, right: 2 },
+            store,
+          ),
+        ).toThrow('Unknown binary operator: ??');
+      });
+    });
   });
 
   describe('isTruthy', () => {
