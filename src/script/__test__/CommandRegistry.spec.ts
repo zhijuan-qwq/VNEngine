@@ -89,6 +89,20 @@ describe('CommandRegistry', () => {
     });
   });
 
+  describe('has', () => {
+    it('should report whether a handler is registered', () => {
+      expect(registry.has('say')).toBe(false);
+      registry.register(makeHandler('say'));
+      expect(registry.has('say')).toBe(true);
+    });
+
+    it('should report false after unregistering', () => {
+      registry.register(makeHandler('say'));
+      registry.unregister('say');
+      expect(registry.has('say')).toBe(false);
+    });
+  });
+
   describe('execute', () => {
     it('should pass ctx and args to the handler', () => {
       const execute = vi.fn();

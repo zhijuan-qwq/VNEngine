@@ -364,15 +364,27 @@ describe('ScriptEngine', () => {
       expect(executeSpy).toHaveBeenCalledOnce();
     });
 
-    it('should allow unregistering and re-registering commands', () => {
+    it('should reject a script that uses an unregistered command', () => {
       engine.commandRegistry.unregister('set');
 
-      // After unregistering, @set should warn but not throw
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      engine.load('test', makeScript('@set $x 1\n'));
-      expect(() => engine.update()).not.toThrow();
-      expect(store.get('x')).toBeUndefined();
-      warnSpy.mockRestore();
+      expect(() => engine.load('test', makeScript('@set $x 1\n'))).toThrow(
+        'Unknown command "@set" in script "test" at line 1.',
+      );
+    });
+
+    it('should reject an unknown command at load time', () => {
+      expect(() => engine.load('bad', makeScript('@nope 1\n'))).toThrow(
+        'Unknown command "@nope" in script "bad" at line 1.',
+      );
+    });
+
+    it('should accept registered builtins and flow commands', () => {
+      expect(() =>
+        engine.load(
+          'ok',
+          makeScript('@label start\n@set $x 1\n@if $x > 0\n@endif\n'),
+        ),
+      ).not.toThrow();
     });
   });
 
