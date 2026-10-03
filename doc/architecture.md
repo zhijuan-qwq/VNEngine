@@ -636,18 +636,24 @@ Interpreter
 
 ```
 step():
-  1. 获取 commands[pc]
-  2. 若 state === 'waiting' → 跳过
-  3. 流程命令（@label/@jump/@call/@return/@if/@elseif/@else/@endif/@end）由
+  1. 若 pc >= commands.length：
+       仅当 state 既非 'idle' 也非 'waiting' 时触发 script:end（保证只触发一次），返回
+  2. 若 state === 'waiting' → 跳过（等待中的最后一条命令尚未结束，脚本不得提前收尾）
+  3. 获取 commands[pc]
+  4. 流程命令（@label/@jump/@call/@return/@if/@elseif/@else/@endif/@end）由
      Interpreter 内部直接处理，不经过 CommandRegistry
-  4. 其余命令 → 执行 CommandRegistry.execute(cmd, context)
-  5. pc++
-  6. 若 pc >= commands.length → 触发 script:end
+  5. 其余命令 → 执行 CommandRegistry.execute(cmd, context)
+  6. pc++
+  7. 若 pc >= commands.length 且未处于 'waiting' → 触发 script:end
 
 等待类命令（@say, @choice, @wait, @pause）执行后:
   state → 'waiting'
   等待用户点击/选择/计时结束 → state → 'running' → 继续 step()
 ```
+
+`load(script, startPc?)` 会校验 `startPc` 为 `[0, commands.length]` 内的整数（`=== length` 视为「已跑完」的
+合法还原态），否则抛出清晰错误——该参数来自存档还原（见 §14.3 `GameStateSnapshot.scriptPC`），非法值
+（负数、越界、非整数）需在装载阶段而非首次 `step()` 时暴露。
 
 ### 5.6 CommandRegistry（命令注册表）
 
@@ -663,9 +669,14 @@ class CommandRegistry {
 
   register(handler: CommandHandler): void;
   unregister(type: string): void;
+  has(type: string): boolean; // 查询是否已注册，供 ScriptEngine.load 校验
   execute(ctx: ScriptContext, cmd: Command): void;
 }
 ```
+
+`ScriptEngine.load()` 在装载脚本时用 `has()`（配合流程指令白名单）校验每条命令，
+未注册的指令类型会在加载阶段抛出错误，而不再静默 `console.warn` 跳过（`execute()` 的 `console.warn`
+保留为防御性兜底）。
 
 **内置命令清单：**
 
@@ -1643,8 +1654,8 @@ interface ScriptContext {
 interface Choice {
   text: string;
   label: string; // 跳转标签
-  condition?: string; // @choice 的 if 条件原文（如 "$affection >= 50"）；当前版本从不求值
-  enabled?: boolean; // UI 读取此字段，但当前没有任何地方赋值
+  condition?: ExpressionNode; // @choice 的 if 条件表达式树（见 script-dsl.md §七）
+  enabled?: boolean; // 由 choice handler 求值 condition 后填入；UI 据此置灰不可点
 }
 ```
 
