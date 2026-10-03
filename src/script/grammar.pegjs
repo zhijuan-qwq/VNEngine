@@ -44,6 +44,7 @@ Line
   / LabelDeclaration
   / MetadataLine
   / DialogLine
+  / VariableCommandLine
   / GenericCommandLine
   / CommentLine
   / BlankLine
@@ -322,6 +323,29 @@ ChoiceOptionLine "choice option"
       choice.condition = condition || undefined;
     }
     return choice;
+  }
+
+// ============================================================
+// 变量指令 — 右值允许完整表达式
+// 这些命令的 handler 会对 args['1']…（以及 @random 的 args['2']）求值，
+// 因此语法层必须放行表达式，而不是只接受单个字面量。
+// ============================================================
+
+VariableCommandName "variable command name"
+  = "set" / "add" / "sub" / "mul" / "div" / "mod" / "random"
+
+VariableCommandLine "variable command"
+  = _ "@" name:VariableCommandName __ target:VariableRef
+    values:(__ @OrExpr)* EndOfLine
+  {
+    const args = { '0': target };
+    values.forEach((value, index) => {
+      args[String(index + 1)] = value;
+    });
+    return {
+      type: 'command',
+      command: { type: name, args, line: location().start.line },
+    };
   }
 
 // ============================================================

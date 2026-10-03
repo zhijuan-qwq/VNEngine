@@ -169,6 +169,53 @@ describe('Parser', () => {
     expect(setCommand!.args['1']).toBe(10);
   });
 
+  it('should parse expressions as variable command values', () => {
+    const script = parser.parseScript(
+      '@set $x 1 + 2\n' + '@add $y $base - 1\n' + '@random $d 1 6\n',
+    );
+
+    expect(script.commands[0]).toMatchObject({
+      type: 'set',
+      args: {
+        '0': { type: 'var', name: 'x' },
+        '1': {
+          type: 'binary',
+          op: '+',
+          left: 1,
+          right: 2,
+        },
+      },
+    });
+    expect(script.commands[1]).toMatchObject({
+      type: 'add',
+      args: {
+        '0': { type: 'var', name: 'y' },
+        '1': {
+          type: 'binary',
+          op: '-',
+          left: { type: 'var', name: 'base' },
+          right: 1,
+        },
+      },
+    });
+    expect(script.commands[2]).toMatchObject({
+      type: 'random',
+      args: { '0': { type: 'var', name: 'd' }, '1': 1, '2': 6 },
+    });
+  });
+
+  it('should parse a unary minus value in variable commands', () => {
+    const script = parser.parseScript('@add $x - 1\n');
+
+    expect(script.commands[0]).toMatchObject({
+      type: 'add',
+      args: {
+        '0': { type: 'var', name: 'x' },
+        '1': { type: 'unary', op: '-', expr: 1 },
+      },
+    });
+  });
+
   it('should parse trailing comments on metadata and command lines', () => {
     const script = parser.parseScript(
       '@title My Game // the title\n' +
