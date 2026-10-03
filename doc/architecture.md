@@ -218,7 +218,7 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `script:command`         | 执行每条命令前 | `{ cmd: string; args: Record<string, unknown> }`                                                   |
 | `script:say`             | 显示对话       | `{ speaker: string; text: string; voice?; speed?; mode? }`                                         |
 | `script:choice`          | 显示选项时     | `{ choices: Choice[]; mode?: 'adv' \| 'nvl' }`                                                     |
-| `script:choice:selected` | 用户选中选项后 | `{}`                                                                                               |
+| `script:choice:selected` | 用户选中选项后 | `{ label: string }`（被选中选项跳转的目标标签）                                                    |
 | `script:wait:done`       | 等待时长已到   | `{}`                                                                                               |
 | `script:clear`           | 清除对话框     | `{}`                                                                                               |
 | `script:end`             | 脚本执行完毕   | `{}`                                                                                               |
@@ -229,11 +229,16 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `character:sprite`       | 角色立绘切换   | `{ id: string; sprite: string; transition?; duration? }`                                           |
 | `bg:change`              | 背景切换       | `{ id: string; transition?; duration? }`                                                           |
 | `audio:play`             | 音频播放       | `{ id: string; type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; loop?; loopCount?; fadeIn?; volume? }` |
-| `audio:stop`             | 音频停止       | `{ type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; fadeOut? }`                                        |
+| `audio:stop`             | 音频停止       | `{ id?: string; type: 'bgm' \| 'se' \| 'voice' \| 'ambient'; fadeOut? }`                           |
 | `effect:play`            | 画面特效开始   | `{ type: 'shake' \| 'flash' \| 'snow' \| 'rain'; duration?; intensity?; color?; density? }`        |
 | `effect:stop`            | 画面特效结束   | `{}`                                                                                               |
 | `input:click`            | 画布点击       | `{ x: number; y: number }`（逻辑坐标，由 `toLocal(e.global)` 换算）                                |
 | `input:skip`             | 打字中点击     | `{}`（打字机进行中，点击用于跳过/补全当前文本，而非推进脚本）                                      |
+| `input:hover`            | 画布悬停       | `{ x: number; y: number }`                                                                         |
+| `ui:open`                | 打开 UI 面板   | `{ panel: 'settings' \| 'history' \| 'save' \| 'load' }`                                           |
+| `ui:close`               | 关闭 UI 面板   | `{ panel?: 'settings' \| 'history' \| 'save' \| 'load' }`（省略表示关闭全部）                      |
+| `resource:progress`      | 资源加载进度   | `{ loaded: number; total: number; percent: number }`                                               |
+| `resource:ready`         | 资源加载完成   | `{}`                                                                                               |
 
 ---
 
@@ -515,8 +520,9 @@ Hero "早上好，各位同学！"
 Heroine "早...早上好..."
 
 @choice
-  → "回应他": respond
-  → "无视他": ignore
+  -> "回应他": respond
+  -> "无视他": ignore
+@endchoice
 
 @label respond
 Heroine "早上好..."
@@ -550,7 +556,8 @@ Parser
 内部流程:
   1. 委托 parser.parse(source) 完成语法分析
   2. 将 ParseResult（commands + metadata）包装为 Script 对象
-  3. 收集 @label → LabelMap，验证跳转目标存在性
+  3. 扫描 @label 建立标签表 labels: Map<标签名, 命令索引>
+     （不校验跳转目标是否存在；未命中标签由 Interpreter 在运行时抛错）
 ```
 
 Parser 不负责文件加载（由 ResourceManager 处理），保持单一职责：`string → Script`。ScriptEngine 仅执行，接收已解析的 Script 对象。
@@ -560,12 +567,12 @@ interface Script {
   name: string;
   commands: Command[];
   labels: Map<string, number>; // 标签名 → 命令索引
-  metadata: ScriptMetadata;
+  metadata: Record<string, string>; // @author / @version / @title
 }
 
 interface Command {
-  type: string; // 命令类型
-  args: Record<string, any>; // 参数
+  type: string; // 命令类型，不带 @
+  args: Record<string, unknown>; // 通用指令以 "0"、"1" … 为位置参数键
   line: number; // 源文件行号
 }
 ```
@@ -613,7 +620,8 @@ Interpreter
 ├── engine: VNEngine             // 引擎引用（构造注入，用于构建 ScriptContext）
 ├── pc: number                  // 程序计数器（命令索引）
 ├── callStack: number[]         // 调用栈（用于 @call/@return）
-├── state: 'idle' | 'running' | 'waiting' | 'paused'
+├── ifStack: { hasMatched: boolean }[]  // @if 分支状态栈
+├── state: 'idle' | 'running' | 'waiting'
 │
 ├── getPc(): number // pc在外部只读
 ├── load(script: Script, startPc?: number): void
@@ -621,7 +629,7 @@ Interpreter
 ├── jump(name: string): void
 ├── call(name: string): void
 ├── return(): void
-└── wait(event: string, handler: () => void): void  // 暂停等待事件
+└── wait<K extends EventName>(event: K, handler: (payload: EngineEvents[K]) => void): void  // 暂停等待事件
 ```
 
 **命令执行流程：**
@@ -646,7 +654,7 @@ step():
 ```ts
 interface CommandHandler {
   type: string;
-  execute(ctx: ScriptContext, args: Record<string, any>): void | Promise<void>;
+  execute(ctx: ScriptContext, args: Record<string, unknown>): void;
   undo?(ctx: ScriptContext): void; // 用于回滚
 }
 
@@ -655,7 +663,7 @@ class CommandRegistry {
 
   register(handler: CommandHandler): void;
   unregister(type: string): void;
-  execute(ctx: ScriptContext, cmd: Command): void | Promise<void>;
+  execute(ctx: ScriptContext, cmd: Command): void;
 }
 ```
 
@@ -685,9 +693,9 @@ const myPlugin: Plugin = {
   version: '1.0.0',
   install(game) {
     game.script.commandRegistry.register({
-      type: '@shaketext',
+      type: 'shaketext',
       execute(ctx, args) {
-        const duration = args.duration ?? 500;
+        const duration = (args.duration as number) ?? 500;
         // 子系统之间只通过事件通信：命令发事件，由 Renderer 订阅后执行
         game.eventBus.emit('effect:play', { type: 'shake', duration });
       },
@@ -1354,7 +1362,7 @@ src/
   → Interpreter.step()
     → CommandRegistry.execute(cmd, ctx)
       → 例如 SayCommand:
-        → EventBus 发送 'script:say' { speaker, text, voice?, speed? }
+        → EventBus 发送 'script:say' { speaker, text, voice?, speed?, mode? }
         → DialogueBox（UI 子系统）订阅后逐字显示 → 完成后 state → 'waiting'
   → 循环...
 ```
@@ -1463,7 +1471,7 @@ type UiPanel = 'settings' | 'history' | 'save' | 'load';
 
 // 事件类型（string → 泛型映射）
 interface EngineEvents {
-  'script:command': { cmd: string; args: Record<string, any> };
+  'script:command': { cmd: string; args: Record<string, unknown> };
   'script:choice': { choices: Choice[]; mode?: 'adv' | 'nvl' };
   'script:say': {
     speaker: string;
@@ -1473,7 +1481,7 @@ interface EngineEvents {
     mode?: 'adv' | 'nvl';
   };
   'script:clear': {};
-  'script:choice:selected': {};
+  'script:choice:selected': { label: string };
   'script:wait:done': {};
   'script:end': {};
   'render:frame': { dt: number };
@@ -1616,27 +1624,27 @@ interface VNEngine {
 interface Script {
   name: string;
   commands: Command[];
-  labels: Map<string, number>;
-  metadata: { author?: string; version?: string };
+  labels: Map<string, number>; // 标签名 → commands 索引
+  metadata: Record<string, string>; // @author / @version / @title 的原始字符串值
 }
 
 interface Command {
-  type: string;
-  args: Record<string, any>;
+  type: string; // 指令名，不带 @
+  args: Record<string, unknown>; // 通用指令以 "0"、"1" … 为位置参数键（见 script-dsl.md §十）
   line: number;
 }
 
 interface ScriptContext {
-  engine: import('./engine').VNEngine;
-  interpreter: import('../script/Interpreter').Interpreter;
-  store: import('../script/VariableStore').VariableStore;
+  engine: VNEngine;
+  interpreter: Interpreter;
+  store: VariableStore;
 }
 
 interface Choice {
   text: string;
   label: string; // 跳转标签
-  condition?: string; // 条件表达式（如 "flags.has('met_hero')"）
-  enabled?: boolean;
+  condition?: string; // @choice 的 if 条件原文（如 "$affection >= 50"）；当前版本从不求值
+  enabled?: boolean; // UI 读取此字段，但当前没有任何地方赋值
 }
 ```
 

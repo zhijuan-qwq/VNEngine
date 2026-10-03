@@ -22,12 +22,15 @@ VNScript 是 VNEngine 专用的声明式领域特定语言（DSL），以 `.vns`
 
 ### 2.2 注释
 
-单行注释以 `//` 开头，至行尾结束。不支持多行注释。
+单行注释以 `//` 开头，**必须独占一行**（`//` 之前只允许空白字符）。不支持多行注释，也不支持行尾注释。
 
 ```
 // 这是注释
-@bg classroom day  // 行尾注释
+@bg classroom day
 ```
+
+> ⚠️ **已知缺陷**：行尾注释（如 `@bg classroom day  // 说明`）当前会**解析失败**，因为 `grammar.pegjs`
+> 的 `CommentLine` 只能匹配整行注释。详见 §十三。
 
 ### 2.3 标识符
 
@@ -64,7 +67,7 @@ Block           = LabelDeclaration | CommandLine | BlankLine | Comment
 MetadataBlock   = MetadataLine+
 MetadataLine    = "@" MetadataKey Space MetadataValue
 MetadataKey     = "author" | "version" | "title"
-MetadataValue   = StringLiteral | Identifier
+MetadataValue   = StringLiteral | BareText    (* 裸文本：整行 trim 后原样取用 *)
 ```
 
 示例：
@@ -83,13 +86,16 @@ Hero "早上好。"
 
 ### 3.1 元数据指令
 
-| 指令       | 参数   | 说明               |
-| ---------- | ------ | ------------------ |
-| `@author`  | 字符串 | 脚本作者           |
-| `@version` | 字符串 | 脚本版本号         |
-| `@title`   | 字符串 | 脚本标题（显示用） |
+| 指令       | 参数           | 说明               |
+| ---------- | -------------- | ------------------ |
+| `@author`  | 字符串或裸文本 | 脚本作者           |
+| `@version` | 字符串或裸文本 | 脚本版本号         |
+| `@title`   | 字符串或裸文本 | 脚本标题（显示用） |
 
-元数据指令必须出现在任何其他命令和标签之前，且只能出现一次。
+元数据指令必须出现在任何其他命令和标签之前，且只能出现一次；重复出现会抛出错误。
+
+值的写法有两种，二者等价：加双引号（`@title "第一章"`）或不加引号按裸文本取用（`@title 第一章`）。
+注意裸文本会一直取到行尾并去除首尾空白，因此裸文本中不能包含换行。
 
 ---
 
@@ -183,7 +189,8 @@ SayOption          = "voice=" Identifier
 
 ```
 @say Hero "早上好，各位同学！"
-@say "???" "......"             // 无名字的说话者
+// 无名字的说话者
+@say "???" "......"
 Hero "这是一句内联对话。"  voice=hero_001
 
 // NVL 模式对话
@@ -201,7 +208,7 @@ Narrator "那天下午，一切都变了。"  nvl
 
 #### 对应事件
 
-`script:say` — `{ speaker: string; text: string }`
+`script:say` — `{ speaker: string; text: string; voice?: string; speed?: number; mode?: 'adv' | 'nvl' }`
 
 ---
 
@@ -220,14 +227,17 @@ TransitionName     = Identifier
 | duration   | 转场持续时间（可选），默认值由引擎决定 |
 
 ```
-@bg classroom day                    // 立即切换
-@bg corridor fade 1.5s              // 1.5秒淡入
-@bg rooftop slideL                  // 从左侧滑入
+// 立即切换
+@bg classroom day
+// 1.5 秒淡入
+@bg corridor fade 1.5s
+// 从左侧滑入
+@bg rooftop slideL
 ```
 
 #### 对应事件
 
-`bg:change` — `{ id: string; transition?: string }`
+`bg:change` — `{ id: string; transition?: string; duration?: number }`
 
 ---
 
@@ -236,46 +246,63 @@ TransitionName     = Identifier
 #### 显示角色
 
 ```
-"@show" Space Identifier Space PositionSpec [ Space ShowOption { Space ShowOption } ]
+"@show" Space Identifier [ Space PositionSpec ] [ Space TransitionSpec ] [ Space ShowOption { Space ShowOption } ]
 
 PositionSpec       = "left" | "center" | "right"
                    | "farLeft" | "farRight"
                    | "offLeft" | "offRight"
-                   | NumberLiteral "@" NumberLiteral
 
+TransitionSpec     = TransitionName [ Space DurationLiteral ]   (* 位置参数写法 *)
 ShowOption         = "sprite=" Identifier
-                   | "transition=" TransitionName
+                   | "transition=" TransitionName               (* 键值写法 *)
                    | "duration=" DurationLiteral
-                   | "behind=" Identifier       (* 放在指定角色后方 *)
-                   | "opacity=" NumberLiteral
 ```
 
 ```
-@show ch_hero center                               // 默认立绘，居中
-@show ch_hero left sprite=smile                    // 微笑立绘，左侧
+// 默认立绘，居中
+@show ch_hero center
+// 微笑立绘，左侧
+@show ch_hero left sprite=smile
 @show ch_heroine right sprite=embarrassed transition=fade duration=500ms
-@show ch_cat 800@600                                // 自定义坐标
+// 位置参数写转场与时长
+@show ch_hero center fade 500ms
 ```
+
+- `position` 省略时默认为 `center`
+- 转场与时长既可用位置参数（`fade 500ms`）也可用键值（`transition=fade duration=500ms`），两种等价
+- ⚠️ **位置参数按序读取**：`@show` 先取 `pos[0]` 作 id、再取 `pos[1]` 作 position，之后才把剩余参数
+  中的字符串当转场、数字当时长。因此**省略 position 直接写转场**（如 `@show ch fade 500ms`）会把
+  `fade` 当作 position。想省略 position 又要用位置参数写转场时，请显式写 `center`，或改用键值写法
+
+> ⚠️ **未实现**：`PositionSpec` 的坐标形式 `NumberLiteral "@" NumberLiteral`（示例 `@show ch_cat 800@600`）
+> 当前**无法解析**。事件里的 `Position` 类型虽允许 `{ x: number; y: number }`，但当前没有任何命令能产生它。
+> 详见 §十三。
 
 #### 隐藏角色
 
 ```
-"@hide" Space Identifier [ Space HideOption { Space HideOption } ]
+"@hide" [ Space Identifier ] [ Space TransitionSpec ] [ Space HideOption { Space HideOption } ]
 
 HideOption         = "transition=" TransitionName
                    | "duration=" DurationLiteral
-                   | "all"                          (* 隐藏所有角色 *)
 ```
 
 ```
+// 位置参数写转场
 @hide ch_hero fade
+// 键值写时长
 @hide all fade duration=1s
 ```
+
+- `id` 省略（即 `@hide` 后不跟任何位置参数）时默认为 `all`（隐藏所有角色）
+- 转场/时长支持位置参数与键值两种写法，与 `@show` 一致
+- ⚠️ 同样**按序读取**：`@hide fade` 会把 `fade` 当成 id（而非「省略 id + 转场 fade」）。要隐藏全部
+  并带转场，请写 `@hide all fade`
 
 #### 移动角色
 
 ```
-"@move" Space Identifier Space PositionSpec [ Space DurationLiteral [ Space EasingFn ] ]
+"@move" Space Identifier [ Space PositionSpec ] [ Space DurationLiteral [ Space EasingFn ] ]
 
 EasingFn           = "ease" | "linear" | "easeIn" | "easeOut" | "easeInOut"
 ```
@@ -285,10 +312,13 @@ EasingFn           = "ease" | "linear" | "easeIn" | "easeOut" | "easeInOut"
 @move ch_heroine right 500ms linear
 ```
 
+- `position` 省略时默认为 `center`
+
 #### 对应事件
 
-`character:show` — `{ id: string; position: string }`
-`character:hide` — `{ id: string }`
+`character:show` — `{ id: string; position: Position; sprite?: string; transition?: string; duration?: number }`
+`character:hide` — `{ id: string; transition?: string; duration?: number }`
+`character:move` — `{ id: string; position: Position; duration?: number; easing?: string }`
 
 ---
 
@@ -304,6 +334,10 @@ EasingFn           = "ease" | "linear" | "easeIn" | "easeOut" | "easeInOut"
 @sprite ch_hero smile
 @sprite ch_hero angry fade 300ms
 ```
+
+#### 对应事件
+
+`character:sprite` — `{ id: string; sprite: string; transition?: string; duration?: number }`
 
 ---
 
@@ -354,10 +388,12 @@ AudioOption        = "loop" | "once" | "loop=" NumberLiteral
 "@stopAmbient" [ Space "fade=" DurationLiteral ]
 ```
 
+`@playAmbient` 当前忽略 `loop=` 计数，仅识别 `loop` / `once`。
+
 #### 对应事件
 
-`audio:play` — `{ id: string; type: 'bgm' | 'se' | 'voice' | 'ambient' }`
-`audio:stop` — `{ type: 'bgm' | 'se' | 'voice' | 'ambient' }`
+`audio:play` — `{ id: string; type: 'bgm' | 'se' | 'voice' | 'ambient'; loop?: boolean; loopCount?: number; fadeIn?: number; volume?: number }`
+`audio:stop` — `{ type: 'bgm' | 'se' | 'voice' | 'ambient'; id?: string; fadeOut?: number }`
 
 ---
 
@@ -374,32 +410,26 @@ AudioOption        = "loop" | "once" | "loop=" NumberLiteral
 
 ```
 @label start
-@jump chapter2_start        // 无条件跳转
+// 无条件跳转
+@jump chapter2_start
 
-@call explore_scene          // 子程序调用，压入调用栈
+// 子程序调用，压入调用栈
+@call explore_scene
 // ... 子场景 ...
-@return                      // 返回调用点下一行
+// 返回调用点下一行
+@return
 ```
 
 #### 条件分支
 
 ```
-"@if"    Space Expression
+"@if"     Space Expression
 "@elseif" Space Expression    (* 可选，可多个 *)
 "@else"                       (* 可选 *)
 "@endif"
-
-Expression         = ComparisonExpr | CheckExpr | "(" Expression ")"
-                   | Expression LogicalOp Expression
-                   | "!" Expression                    (* 逻辑非 *)
-
-ComparisonExpr     = Operand CompOp Operand
-CheckExpr          = Operand                          (* 非零/非空为真 *)
-
-Operand            = Literal | VariableRef
-CompOp             = "==" | "!=" | ">" | ">=" | "<" | "<="
-LogicalOp          = "and" | "or"
 ```
+
+> `Expression` 的完整产生式见 §七。`@if` / `@elseif` 是当前版本**唯一**能使用完整表达式的地方。
 
 ```
 @if $affection >= 80
@@ -411,25 +441,9 @@ LogicalOp          = "and" | "or"
 @endif
 ```
 
-#### 多路分支
-
-```
-"@switch" Space Operand
-"@case"   Space Literal
-"@default"
-"@endswitch"
-```
-
-```
-@switch $route
-@case "hero"
-    @jump hero_ending
-@case "heroine"
-    @jump heroine_ending
-@default
-    @jump normal_ending
-@endswitch
-```
+> ⚠️ **未实现**：早期版本定义过 `@switch` / `@case` / `@default` / `@endswitch` 多路分支，但代码从未实现。
+> 请改用 `@if` / `@elseif` / `@else` 链。注意这些命令（以及任何未注册的命令）会被**静默忽略**
+> （仅 `console.warn`），不会报错——见 §十三。
 
 ---
 
@@ -454,11 +468,13 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 - `->` 是选项标记符
 - `:` 后是跳转标签
-- `if` 后的表达式控制该选项是否可见/可用
+- `if` 后的表达式**本意**是控制该选项是否可见/可用，但**当前版本未求值**（见 §十三）：它会被解析并存入
+  `Choice.condition`，引擎却从不读取，因此所有选项始终可见
 
 #### 对应事件
 
-`script:choice` — `{ choices: Choice[] }`
+`script:choice` — `{ choices: Choice[]; mode?: 'adv' | 'nvl' }`
+`script:choice:selected` — `{ label: string }`
 
 ---
 
@@ -472,6 +488,8 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 "@div"    Space VariableRef Space Operand         (* 除 *)
 "@mod"    Space VariableRef Space Operand         (* 取模 *)
 "@random" Space VariableRef Space NumberLiteral Space NumberLiteral  (* 随机 *)
+
+Operand = Literal                                 (* 单个字面量或 $var；不支持表达式 *)
 ```
 
 ```
@@ -481,7 +499,8 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 @mul $damage 2
 @div $ratio 2
 @mod $remainder 3
-@random $dice 1 6                       // $dice = [1, 6] 随机整数
+// $dice = [1, 6] 随机整数
+@random $dice 1 6
 ```
 
 ---
@@ -496,9 +515,12 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 ```
 
 ```
-@flag met_hero                          // 设置旗标
-@unflag secret_revealed                 // 清除旗标
-@toggle auto_mode                       // 切换
+// 设置旗标
+@flag met_hero
+// 清除旗标
+@unflag secret_revealed
+// 切换
+@toggle auto_mode
 ```
 
 ---
@@ -541,7 +563,7 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 ```
 "@pause"                                  (* 暂停脚本，等待用户交互 *)
-"@click"                                  (* 等价于 @wait 0ms，显式等待点击 *)
+"@click"                                  (* 与 @pause 同义，显式等待一次点击 *)
 ```
 
 ```
@@ -550,7 +572,8 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 @bg next_scene
 ```
 
-`@pause` 将解释器状态设为 `'waiting'`，等待用户输入（点击/按键）后恢复。
+`@pause` 与 `@click` 实现相同：将解释器状态设为 `'waiting'`，等待 `input:click` 后恢复。
+注意它们**不是**「等 0 毫秒」—— `@wait` 才是等定时器（`@wait 0ms` 会立即继续，不等点击）。
 
 #### 结束
 
@@ -580,7 +603,7 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 | `[speed=N]`             | 局部打字速度     | `"[speed=30]慢速文字[/speed]"`      |
 | `[pause=N]`             | 内联暂停（毫秒） | `"然后...[pause=1000]他离开了。"`   |
 | `[ruby=注音]...[/ruby]` | 注音             | `"[ruby=つぎ]次[/ruby]"`            |
-| `{var:name}`            | 内联变量插值     | `"好感度：{$affection}"`            |
+| `{$name}`               | 内联变量插值     | `"好感度：{$affection}"`            |
 
 **富文本渲染方案（基于 PixiJS v8）：**
 
@@ -594,7 +617,15 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 > **注意**: 以下为历史 EBNF 参考。权威表达式语法定义见 `src/script/grammar.pegjs` 中的 `OrExpr` / `AndExpr` / `CompExpr` / `ArithExpr` / `Term` / `Unary` 规则链。
 
-用于 `@if`、`@elseif`、`@choice` 的条件以及变量指令的右值。
+**当前版本中，表达式的唯一使用位置是 `@if` / `@elseif` 的条件。** 早期规范声称表达式也可用于
+`@choice` 的条件与变量指令的右值，但这两处均未接通：
+
+- `@choice` 的 `if` 条件会被解析但从不求值（见 §5.7）；
+- 变量指令（`@set` / `@add` …）的右值只接受**单个字面量或 `$var`**，无法写 `@set $x 1 + 2` 或
+  `@set $hp $hp - 1`。命令实现本身已调用求值器，缺的是 grammar 允许表达式进入位置参数；
+  算术请直接用 `@add` / `@sub` / `@mul` / `@div` / `@mod`。
+
+详见 §十三。
 
 ```
 Expression         = LogicalExpr
@@ -630,14 +661,14 @@ MulOp              = "*" | "/" | "%"
 
 | 分类   | 指令           | 语法                                                                   |
 | ------ | -------------- | ---------------------------------------------------------------------- |
-| 元数据 | `@author`      | `@author "作者名"`                                                     |
-| —      | `@version`     | `@version "1.0"`                                                       |
-| —      | `@title`       | `@title "脚本标题"`                                                    |
+| 元数据 | `@author`      | `@author 作者名`（引号可选）                                           |
+| —      | `@version`     | `@version 1.0`                                                         |
+| —      | `@title`       | `@title 脚本标题`                                                      |
 | 对话   | `@say`         | `@say 角色名 "文本" [voice=id] [adv\|nvl]`                             |
 | —      | 内联对话       | `角色名 "文本" [voice=id]`                                             |
 | 背景   | `@bg`          | `@bg 资源id [转场名] [时长]`                                           |
-| 角色   | `@show`        | `@show 角色id 位置 [sprite=id] [transition=名] [duration=时长]`        |
-| —      | `@hide`        | `@hide 角色id [transition=名] [duration=时长]`                         |
+| 角色   | `@show`        | `@show 角色id [位置] [转场名] [时长] [sprite=id]`                      |
+| —      | `@hide`        | `@hide [角色id] [转场名] [时长]`（无任何参数表示 all）                 |
 | —      | `@move`        | `@move 角色id 位置 [时长] [缓动]`                                      |
 | 立绘   | `@sprite`      | `@sprite 角色id 立绘id [转场名] [时长]`                                |
 | 音频   | `@playBgm`     | `@playBgm 资源id [loop\|once] [fadein=时长] [volume=N]`                |
@@ -654,12 +685,8 @@ MulOp              = "*" | "/" | "%"
 | —      | `@elseif`      | `@elseif 表达式`                                                       |
 | —      | `@else`        | `@else`                                                                |
 | —      | `@endif`       | `@endif`                                                               |
-| —      | `@switch`      | `@switch 表达式`                                                       |
-| —      | `@case`        | `@case 字面量`                                                         |
-| —      | `@default`     | `@default`                                                             |
-| —      | `@endswitch`   | `@endswitch`                                                           |
 | 选项   | `@choice`      | `@choice [mode=adv\|nvl]` + `-> "文本": 标签 [if 条件]` + `@endchoice` |
-| 变量   | `@set`         | `@set $变量 值`                                                        |
+| 变量   | `@set`         | `@set $变量 (字面量 \| $变量)`                                         |
 | —      | `@add`         | `@add $变量 值`                                                        |
 | —      | `@sub`         | `@sub $变量 值`                                                        |
 | —      | `@mul`         | `@mul $变量 值`                                                        |
@@ -677,6 +704,7 @@ MulOp              = "*" | "/" | "%"
 | —      | `@stopEffect`  | `@stopEffect`                                                          |
 | 系统   | `@wait`        | `@wait 时长`                                                           |
 | —      | `@pause`       | `@pause`                                                               |
+| —      | `@click`       | `@click`（等待一次点击）                                               |
 | —      | `@end`         | `@end`                                                                 |
 | —      | `@clear`       | `@clear`                                                               |
 
@@ -747,15 +775,51 @@ Heroine "[shake]呀！[/shake]"
 
 每个 `CommandLine` 解析为一个 `Command` 节点，DialogLine 展开为 `@say` 的 `Command` 节点。
 
-| 源文本                      | AST Command                                                                                  |
-| --------------------------- | -------------------------------------------------------------------------------------------- |
-| `@bg classroom day fade 1s` | `{ type: "bg", args: { id: "classroom day", transition: "fade", duration: "1s" }, line: 3 }` |
-| `Hero "你好！"`             | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }`                        |
-| `@set $score 10`            | `{ type: "set", args: { var: "$score", value: 10 }, line: 7 }`                               |
-| `@if $score >= 50`          | `{ type: "if", args: { expression: "$score >= 50" }, line: 9 }`                              |
-| `@choice` ... `@endchoice`  | 一个 `type: "choice"` 的 Command，`args.choices` 为 `Choice[]`                               |
+```ts
+interface Command {
+  type: string; // 指令名，不带 @（如 "bg"、"say"、"set"）
+  args: Record<string, unknown>;
+  line: number; // 1-based 源码行号
+}
+```
 
-`@choice` 块会被折叠为单条 Command，其内部的 `->` 行转换为 `Choice[]` 数组存入 `args.choices`。
+| 源文本                      | AST Command                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `@bg classroom day fade 1s` | `{ type: "bg", args: { "0": "classroom", "1": "day", "2": "fade", "3": { value: 1, unit: "s" } }, line: 3 }`                    |
+| `Hero "你好！"`             | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }`                                                           |
+| `@say Hero "你好！" nvl`    | `{ type: "say", args: { speaker: "Hero", text: "你好！", mode: "nvl" }, line: 5 }`                                              |
+| `@label start`              | `{ type: "label", args: { name: "start" }, line: 7 }`                                                                           |
+| `@set $score 10`            | `{ type: "set", args: { "0": { type: "var", name: "score" }, "1": 10 }, line: 9 }`                                              |
+| `@if $score >= 50`          | `{ type: "if", args: { expression: { type: "binary", op: ">=", left: { type: "var", name: "score" }, right: 50 } }, line: 11 }` |
+| `@choice` ... `@endchoice`  | `{ type: "choice", args: { mode: "adv", choices: Choice[] }, line: 13 }`                                                        |
+
+**要点：**
+
+- **`type` 不含 `@`**：`@bg` 解析为 `type: "bg"`。注册自定义命令时键名同样不带 `@`（见 §十一）。
+- **通用指令的 `args` 按下标键存位置参数**：`@bg a b c` 得到 `{ "0": "a", "1": "b", "2": "c" }`，
+  `key=value` 形式的参数则以键名为键（如 `sprite=neutral` → `args.sprite`）。
+- **`expression` 是节点树，不是字符串**：`@if` / `@elseif` 的条件解析为
+  `{ type: "binary" | "unary", op, left?, right?, expr? }` 与叶节点（数字、字符串、布尔、
+  `{ type: "var", name }`、`{ type: "flag", name }`）组成的树。语法见 §七。
+- **`duration` 是 `{ value, unit }`**：`1s` → `{ value: 1, unit: "s" }`，`500ms` → `{ value: 500, unit: "ms" }`。
+  命令实现内部再经 `toMs()` 归一为毫秒数。
+- **`@choice` 块折叠为单条 Command**：块内的 `->` 行转换为 `Choice[]` 存入 `args.choices`。
+  注意 `mode` 缺省时由 grammar 填入默认值 `"adv"`。
+
+### Parser 合成的 `Script` 对象
+
+`Parser.parseScript()` 把语法产物的 `{ commands, metadata }` 包装为 `Script`：
+
+```ts
+interface Script {
+  name: string; // 由 Parser 填为 ""（当前版本不从元数据取名）
+  commands: Command[];
+  labels: Map<string, number>; // 由 Parser 扫描 label 指令建立：标签名 → commands 下标
+  metadata: Record<string, string>; // @author / @version / @title
+}
+```
+
+`labels` 的下标是 `commands` 数组中的位置，供 `@jump` / `@call` 直接定位。
 
 ---
 
@@ -763,32 +827,57 @@ Heroine "[shake]呀！[/shake]"
 
 ### 注册自定义命令
 
+`CommandRegistry` 以 `handler.type` 为键注册，`type` **不带 `@`**，且必须与脚本文本中的指令名一致
+（脚本里写 `@shaketext …`，注册的是 `type: "shaketext"`）：
+
 ```ts
 engine.script.commandRegistry.register({
-  name: '@shaketext',
+  type: 'shaketext',
   execute(ctx, args) {
     const duration = (args.duration as number) ?? 500;
-    engine.renderer.addEffect(new ShakeEffect(duration));
+    ctx.engine.eventBus.emit('effect:play', { type: 'shake', duration });
   },
 });
 ```
 
-### 添加语法糖
+自定义指令走通用 `GenericCommandLine`（见 §四），因此其位置参数同样以 `"0"`、`"1"` … 为键，
+`key=value` 参数以键名为键；`execute` 收到的 `args` 形状即 §十 中描述的 `Record<string, unknown>`。
 
-如需支持非标准语法（如 Python 风格缩进块），可在 Parser 前加一个预处理中间件：
-
-```ts
-parser.use((source: string) => {
-  // 将自定义语法转换为标准 @ 指令格式
-  return transformedSource;
-});
-```
+> **当前版本不支持解析前中间件**：早期规范设想的 `parser.use(source => …)` 预处理钩子并未实现。
+> 若要支持非标准语法（如缩进块），只能修改 grammar 并重新生成解析器。
 
 ---
 
 ## 十二、文件扩展名约定
 
-| 扩展名  | 说明                      |
-| ------- | ------------------------- |
-| `.vns`  | VNScript 源文件           |
-| `.vnsc` | 编译后的 AST 缓存（可选） |
+| 扩展名 | 说明            |
+| ------ | --------------- |
+| `.vns` | VNScript 源文件 |
+
+---
+
+## 十三、当前版本未实现 / 已知限制
+
+本节是**单一事实来源**，集中收录上文各处标注的「规范已描述、代码尚未接通」项与几处容易踩坑的行为。
+写脚本前请先核对本表，避免照早期规范写出跑不通的脚本。
+
+### 13.1 已描述但未实现
+
+| 功能                        | 规范出处 | 现状                                                                                                                                                                                     |
+| --------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 行尾注释 `@bg x // 注释`    | §2.2     | grammar 仅支持整行注释（`//` 必须独占一行）；带行尾 `//` 的行通常**直接解析失败**（`SyntaxError`）；个别位置（如 choice 的 `if 条件`）会把 `//` 之后的文本原样吞进右侧，也不会当注释处理 |
+| 变量指令右值写表达式        | §7       | `@set $x 1 + 2` 无法解析。右值只接受**单个字面量或 `$var`**；命令实现本身已调用求值器，缺的是 grammar 放行。算术请用 `@add`/`@sub`/`@mul`/`@div`/`@mod`                                  |
+| `@choice` 的 `if 条件`      | §5.7     | 条件会被解析进 `Choice.condition`，但**从不求值**；`ChoicePanel` 读的是从未被赋值的 `enabled`                                                                                            |
+| 坐标位置 `@show ch 800@600` | §5.3     | `Position` 类型虽含 `{x,y}`，但 grammar 与 handler 均不支持 `x@y` 写法                                                                                                                   |
+| 解析前中间件 `parser.use`   | §11      | 无此 API，不存在的接口                                                                                                                                                                   |
+
+### 13.2 已知缺陷（会照常执行，但结果可能出乎意料）
+
+| 行为                     | 说明                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 未知指令被**静默忽略**   | 未注册的指令（如 `@foo bar`）不会报错，仅 `console.warn` 一条，脚本继续执行。拼写错误不会立刻暴露                                             |
+| `@switch` 系列**未实现** | `@switch` / `@case` / `@default` / `@endswitch` 均未实现，且会被当作普通指令处理，导致每个 case 顺序执行。请改用 `@if` / `@elseif`（见 §5.6） |
+| `@playAmbient … loop=N`  | `loop=` 的**计数**形式不被支持（仅裸 `loop` 表示无限循环）；传入 `loop=3` 会被忽略                                                            |
+
+> 另有两条**运行时缺陷**记录在案，属代码任务、不在本次文档修订范围：脚本结束后 `script:end` 事件会逐帧重复触发；
+> 最后一句台词尚未结束（仍在等待点击）时脚本就可能被判定为结束。详见架构文档与之相关的已知问题条目。
