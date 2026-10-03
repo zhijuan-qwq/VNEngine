@@ -39,6 +39,16 @@ class Interpreter {
   }
 
   public load(script: Script, startPc: number = 0): void {
+    if (
+      !Number.isInteger(startPc) ||
+      startPc < 0 ||
+      startPc > script.commands.length
+    ) {
+      throw new Error(
+        `Invalid startPc ${startPc} for script "${script.name}" ` +
+          `(expected an integer in 0..${script.commands.length}).`,
+      );
+    }
     this.script = script;
     this.pc = startPc;
     this.callStack = [];

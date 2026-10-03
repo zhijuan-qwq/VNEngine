@@ -93,6 +93,32 @@ describe('Interpreter', () => {
       interpreter.load(script, 2);
       expect(interpreter.getPc()).toBe(2);
     });
+
+    it('should throw on a negative startPc', () => {
+      const script = makeScript([{ type: 'say', args: {}, line: 1 }]);
+      expect(() => interpreter.load(script, -1)).toThrow(
+        'Invalid startPc -1 for script "test" (expected an integer in 0..1).',
+      );
+    });
+
+    it('should throw when startPc is beyond the last command', () => {
+      const script = makeScript([{ type: 'say', args: {}, line: 1 }]);
+      expect(() => interpreter.load(script, 2)).toThrow(
+        'Invalid startPc 2 for script "test" (expected an integer in 0..1).',
+      );
+    });
+
+    it('should throw on a non-integer startPc', () => {
+      const script = makeScript([{ type: 'say', args: {}, line: 1 }]);
+      expect(() => interpreter.load(script, 0.5)).toThrow(/Invalid startPc/);
+      expect(() => interpreter.load(script, NaN)).toThrow(/Invalid startPc/);
+    });
+
+    it('should accept startPc equal to the command count', () => {
+      const script = makeScript([{ type: 'say', args: {}, line: 1 }]);
+      expect(() => interpreter.load(script, 1)).not.toThrow();
+      expect(interpreter.getPc()).toBe(1);
+    });
   });
 
   describe('step', () => {

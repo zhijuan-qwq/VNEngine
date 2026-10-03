@@ -96,6 +96,25 @@ describe('ScriptEngine', () => {
       engine.update();
       expect(endSpy).toHaveBeenCalled();
     });
+
+    it('should throw on a negative startPc and not mutate currentScript', () => {
+      const script = makeScript('@set $a 1\n');
+      expect(() => engine.load('vars', script, -1)).toThrow(
+        'Invalid startPc -1 for script "vars" (expected an integer in 0..1).',
+      );
+      expect(engine.getState().currentScript).toBe('');
+    });
+
+    it('should throw when startPc is beyond the last command', () => {
+      expect(() => engine.load('vars', makeScript('@set $a 1\n'), 2)).toThrow(
+        /Invalid startPc 2/,
+      );
+    });
+
+    it('should accept startPc equal to the command count', () => {
+      engine.load('vars', makeScript('@set $a 1\n'), 1);
+      expect(engine.getState().pc).toBe(1);
+    });
   });
 
   describe('getState', () => {

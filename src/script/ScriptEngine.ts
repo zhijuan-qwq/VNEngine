@@ -26,6 +26,16 @@ class ScriptEngine {
   }
 
   public load(id: string, script: Script, startPc: number = 0): void {
+    if (
+      !Number.isInteger(startPc) ||
+      startPc < 0 ||
+      startPc > script.commands.length
+    ) {
+      throw new Error(
+        `Invalid startPc ${startPc} for script "${id}" ` +
+          `(expected an integer in 0..${script.commands.length}).`,
+      );
+    }
     this.currentScript = id;
     this.interpreter.load(script, startPc);
   }
