@@ -1,4 +1,5 @@
 import VariableStore from '../VariableStore';
+import type { VariableStoreData } from '../VariableStore';
 
 describe('VariableStore', () => {
   let store: VariableStore;
@@ -121,6 +122,48 @@ describe('VariableStore', () => {
       restored.restore(snapshot);
 
       expect(restored.dump()).toEqual(snapshot);
+    });
+
+    it('should throw when data.variables is null', () => {
+      expect(() =>
+        store.restore({
+          variables: null,
+          flags: [],
+        } as unknown as VariableStoreData),
+      ).toThrow('expects data.variables to be an object');
+    });
+
+    it('should throw when data.variables is an array', () => {
+      expect(() =>
+        store.restore({
+          variables: ['a', 'b'],
+          flags: [],
+        } as unknown as VariableStoreData),
+      ).toThrow('expects data.variables to be an object');
+    });
+
+    it('should throw when data.flags is not an array', () => {
+      expect(() =>
+        store.restore({
+          variables: {},
+          flags: 'seen',
+        } as unknown as VariableStoreData),
+      ).toThrow('expects data.flags to be an array');
+    });
+
+    it('should leave the store untouched when the data is invalid', () => {
+      store.set('keep', 1);
+      store.setFlag('kept');
+
+      expect(() =>
+        store.restore({
+          variables: null,
+          flags: [],
+        } as unknown as VariableStoreData),
+      ).toThrow(TypeError);
+
+      expect(store.get('keep')).toBe(1);
+      expect(store.hasFlag('kept')).toBe(true);
     });
   });
 });
