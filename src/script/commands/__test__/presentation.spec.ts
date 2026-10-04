@@ -60,6 +60,12 @@ describe('presentation commands', () => {
       expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
     });
 
+    it('should fall back to center for an unknown position', () => {
+      const spy = listen('character:show');
+      execute('show', { '0': 'ch_hero', '1': 'middle' });
+      expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
+    });
+
     it('should include the sprite option', () => {
       const spy = listen('character:show');
       execute('show', {
@@ -171,6 +177,21 @@ describe('presentation commands', () => {
         position: 'left',
         duration: 2000,
         easing: 'linear',
+      });
+    });
+
+    it('should keep duration and easing when the position is omitted', () => {
+      const spy = listen('character:move');
+      execute('move', {
+        '0': 'ch_hero',
+        '1': { value: 1, unit: 's' },
+        '2': 'easeOut',
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'center',
+        duration: 1000,
+        easing: 'easeOut',
       });
     });
 
