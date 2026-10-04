@@ -585,6 +585,19 @@ describe('Interpreter', () => {
         });
         expect(endHandler).toHaveBeenCalledTimes(1);
       });
+
+      it('should report a @jump without a label name', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(makeScript([makeCmd('jump', {}, 1)]));
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: 'Flow command is missing a label name.',
+            command: 'jump',
+          }),
+        );
+      });
     });
 
     describe('@call', () => {
@@ -599,6 +612,19 @@ describe('Interpreter', () => {
         interpreter.load(script);
         interpreter.step();
         expect(interpreter.getPc()).toBe(2);
+      });
+
+      it('should report a @call without a label name', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(makeScript([makeCmd('call', {}, 1)]));
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: 'Flow command is missing a label name.',
+            command: 'call',
+          }),
+        );
       });
     });
 
@@ -919,6 +945,80 @@ describe('Interpreter', () => {
         interpreter.load(script);
         for (let i = 0; i < 3; i++) interpreter.step();
         expect(sayExecute).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('if block isolation', () => {
+      it('should not leak if blocks across a jump out', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        store.set('x', 1);
+        registry.register({ type: 'say', execute: vi.fn() });
+        const script = makeScript([
+          makeCmd('if', { expression: createGtExpr('x', 0) }, 1),
+          makeCmd('jump', { '0': 'end' }, 2),
+          makeCmd('endif', {}, 3),
+          makeCmd('label', { name: 'end' }, 4),
+          makeCmd('endif', {}, 5),
+        ]);
+        interpreter.load(script);
+        interpreter.step(); // @if true -> enters block
+        interpreter.step(); // @jump end -> exits the block
+        expect(interpreter.getPc()).toBe(3);
+        interpreter.step(); // label end -> pc 4
+        interpreter.step(); // stray @endif: the block must be gone
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@endif without matching @if',
+            command: 'endif',
+          }),
+        );
+      });
+
+      it('should keep the if stack across a call and return', () => {
+        store.set('x', 10);
+        const sayExecute = vi.fn();
+        registry.register({ type: 'say', execute: sayExecute });
+        const script = makeScript([
+          makeCmd('if', { expression: createGtExpr('x', 5) }, 1),
+          makeCmd('call', { '0': 'sub' }, 2),
+          makeCmd('say', { text: 'after' }, 3),
+          makeCmd('endif', {}, 4),
+          makeCmd('label', { name: 'sub' }, 5),
+          makeCmd('say', { text: 'in sub' }, 6),
+          makeCmd('return', {}, 7),
+        ]);
+        interpreter.load(script);
+        for (let i = 0; i < 7; i++) interpreter.step();
+        // The callee's @return must not pop the caller's @if block, so the
+        // @endif still matches and both say commands run.
+        expect(sayExecute).toHaveBeenCalledTimes(2);
+      });
+
+      it('should truncate if blocks opened inside a call on return', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        store.set('x', 1);
+        registry.register({ type: 'say', execute: vi.fn() });
+        const script = makeScript([
+          makeCmd('call', { '0': 'sub' }, 1),
+          makeCmd('endif', {}, 2),
+          makeCmd('label', { name: 'sub' }, 3),
+          makeCmd('if', { expression: createGtExpr('x', 0) }, 4),
+          makeCmd('return', {}, 5),
+          makeCmd('endif', {}, 6),
+        ]);
+        interpreter.load(script);
+        for (let i = 0; i < 4; i++) interpreter.step();
+        // The @if opened inside the callee must be truncated by its @return, so
+        // the top-level @endif finds an empty stack.
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@endif without matching @if',
+            command: 'endif',
+          }),
+        );
       });
     });
   });

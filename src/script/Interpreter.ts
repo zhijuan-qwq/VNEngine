@@ -7,6 +7,16 @@ import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
 
 interface IfState {
   hasMatched: boolean;
+  /** 本块 @if 指令的下标 */
+  ifPc: number;
+  /** 本块配对 @endif 的下标 */
+  endifPc: number;
+}
+
+interface CallFrame {
+  returnPc: number;
+  /** 调用点的 ifStack 深度，return 时把块栈截断回此深度 */
+  ifDepth: number;
 }
 
 interface PendingWait {
@@ -20,7 +30,7 @@ class Interpreter {
   private registry: CommandRegistry;
   private engine: VNEngine;
   private pc: number;
-  private callStack: number[];
+  private callStack: CallFrame[];
   private ifStack: IfState[];
   private state: 'idle' | 'running' | 'waiting';
   private scriptId: string;
@@ -136,35 +146,31 @@ class Interpreter {
         this.pc++;
         return true;
       case 'jump': {
-        const label = this.resolveLabel(command.args['0'] as string);
-        this.pc = label;
+        this.jump(command.args['0'] as string);
         return true;
       }
       case 'call': {
-        const label = this.resolveLabel(command.args['0'] as string);
-        this.callStack.push(this.pc + 1);
-        this.pc = label;
+        this.call(command.args['0'] as string);
         return true;
       }
       case 'return': {
-        const callerPc = this.callStack.pop();
-        if (callerPc === undefined) {
-          throw new Error('Call stack is empty. Cannot return from function.');
-        }
-        this.pc = callerPc;
+        this.return();
         return true;
       }
       case 'if': {
+        // Scan for the matching @endif up front so an unclosed block is
+        // reported whether or not the condition is taken.
+        const endifPc = this.findMatchingEndif(this.pc);
         const condition = evaluateExpression(
           command.args.expression,
           this.store,
         );
         const took = isTruthy(condition);
-        this.ifStack.push({ hasMatched: took });
+        this.ifStack.push({ hasMatched: took, ifPc: this.pc, endifPc });
         if (took) {
           this.pc++;
         } else {
-          this.pc = this.findNextBranchPoint(this.pc);
+          this.pc = this.findNextBranchPoint(this.pc, endifPc);
         }
         return true;
       }
@@ -174,7 +180,7 @@ class Interpreter {
           throw new Error('@elseif without matching @if');
         }
         if (top.hasMatched) {
-          this.pc = this.findMatchingEndif(this.pc);
+          this.pc = top.endifPc;
         } else {
           const condition = evaluateExpression(
             command.args.expression,
@@ -185,7 +191,7 @@ class Interpreter {
             top.hasMatched = true;
             this.pc++;
           } else {
-            this.pc = this.findNextBranchPoint(this.pc);
+            this.pc = this.findNextBranchPoint(this.pc, top.endifPc);
           }
         }
         return true;
@@ -196,7 +202,7 @@ class Interpreter {
           throw new Error('@else without matching @if');
         }
         if (top.hasMatched) {
-          this.pc = this.findMatchingEndif(this.pc);
+          this.pc = top.endifPc;
         } else {
           top.hasMatched = true;
           this.pc++;
@@ -221,15 +227,16 @@ class Interpreter {
     }
   }
 
-  private findNextBranchPoint(fromPc: number): number {
+  // Bounded by the block's @endif, so it never throws: with no further branch
+  // the caller lands on the @endif, which pops the frame.
+  private findNextBranchPoint(fromPc: number, endifPc: number): number {
     let depth = 0;
     const { commands } = this.script;
-    for (let i = fromPc + 1; i < commands.length; i++) {
+    for (let i = fromPc + 1; i < endifPc; i++) {
       const cmd = commands[i];
       if (cmd.type === 'if') {
         depth++;
       } else if (cmd.type === 'endif') {
-        if (depth === 0) return i;
         depth--;
       } else if (
         (cmd.type === 'elseif' || cmd.type === 'else') &&
@@ -238,9 +245,7 @@ class Interpreter {
         return i;
       }
     }
-    throw new Error(
-      `Unclosed @if block starting at line ${commands[fromPc].line}.`,
-    );
+    return endifPc;
   }
 
   private findMatchingEndif(fromPc: number): number {
@@ -288,7 +293,10 @@ class Interpreter {
     }
   }
 
-  private resolveLabel(name: string): number {
+  private resolveLabel(name: unknown): number {
+    if (typeof name !== 'string' || name === '') {
+      throw new Error('Flow command is missing a label name.');
+    }
     const label = this.script.labels.get(name);
     if (label === undefined) {
       throw new Error(
@@ -298,24 +306,43 @@ class Interpreter {
     return label;
   }
 
+  // A jump may leave the @if blocks it was nested in. Keep only the blocks that
+  // still contain the target, but never pop below the current call frame's floor
+  // so a call cannot silently close blocks opened by its caller.
+  private exitBlocksFor(targetPc: number): void {
+    const floor =
+      this.callStack.length > 0
+        ? this.callStack[this.callStack.length - 1].ifDepth
+        : 0;
+    while (this.ifStack.length > floor) {
+      const top = this.ifStack[this.ifStack.length - 1];
+      if (top.ifPc < targetPc && targetPc <= top.endifPc) break;
+      this.ifStack.pop();
+    }
+  }
+
   public jump(name: string): void {
     const label = this.resolveLabel(name);
+    this.exitBlocksFor(label);
     this.pc = label;
   }
 
   public call(name: string): void {
     const label = this.resolveLabel(name);
-    this.callStack.push(this.pc + 1);
+    this.callStack.push({
+      returnPc: this.pc + 1,
+      ifDepth: this.ifStack.length,
+    });
     this.pc = label;
   }
 
   public return(): void {
-    const callerPc = this.callStack.pop();
-    if (callerPc !== undefined) {
-      this.pc = callerPc;
-    } else {
+    const frame = this.callStack.pop();
+    if (frame === undefined) {
       throw new Error('Call stack is empty. Cannot return from function.');
     }
+    this.ifStack.length = frame.ifDepth;
+    this.pc = frame.returnPc;
   }
 
   public wait<K extends EventName>(
