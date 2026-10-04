@@ -5,6 +5,32 @@ import type { VNEngine } from '@/types/engine';
 import type { EngineEvents, EventName } from '@/types/events';
 import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
 
+// 由 handleFlowCommand 直接处理的流程指令，不经过 CommandRegistry。
+export const FLOW_COMMANDS = new Set([
+  'label',
+  'jump',
+  'call',
+  'return',
+  'if',
+  'elseif',
+  'else',
+  'endif',
+  'end',
+]);
+
+export function assertValidStartPc(
+  startPc: number,
+  commandCount: number,
+  scriptId: string,
+): void {
+  if (!Number.isInteger(startPc) || startPc < 0 || startPc > commandCount) {
+    throw new Error(
+      `Invalid startPc ${startPc} for script "${scriptId}" ` +
+        `(expected an integer in 0..${commandCount}).`,
+    );
+  }
+}
+
 interface IfState {
   hasMatched: boolean;
   /** 本块 @if 指令的下标 */
@@ -73,16 +99,7 @@ class Interpreter {
     startPc: number = 0,
     scriptId: string = script.name,
   ): void {
-    if (
-      !Number.isInteger(startPc) ||
-      startPc < 0 ||
-      startPc > script.commands.length
-    ) {
-      throw new Error(
-        `Invalid startPc ${startPc} for script "${scriptId}" ` +
-          `(expected an integer in 0..${script.commands.length}).`,
-      );
-    }
+    assertValidStartPc(startPc, script.commands.length, scriptId);
     if (this.pendingWait) {
       const pending = this.pendingWait;
       this.pendingWait = null;
