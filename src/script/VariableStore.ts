@@ -52,7 +52,9 @@ class VariableStore {
   }
 
   public dump(): VariableStoreData {
-    const variablesObj: Record<string, unknown> = {};
+    // A null-prototype object so a variable literally named "__proto__" is kept
+    // as an own property instead of hitting Object.prototype's setter.
+    const variablesObj = Object.create(null) as Record<string, unknown>;
     this.variables.forEach((value, key) => {
       variablesObj[key] = value;
     });
