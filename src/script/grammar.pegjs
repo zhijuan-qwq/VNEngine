@@ -1,7 +1,7 @@
 // VNScript PEG Grammar — VNEngine 视觉小说脚本语言
-// 编译: peggy --format es src/engine/script/grammar.pegjs
+// 编译: npm run build:parser (peggy --format es src/script/grammar.pegjs -o src/script/parser.js)
 // 目标: TypeScript (Peggy 5.x)
-// 这是 VNScript DSL 的权威语法定义，替代 docs/script-dsl.md 中的 EBNF。
+// 这是 VNScript DSL 的权威语法定义，替代 doc/script-dsl.md 中的 EBNF。
 
 // ============================================================
 // 顶层结构
