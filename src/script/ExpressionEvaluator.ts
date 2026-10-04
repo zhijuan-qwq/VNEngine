@@ -23,6 +23,8 @@ function isExprNode(value: unknown): value is ExpressionNode {
 function evalExpr(node: unknown, store: VariableStore): unknown {
   if (!isExprNode(node)) return node;
 
+  // isExprNode narrows node.type to exactly these four, so the switch is
+  // exhaustive and needs no default.
   switch (node.type) {
     case 'var':
       return store.get(node.name as string);
@@ -39,8 +41,6 @@ function evalExpr(node: unknown, store: VariableStore): unknown {
       const right = evalExpr(node.right, store);
       return applyBinaryOp(node.op as string, left, right);
     }
-    default:
-      return node;
   }
 }
 
