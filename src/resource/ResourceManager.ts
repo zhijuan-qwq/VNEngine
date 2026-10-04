@@ -71,6 +71,10 @@ class ResourceManager implements IResourceManager {
     return audioBuffer;
   }
   public async loadScript(id: string): Promise<Script> {
+    const cached = this.cache.script.get(id);
+    if (cached !== null) {
+      return cached;
+    }
     const url = this.manifest.scripts[id];
     if (!url) {
       throw new Error(`Script with id "${id}" not found in manifest.`);

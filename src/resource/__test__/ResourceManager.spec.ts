@@ -176,6 +176,19 @@ describe('ResourceManager', () => {
       expect(rm.cache.script.get('ch1')).toBe(script);
     });
 
+    it('returns the cached script without refetching', async () => {
+      fetchMock.mockResolvedValue({
+        text: vi.fn().mockResolvedValue('@set $a 1\n'),
+      });
+      const first = await rm.loadScript('ch1');
+      fetchMock.mockClear();
+
+      const second = await rm.loadScript('ch1');
+
+      expect(second).toBe(first);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('rejects when the script id is not in the manifest', async () => {
       await expect(rm.loadScript('missing')).rejects.toThrow(
         'Script with id "missing" not found in manifest.',
