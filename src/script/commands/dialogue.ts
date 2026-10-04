@@ -57,10 +57,14 @@ export const dialogueCommands: CommandHandler[] = [
     type: 'wait',
     execute: (ctx, args) => {
       const ms = toMs(args['0']) ?? 0;
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         ctx.engine.eventBus.emit('script:wait:done', {});
       }, ms);
-      ctx.interpreter.wait('script:wait:done', () => {});
+      ctx.interpreter.wait(
+        'script:wait:done',
+        () => {},
+        () => clearTimeout(timer),
+      );
     },
   },
   { type: 'pause', execute: waitForClick },

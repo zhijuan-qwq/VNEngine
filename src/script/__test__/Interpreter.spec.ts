@@ -460,6 +460,58 @@ describe('Interpreter', () => {
     });
   });
 
+  describe('wait lifecycle', () => {
+    it('should cancel a pending wait when a script is loaded', () => {
+      const handler = vi.fn();
+      const script = makeScript([makeCmd('say', {}, 1)]);
+      interpreter.load(script);
+      interpreter.wait('input:click', handler);
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      bus.emit('input:click', { x: 0, y: 0 });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('should run the wait cleanup when load cancels the wait', () => {
+      const cleanup = vi.fn();
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      interpreter.wait('input:click', () => {}, cleanup);
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it('should run the wait cleanup after the wait event fires', () => {
+      const cleanup = vi.fn();
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      interpreter.wait('input:click', () => {}, cleanup);
+      bus.emit('input:click', { x: 0, y: 0 });
+      expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw when wait is called while a wait is pending', () => {
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      interpreter.wait('input:click', () => {});
+      expect(() => interpreter.wait('script:wait:done', () => {})).toThrow(
+        'Cannot wait for "script:wait:done" while already waiting for "input:click".',
+      );
+    });
+
+    it('should report a handler failure when the wait event fires', () => {
+      const errorHandler = vi.fn();
+      bus.on('script:error', errorHandler);
+      interpreter.load(makeScript([makeCmd('say', {}, 5)]));
+      interpreter.wait('input:click', () => {
+        throw new Error('handler boom');
+      });
+      bus.emit('input:click', { x: 0, y: 0 });
+      expect(errorHandler).toHaveBeenCalledWith({
+        message: 'handler boom',
+        script: 'test',
+        line: 5,
+        command: 'say',
+      });
+    });
+  });
+
   describe('flow commands via step', () => {
     describe('@jump', () => {
       it('should jump to label via step', () => {

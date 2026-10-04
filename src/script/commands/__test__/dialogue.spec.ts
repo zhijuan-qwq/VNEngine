@@ -168,6 +168,29 @@ describe('dialogue commands', () => {
         vi.useRealTimers();
       }
     });
+
+    it('should pass a cleanup to the interpreter wait', () => {
+      vi.useFakeTimers();
+      try {
+        execute('wait', { '0': { value: 1, unit: 's' } });
+        expect(env.wait.cleanup).toBeDefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should cancel the pending timer when the wait is cancelled', () => {
+      vi.useFakeTimers();
+      try {
+        const spy = listen('script:wait:done');
+        execute('wait', { '0': { value: 1.5, unit: 's' } });
+        env.wait.cleanup?.();
+        vi.advanceTimersByTime(1500);
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('@pause / @click', () => {

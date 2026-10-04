@@ -9,6 +9,11 @@ interface IfState {
   hasMatched: boolean;
 }
 
+interface PendingWait {
+  event: EventName;
+  cancel: () => void;
+}
+
 class Interpreter {
   private script: Script;
   private store: VariableStore;
@@ -19,6 +24,7 @@ class Interpreter {
   private ifStack: IfState[];
   private state: 'idle' | 'running' | 'waiting';
   private scriptId: string;
+  private pendingWait: PendingWait | null;
 
   constructor(
     store: VariableStore,
@@ -34,6 +40,7 @@ class Interpreter {
     this.ifStack = [];
     this.state = 'idle';
     this.scriptId = '';
+    this.pendingWait = null;
   }
 
   public getPc(): number {
@@ -54,6 +61,11 @@ class Interpreter {
         `Invalid startPc ${startPc} for script "${scriptId}" ` +
           `(expected an integer in 0..${script.commands.length}).`,
       );
+    }
+    if (this.pendingWait) {
+      const pending = this.pendingWait;
+      this.pendingWait = null;
+      pending.cancel();
     }
     this.script = script;
     this.scriptId = scriptId;
@@ -297,12 +309,45 @@ class Interpreter {
   public wait<K extends EventName>(
     event: K,
     handler: (payload: EngineEvents[K]) => void,
+    cleanup?: () => void,
   ): void {
-    this.state = 'waiting';
-    this.engine.eventBus.once(event, (payload) => {
+    if (this.pendingWait) {
+      throw new Error(
+        `Cannot wait for "${String(event)}" while already waiting for ` +
+          `"${String(this.pendingWait.event)}".`,
+      );
+    }
+    // The pc has not advanced past the blocking command yet, so it still
+    // identifies the command a handler failure should be reported against.
+    const blockedCommand = this.script.commands[this.pc];
+    const onEvent = (payload: EngineEvents[K]): void => {
+      this.pendingWait = null;
       this.state = 'running';
-      handler(payload);
-    });
+      this.runCleanup(cleanup);
+      try {
+        handler(payload);
+      } catch (error) {
+        this.fail(error, blockedCommand);
+      }
+    };
+    this.pendingWait = {
+      event,
+      cancel: () => {
+        this.engine.eventBus.off(event, onEvent);
+        this.runCleanup(cleanup);
+      },
+    };
+    this.state = 'waiting';
+    this.engine.eventBus.once(event, onEvent);
+  }
+
+  private runCleanup(cleanup?: () => void): void {
+    if (!cleanup) return;
+    try {
+      cleanup();
+    } catch (error) {
+      console.error('[VNEngine] wait cleanup threw', error);
+    }
   }
 }
 
