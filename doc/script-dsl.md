@@ -26,7 +26,7 @@ VNScript 是 VNEngine 专用的声明式领域特定语言（DSL），以 `.vns`
 
 ```
 // 这是整行注释
-@bg classroom day  // 这是行尾注释
+@bg classroom  // 这是行尾注释
 @set $x 1 // 赋值 x
 ```
 
@@ -54,7 +54,9 @@ VNScript 是 VNEngine 专用的声明式领域特定语言（DSL），以 `.vns`
 
 ### 2.5 参数分隔
 
-同一指令的多个参数以空格分隔。等号参数（key=value）内不可含空格。
+同一指令的多个参数以空格分隔。等号参数（`key=value`）的右值遵循 §2.4 的字面量语法，可以用双引号
+包围的字符串字面量表示，**引号内可含空格**（如 `text="hello world"`）；不带引号的等号参数右值不能
+含空格，否则空格会被当作参数分隔符。
 
 ---
 
@@ -80,7 +82,7 @@ MetadataValue   = StringLiteral | BareText    (* 裸文本：整行 trim 后原�
 
 @label start
 
-@bg classroom day
+@bg classroom
 Hero "早上好。"
 @end
 ```
@@ -230,7 +232,7 @@ TransitionName     = Identifier
 
 ```
 // 立即切换
-@bg classroom day
+@bg classroom
 // 1.5 秒淡入
 @bg corridor fade 1.5s
 // 从左侧滑入
@@ -312,9 +314,12 @@ EasingFn           = "ease" | "linear" | "easeIn" | "easeOut" | "easeInOut"
 ```
 @move ch_hero center 1s easeOut
 @move ch_heroine right 500ms linear
+@move ch_hero 1s easeOut
 ```
 
-- `position` 省略时默认为 `center`
+- `position` 省略时默认为 `center`，且不会挤占后续参数：`@move ch_hero 1s easeOut` 得到
+  `position: center` / `duration: 1000` / `easing: easeOut`
+- 未知的位置关键字回退为 `center`（与渲染层兜底一致）
 
 #### 对应事件
 
@@ -359,8 +364,12 @@ AudioOption        = "loop" | "once" | "loop=" NumberLiteral
 ```
 @playBgm school_theme loop fadein=2s
 @playBgm tense_bgm once volume=0.5
+@playBgm theme loop=3
 @stopBgm fade=2s
 ```
+
+`loop=N` 表示**总共播放 N 次**（有限循环，播放完毕自动停止）；`loop` 为无限循环，`once` 为播放一次。
+`@playAmbient` 不支持 `loop=N`（见 §5.5 环境音）。
 
 #### 音效（SE）
 
@@ -421,6 +430,15 @@ AudioOption        = "loop" | "once" | "loop=" NumberLiteral
 // 返回调用点下一行
 @return
 ```
+
+**跳转与分支块：** `@jump` 跳出当前 `@if` 块时会退出该块（不再保留其匹配态），但不会低于最内层
+`@call` 帧的地板；`@return` 会把分支栈截断回调用帧进入时的深度。因此跳转、调用与返回不会泄漏
+`@if` 匹配态，也不会把后续孤立的 `@endif` 误报为错误。`@jump`/`@call` 缺少标签名、或标签不存在时会
+以 `script:error` 停机（见 §13.3 错误处理）。
+
+**存档限制：** 在 `@if` 块内、或 `@call` 的被调函数内存档，不会恢复分支匹配态/调用栈；读档重放到
+块尾的 `@endif`/`@return` 时会以 `script:error` 停机。请在块外或调用返回后存档。阻塞在
+`@say`/`@choice`/`@wait` 上时存档会按阻塞的那条命令重放（`@wait` 会重新计满整个时长）。
 
 #### 条件分支
 
@@ -539,7 +557,7 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 
 ```
 "@shake"    [ Space DurationLiteral ]   [ Space "intensity=" NumberLiteral ]
-"@flash"    [ Space DurationLiteral ]   [ Space "color=" StringLiteral ]
+"@flash"    [ Space DurationLiteral ]   [ Space "color=" StringLiteral ] [ Space "duration=" DurationLiteral ]
 "@snow"     [ Space DurationLiteral ]   [ Space "density=" NumberLiteral ]
 "@rain"     [ Space DurationLiteral ]   [ Space "density=" NumberLiteral ]
 "@stopEffect"                            (* 停止所有画面特效 *)
@@ -553,6 +571,9 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 @rain
 @stopEffect
 ```
+
+> `duration` 既可作位置参数，也可对 `@flash` 用 `duration=` 键值写法；`@shake`/`@snow`/`@rain` 只识别位置
+> 形式的 `duration`。
 
 ---
 
@@ -610,7 +631,7 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 | `[i]...[/i]`            | 斜体             | `"[i]内心独白[/i]"`                 |
 | `[size=N]...[/size]`    | 字号             | `"[size=32]标题[/size]"`            |
 | `[shake]...[/shake]`    | 抖动文字         | `"[shake]啊——[/shake]"`             |
-| `[speed=N]`             | 局部打字速度     | `"[speed=30]慢速文字[/speed]"`      |
+| `[speed=N]`             | 局部打字速度     | `"[speed=30]慢速文字"`              |
 | `[pause=N]`             | 内联暂停（毫秒） | `"然后...[pause=1000]他离开了。"`   |
 | `[ruby=注音]...[/ruby]` | 注音             | `"[ruby=つぎ]次[/ruby]"`            |
 | `{$name}`               | 内联变量插值     | `"好感度：{$affection}"`            |
@@ -620,6 +641,9 @@ SpaceSpace         = Space Space             (* 语义缩进，两个空格，�
 - `[color]` `[b]` `[i]` `[size]` 与 `{$var}` 插值：引擎侧解析为带样式的分段，每段一个 pixi `Text`（叶子节点），打字机仅在字符边界更新可见字数（详见架构文档 §4.7）
 - `[speed=N]` / `[pause=N]`：不参与样式分段，由打字机状态机（TypewriterState）按局部速度/内联暂停推进
 - `[ruby]` / `[shake]`：标注为后续迭代，当前版本不解析（按纯文本或忽略处理）
+
+> `[speed=N]` 与 `[pause=N]` 是**一次性标记**，没有配对结束标签。类似 `[/speed]` 的非配对闭合标签不
+> 会被识别为结束标签，而是**按普通文本原样显示**。
 
 ---
 
@@ -678,9 +702,9 @@ MulOp              = "*" | "/" | "%"
 | 背景   | `@bg`          | `@bg 资源id [转场名] [时长]`                                             |
 | 角色   | `@show`        | `@show 角色id [位置] [转场名] [时长] [sprite=id]`                        |
 | —      | `@hide`        | `@hide [角色id] [转场名] [时长]`（无任何参数表示 all）                   |
-| —      | `@move`        | `@move 角色id 位置 [时长] [缓动]`                                        |
+| —      | `@move`        | `@move 角色id [位置] [时长] [缓动]`                                      |
 | 立绘   | `@sprite`      | `@sprite 角色id 立绘id [转场名] [时长]`                                  |
-| 音频   | `@playBgm`     | `@playBgm 资源id [loop\|once] [fadein=时长] [volume=N]`                  |
+| 音频   | `@playBgm`     | `@playBgm 资源id [loop\|once\|loop=N] [fadein=时长] [volume=N]`          |
 | —      | `@stopBgm`     | `@stopBgm [fade=时长]`                                                   |
 | —      | `@playSe`      | `@playSe 资源id [volume=N]`                                              |
 | —      | `@playVoice`   | `@playVoice 资源id`                                                      |
@@ -707,7 +731,7 @@ MulOp              = "*" | "/" | "%"
 | —      | `@toggle`      | `@toggle 旗标名`                                                         |
 | —      | `@clearFlags`  | `@clearFlags`                                                            |
 | 特效   | `@shake`       | `@shake [时长] [intensity=N]`                                            |
-| —      | `@flash`       | `@flash [color=#xxx] [duration=时长]`                                    |
+| —      | `@flash`       | `@flash [时长] [color=#xxx] [duration=时长]`                             |
 | —      | `@snow`        | `@snow [时长] [density=N]`                                               |
 | —      | `@rain`        | `@rain [时长] [density=N]`                                               |
 | —      | `@stopEffect`  | `@stopEffect`                                                            |
@@ -792,16 +816,16 @@ interface Command {
 }
 ```
 
-| 源文本                      | AST Command                                                                                                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@bg classroom day fade 1s` | `{ type: "bg", args: { "0": "classroom", "1": "day", "2": "fade", "3": { value: 1, unit: "s" } }, line: 3 }`                                               |
-| `Hero "你好！"`             | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }`                                                                                      |
-| `@say Hero "你好！" nvl`    | `{ type: "say", args: { speaker: "Hero", text: "你好！", mode: "nvl" }, line: 5 }`                                                                         |
-| `@label start`              | `{ type: "label", args: { name: "start" }, line: 7 }`                                                                                                      |
-| `@set $score 10`            | `{ type: "set", args: { "0": { type: "var", name: "score" }, "1": 10 }, line: 9 }`                                                                         |
-| `@set $total $base + 5`     | `{ type: "set", args: { "0": { type: "var", name: "total" }, "1": { type: "binary", op: "+", left: { type: "var", name: "base" }, right: 5 } }, line: 9 }` |
-| `@if $score >= 50`          | `{ type: "if", args: { expression: { type: "binary", op: ">=", left: { type: "var", name: "score" }, right: 50 } }, line: 11 }`                            |
-| `@choice` ... `@endchoice`  | `{ type: "choice", args: { mode: "adv", choices: Choice[] }, line: 13 }`                                                                                   |
+| 源文本                     | AST Command                                                                                                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@bg classroom fade 1s`    | `{ type: "bg", args: { "0": "classroom", "1": "fade", "2": { value: 1, unit: "s" } }, line: 3 }`                                                           |
+| `Hero "你好！"`            | `{ type: "say", args: { speaker: "Hero", text: "你好！" }, line: 5 }`                                                                                      |
+| `@say Hero "你好！" nvl`   | `{ type: "say", args: { speaker: "Hero", text: "你好！", mode: "nvl" }, line: 5 }`                                                                         |
+| `@label start`             | `{ type: "label", args: { name: "start" }, line: 7 }`                                                                                                      |
+| `@set $score 10`           | `{ type: "set", args: { "0": { type: "var", name: "score" }, "1": 10 }, line: 9 }`                                                                         |
+| `@set $total $base + 5`    | `{ type: "set", args: { "0": { type: "var", name: "total" }, "1": { type: "binary", op: "+", left: { type: "var", name: "base" }, right: 5 } }, line: 9 }` |
+| `@if $score >= 50`         | `{ type: "if", args: { expression: { type: "binary", op: ">=", left: { type: "var", name: "score" }, right: 50 } }, line: 11 }`                            |
+| `@choice` ... `@endchoice` | `{ type: "choice", args: { mode: "adv", choices: Choice[] }, line: 13 }`                                                                                   |
 
 **要点：**
 
@@ -854,6 +878,10 @@ engine.script.commandRegistry.register({
 自定义指令走通用 `GenericCommandLine`（见 §四），因此其位置参数同样以 `"0"`、`"1"` … 为键，
 `key=value` 参数以键名为键；`execute` 收到的 `args` 形状即 §十 中描述的 `Record<string, unknown>`。
 
+`execute(ctx, args)` 的 `ctx` 是 `ScriptContext`：`ctx.engine` 是**完整的引擎门面**（可直接访问
+`resource` / `audio` / `renderer` / `ui` 等子系统），`ctx.store` 是 `VariableStore`，`ctx.interpreter`
+提供 `wait()` 等执行控制接口。
+
 > **当前版本不支持解析前中间件**：早期规范设想的 `parser.use(source => …)` 预处理钩子并未实现。
 > 若要支持非标准语法（如缩进块），只能修改 grammar 并重新生成解析器。
 
@@ -881,11 +909,23 @@ engine.script.commandRegistry.register({
 
 ### 13.2 已知限制（会照常执行，但结果可能出乎意料）
 
-| 行为                     | 说明                                                                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `@switch` 系列**未实现** | `@switch` / `@case` / `@default` / `@endswitch` 均未实现，且未注册，因此会在**加载脚本时直接抛错**。请改用 `@if` / `@elseif`（见 §5.6） |
-| `@playAmbient … loop=N`  | `loop=` 的**计数**形式不被支持（仅裸 `loop` 表示无限循环）；传入 `loop=3` 会被忽略                                                      |
+| 行为                            | 说明                                                                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `@switch` 系列**未实现**        | `@switch` / `@case` / `@default` / `@endswitch` 均未实现，且未注册，因此会在**加载脚本时直接抛错**。请改用 `@if` / `@elseif`（见 §5.6） |
+| `@playAmbient … loop=N`         | `loop=` 的**计数**形式不被支持（仅裸 `loop` 表示无限循环）；传入 `loop=3` 会被忽略                                                      |
+| `@if` 块内 / `@call` 函数内存档 | 读档不恢复分支匹配态/调用栈，重放到块尾的 `@endif`/`@return` 时以 `script:error` 停机（见 §5.6）                                        |
 
 > **未注册指令在加载时即报错**：`ScriptEngine.load()` 会遍历脚本命令，凡 `type` 既不在 `CommandRegistry`
 > 也不属于流程指令白名单（`label`/`jump`/`call`/`return`/`if`/`elseif`/`else`/`endif`/`end`）者，抛出
 > `Unknown command "@<type>" in script "<id>" at line <n>.`。因此拼写错误会在加载阶段立刻暴露。
+
+### 13.3 错误处理（运行时）
+
+单条命令的处理器抛错（如缺少必填参数、`@random` 边界非法、标签不存在）时，Interpreter **不会**把异常
+抛向帧循环使其冻结，而是：
+
+1. 发射 `script:error` 事件：`{ message: string; script: string; line?: number; command?: string }`；
+2. 停止当前脚本（`script:end` 照常收尾），连 `script:error` 监听器自身抛错也不会逃出帧循环。
+
+需要收敛的入参错误（对话文本缺失、`@choice` 无选项、`@set` 缺值、`@random` 反向/非整数边界、
+`@jump`/`@call` 标签非法）都走这条路径。`isTruthy(NaN)` 为假，与 `!NaN === true` 一致。

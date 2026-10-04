@@ -185,4 +185,59 @@ describe('AudioTrack', () => {
     }).not.toThrow();
     expect(track.currentProgress).toBe(0);
   });
+
+  describe('finite looping', () => {
+    it('should use a native loop for an unlimited loop', () => {
+      const track = new AudioTrack('bgm', context);
+
+      track.play(makeAudioBuffer(), { loop: true });
+
+      expect(fake.sources[0].loop).toBe(true);
+    });
+
+    it('should not native-loop when a loopCount is given', () => {
+      const track = new AudioTrack('bgm', context);
+
+      track.play(makeAudioBuffer(), { loop: true, loopCount: 2 });
+
+      expect(fake.sources[0].loop).toBe(false);
+    });
+
+    it('should replay a finite loop the requested number of times', () => {
+      const track = new AudioTrack('bgm', context);
+      track.play(makeAudioBuffer(), { loopCount: 3 });
+
+      fake.sources[0].emitEnded();
+      expect(fake.sources).toHaveLength(2);
+      fake.sources[1].emitEnded();
+      expect(fake.sources).toHaveLength(3);
+      fake.sources[2].emitEnded();
+
+      expect(fake.sources).toHaveLength(3);
+      expect(track.state).toBe('stopped');
+    });
+
+    it('should invoke onFadeComplete when a finite loop finishes', () => {
+      const onFadeComplete = vi.fn();
+      const track = new AudioTrack('bgm', context, onFadeComplete);
+      track.play(makeAudioBuffer(), { loopCount: 1 });
+
+      fake.sources[0].emitEnded();
+
+      expect(track.state).toBe('stopped');
+      expect(onFadeComplete).toHaveBeenCalledOnce();
+    });
+
+    it('should not continue a finite loop after an explicit stop', () => {
+      const track = new AudioTrack('bgm', context);
+      track.play(makeAudioBuffer(), { loopCount: 3 });
+      const first = fake.sources[0];
+
+      track.stop();
+      first.emitEnded();
+
+      expect(fake.sources).toHaveLength(1);
+      expect(track.state).toBe('stopped');
+    });
+  });
 });

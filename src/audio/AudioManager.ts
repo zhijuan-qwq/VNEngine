@@ -84,6 +84,7 @@ class AudioManager implements IAudioManager {
         case 'bgm':
           this.playBgm(payload.id, buffer, {
             loop: payload.loop,
+            loopCount: payload.loopCount,
             fadeIn: payload.fadeIn,
           });
           if (payload.volume !== undefined) {
@@ -142,7 +143,7 @@ class AudioManager implements IAudioManager {
   public playBgm(
     id: string,
     buffer: AudioBuffer,
-    options?: { loop?: boolean; fadeIn?: number },
+    options?: { loop?: boolean; loopCount?: number; fadeIn?: number },
   ): void {
     this.currentBgmId = id;
     this.bgmTrack.play(buffer, options);

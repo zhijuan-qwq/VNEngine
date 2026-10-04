@@ -48,6 +48,32 @@ describe('UIManager', () => {
     expect(ui.dialogueBox.visible).toBe(false);
   });
 
+  it('should clear dialogue and choices on game:load', () => {
+    const { bus, ui } = makeManager();
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:choice', {
+      choices: [{ text: '回应他', label: 'respond' }],
+    });
+    expect(ui.dialogueBox.visible).toBe(true);
+    expect(ui.choicePanel.buttons).toHaveLength(1);
+
+    bus.emit('game:load', { slot: 1 });
+
+    expect(ui.dialogueBox.visible).toBe(false);
+    expect(ui.dialogueBox.isBusy()).toBe(false);
+    expect(ui.choicePanel.buttons).toHaveLength(0);
+  });
+
+  it('should stop listening to game:load after destroy', () => {
+    const { bus, ui } = makeManager();
+    const clearSpy = vi.spyOn(ui.dialogueBox, 'clear');
+    ui.destroy();
+
+    bus.emit('game:load', { slot: 1 });
+
+    expect(clearSpy).not.toHaveBeenCalled();
+  });
+
   it('should route script:choice to build choice buttons', () => {
     const { bus, ui } = makeManager();
     bus.emit('script:choice', {

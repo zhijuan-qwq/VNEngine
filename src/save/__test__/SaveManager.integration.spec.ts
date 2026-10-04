@@ -1,6 +1,6 @@
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
-import type { VNEngine } from '@/types/engine';
+import type { DialogueEntry, VNEngine } from '@/types/engine';
 import type { Script } from '@/types/script';
 import VariableStore from '@/script/VariableStore';
 import ScriptEngine from '@/script/ScriptEngine';
@@ -30,13 +30,14 @@ interface Harness {
   variableStore: VariableStore;
 }
 
-function makeEngine(scripts: Map<string, Script>): Harness {
+function makeEngine(
+  scripts: Map<string, Script>,
+  history: DialogueEntry[] = [],
+): Harness {
   const bus = new EventBus<EngineEvents>();
   const variableStore = new VariableStore();
-  const script = new ScriptEngine(bus, variableStore);
   const engine = {
     eventBus: bus,
-    script,
     variableStore,
     resource: {
       loadScript: async (id: string) => {
@@ -52,7 +53,18 @@ function makeEngine(scripts: Map<string, Script>): Harness {
       setState: () => {},
     },
     audio: { getState: () => null, setState: () => {} },
+    ui: {
+      dialogueBox: { currentText: '' },
+      history: {
+        entries: () => history,
+        restore: (entries: DialogueEntry[]) => {
+          history.splice(0, history.length, ...entries);
+        },
+      },
+    },
   } as unknown as VNEngine;
+  const script = new ScriptEngine(engine, variableStore);
+  (engine as unknown as { script: ScriptEngine }).script = script;
   return { engine, script, variableStore };
 }
 
@@ -90,6 +102,36 @@ describe('SaveManager integration', () => {
 
     fresh.script.update(); // c = 3
     expect(fresh.variableStore.get('c')).toBe(3);
+  });
+
+  it('should replay a blocked @say on restore and trim the duplicated history', async () => {
+    const parsed = new Parser().parseScript('Hero "你好"\nHeroine "早上好"\n');
+    const scripts = new Map([['dialogue', parsed]]);
+    const manager = new SaveManager({ storage: new MemoryStorage() });
+
+    // The blocked line is already in the history (DialogueHistory recorded it
+    // when the @say first emitted).
+    const recorded: DialogueEntry[] = [
+      { speaker: 'Hero', text: '你好', timestamp: 1 },
+    ];
+    const source = makeEngine(scripts, recorded);
+    source.script.load('dialogue', parsed);
+    source.script.update();
+    expect(source.script.getState().pc).toBe(0);
+    expect(source.script.getBlockedCommandType()).toBe('say');
+
+    const data = await manager.capture(source.engine, 0);
+    // Dropped from the save: replaying the command records it again.
+    expect(data.gameState.history).toEqual([]);
+
+    const fresh = makeEngine(scripts);
+    const saySpy = vi.fn();
+    fresh.engine.eventBus.on('script:say', saySpy);
+    await manager.restore(fresh.engine, 0);
+
+    expect(fresh.script.getState().pc).toBe(0);
+    fresh.script.update();
+    expect(saySpy).toHaveBeenCalledWith({ speaker: 'Hero', text: '你好' });
   });
 
   it('should reject an empty slot', async () => {

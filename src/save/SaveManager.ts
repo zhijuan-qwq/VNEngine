@@ -45,9 +45,11 @@ export function migrate(raw: unknown): SaveData {
 /**
  * 存档管理器：遍历各子系统收集状态组装 SaveData，或反向恢复。
  *
- * 已知限制：仅按脚本 pc 保存执行位置。在 `@call`/`@if` 块内或被 `@wait` 阻塞时
- * 存档，读档会丢失调用栈/分支匹配态（Interpreter 未暴露这些状态）。
- * thumbnail/history/playTime 亦尚未接线，暂存空值。
+ * 保存的执行位置是被阻塞指令的下标（`script.pc` 在等待期返回阻塞命令而不是其
+ * 之后），因此阻塞在 `@say`/`@choice`/`@wait` 上时读档会重放该命令；`@wait`
+ * 会重新计满整个时长。已知限制：在 `@if` 块内或 `@call` 被调函数内存档仍会丢
+ * 失分支匹配态/调用栈，读档重放到块尾的 `@endif`/`@return` 时将以 `script:error`
+ * 停机。thumbnail/playTime 尚未接线，暂存空值。
  */
 class SaveManager implements ISaveManager {
   private readonly storage: StorageProvider;
@@ -69,6 +71,13 @@ class SaveManager implements ISaveManager {
     const store = engine.variableStore.dump();
     const label = engine.ui?.dialogueBox.currentText ?? '';
 
+    // A blocked @say has already been recorded; restoring replays it and would
+    // record the same line again, so drop it from the captured history.
+    const history = [...(engine.ui?.history?.entries() ?? [])];
+    if (engine.script.getBlockedCommandType() === 'say' && history.length > 0) {
+      history.pop();
+    }
+
     const gameState: GameStateSnapshot = {
       currentScript: script.currentScript,
       scriptPC: script.pc,
@@ -77,7 +86,7 @@ class SaveManager implements ISaveManager {
       bgImage: renderer.bgImage,
       characters: renderer.characters,
       bgm: audio && audio.id !== '' ? audio : null,
-      history: [...(engine.ui?.history?.entries() ?? [])],
+      history,
       playTime: 0,
     };
 

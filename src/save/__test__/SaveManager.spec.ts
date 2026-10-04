@@ -17,6 +17,7 @@ interface Parts {
   eventBusEmit: ReturnType<typeof vi.fn>;
   scriptGetState: ReturnType<typeof vi.fn>;
   scriptLoad: ReturnType<typeof vi.fn>;
+  scriptGetBlockedCommandType: ReturnType<typeof vi.fn>;
   rendererSetState: ReturnType<typeof vi.fn>;
   audioSetState: ReturnType<typeof vi.fn>;
   variableRestore: ReturnType<typeof vi.fn>;
@@ -47,6 +48,7 @@ function makeHarness(
     eventBusEmit: vi.fn(),
     scriptGetState: vi.fn(() => ({ currentScript: 'chapter1', pc: 7 })),
     scriptLoad: vi.fn(),
+    scriptGetBlockedCommandType: vi.fn(() => null),
     rendererSetState: vi.fn(),
     audioSetState: vi.fn(),
     variableRestore: vi.fn(),
@@ -56,7 +58,11 @@ function makeHarness(
 
   const engine = {
     eventBus: { emit: parts.eventBusEmit },
-    script: { getState: parts.scriptGetState, load: parts.scriptLoad },
+    script: {
+      getState: parts.scriptGetState,
+      load: parts.scriptLoad,
+      getBlockedCommandType: parts.scriptGetBlockedCommandType,
+    },
     renderer: {
       getState: vi.fn(() => ({ bgImage: 'bg_room', characters: [] })),
       setState: parts.rendererSetState,
@@ -133,6 +139,32 @@ describe('SaveManager', () => {
     it('should capture history entries from the ui', async () => {
       const entries = [{ speaker: 'Hero', text: 'Hi', timestamp: 1 }];
       const h = makeHarness({ history: entries });
+
+      const data = await h.manager.capture(h.engine, 0);
+
+      expect(data.gameState.history).toEqual(entries);
+    });
+
+    it('should drop the blocked say from the captured history', async () => {
+      const entries = [
+        { speaker: 'Hero', text: 'Hi', timestamp: 1 },
+        { speaker: 'Hero', text: 'Again', timestamp: 2 },
+      ];
+      const h = makeHarness({ history: entries });
+      h.parts.scriptGetBlockedCommandType.mockReturnValue('say');
+
+      const data = await h.manager.capture(h.engine, 0);
+
+      expect(data.gameState.history).toEqual([entries[0]]);
+    });
+
+    it('should keep the full history when not blocked at a say', async () => {
+      const entries = [
+        { speaker: 'Hero', text: 'Hi', timestamp: 1 },
+        { speaker: 'Hero', text: 'Again', timestamp: 2 },
+      ];
+      const h = makeHarness({ history: entries });
+      h.parts.scriptGetBlockedCommandType.mockReturnValue('choice');
 
       const data = await h.manager.capture(h.engine, 0);
 

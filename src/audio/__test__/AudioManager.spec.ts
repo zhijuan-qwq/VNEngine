@@ -101,6 +101,15 @@ describe('AudioManager', () => {
     expect(asFakeGain(internals(manager).bgmTrack.gain).gain.value).toBe(0.5);
   });
 
+  it('should forward a finite loopCount from audio:play to the bgm track', () => {
+    cache.set('bgm', makeAudioBuffer());
+
+    bus.emit('audio:play', { id: 'bgm', type: 'bgm', loopCount: 2 });
+    ctx.sources[0].emitEnded();
+
+    expect(ctx.sources).toHaveLength(2);
+  });
+
   it('should forward volume to the acquired SE track', () => {
     cache.set('se1', makeAudioBuffer());
 

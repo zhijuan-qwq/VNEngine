@@ -94,6 +94,17 @@ describe('VariableStore', () => {
         flags: ['met_hero'],
       });
     });
+
+    it('should keep a variable named __proto__ as an own key', () => {
+      store.set('__proto__', 'kept');
+
+      const data = store.dump();
+
+      expect(
+        Object.prototype.hasOwnProperty.call(data.variables, '__proto__'),
+      ).toBe(true);
+      expect(data.variables['__proto__']).toBe('kept');
+    });
   });
 
   describe('restore', () => {

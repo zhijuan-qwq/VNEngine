@@ -29,6 +29,12 @@ describe('state commands', () => {
         'Expected a variable reference',
       );
     });
+
+    it('should reject @set without a value', () => {
+      expect(() => execute('set', { '0': varRef('score') })).toThrow(
+        '@set requires a value.',
+      );
+    });
   });
 
   describe('@add / @sub / @mul / @div / @mod', () => {
@@ -94,6 +100,18 @@ describe('state commands', () => {
       expect(() => execute('random', { '0': varRef('dice'), '1': 1 })).toThrow(
         'Expected a number',
       );
+    });
+
+    it('should reject reversed bounds', () => {
+      expect(() =>
+        execute('random', { '0': varRef('dice'), '1': 5, '2': 1 }),
+      ).toThrow('@random requires integer bounds with min <= max, got 5..1.');
+    });
+
+    it('should reject non-integer bounds', () => {
+      expect(() =>
+        execute('random', { '0': varRef('dice'), '1': 1.5, '2': 6 }),
+      ).toThrow('@random requires integer bounds with min <= max, got 1.5..6.');
     });
   });
 

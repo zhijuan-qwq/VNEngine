@@ -222,6 +222,7 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `script:wait:done`       | 等待时长已到   | `{}`                                                                                               |
 | `script:clear`           | 清除对话框     | `{}`                                                                                               |
 | `script:end`             | 脚本执行完毕   | `{}`                                                                                               |
+| `script:error`           | 脚本执行出错   | `{ message: string; script: string; line?: number; command?: string }`                             |
 | `render:frame`           | 每帧渲染后     | `{ dt: number }`                                                                                   |
 | `character:show`         | 角色立绘显示   | `{ id: string; position: Position; sprite?; transition?; duration? }`                              |
 | `character:hide`         | 角色立绘隐藏   | `{ id: string; transition?; duration? }`                                                           |
@@ -239,6 +240,10 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 | `ui:close`               | 关闭 UI 面板   | `{ panel?: 'settings' \| 'history' \| 'save' \| 'load' }`（省略表示关闭全部）                      |
 | `resource:progress`      | 资源加载进度   | `{ loaded: number; total: number; percent: number }`                                               |
 | `resource:ready`         | 资源加载完成   | `{}`                                                                                               |
+
+`script:command` 由 Interpreter 在每条命令（含流程命令）执行前真实发射；其 `args` 与命令对象共享引用，
+监听器不得修改。命令处理器抛错时，Interpreter 不再把异常抛向帧循环，而是发射 `script:error` 并以
+`script:end` 收尾（详见 §5.5 错误模型）。
 
 ---
 
@@ -510,7 +515,7 @@ EffectManager 订阅 `effect:play` / `effect:stop`，把特效映射为特效层
 // VNScript 示例
 @label start
 
-@bg classroom day
+@bg classroom
 @playBgm school_theme loop
 
 @show ch_hero center
@@ -551,13 +556,14 @@ Heroine "......"
 
 ```
 Parser
-├── parse(source: string): Script       // 文本 → Script 对象
+├── parseScript(source: string): Script   // 文本 → Script 对象
 │
 内部流程:
-  1. 委托 parser.parse(source) 完成语法分析
+  1. 调用生成的 parser 的 parse(source) 完成语法分析
   2. 将 ParseResult（commands + metadata）包装为 Script 对象
   3. 扫描 @label 建立标签表 labels: Map<标签名, 命令索引>
-     （不校验跳转目标是否存在；未命中标签由 Interpreter 在运行时抛错）
+     （重复标签名在解析阶段抛错；跳转目标是否存在不在解析期校验，未命中标签由
+      Interpreter 在运行时抛错）
 ```
 
 Parser 不负责文件加载（由 ResourceManager 处理），保持单一职责：`string → Script`。ScriptEngine 仅执行，接收已解析的 Script 对象。
@@ -617,19 +623,22 @@ Interpreter
 ├── script: Script              // 当前脚本
 ├── store: VariableStore        // 变量与旗标存储（构造注入）
 ├── registry: CommandRegistry   // 命令注册表（构造注入）
-├── engine: VNEngine             // 引擎引用（构造注入，用于构建 ScriptContext）
+├── engine: VNEngine            // 引擎引用（构造注入，用于构建 ScriptContext）
 ├── pc: number                  // 程序计数器（命令索引）
-├── callStack: number[]         // 调用栈（用于 @call/@return）
-├── ifStack: { hasMatched: boolean }[]  // @if 分支状态栈
+├── callStack: CallFrame[]      // 调用栈（@call/@return）；帧记录 returnPc 与 ifDepth
+├── ifStack: IfState[]          // @if 分支状态栈；项记录 hasMatched / ifPc / endifPc
+├── pendingWait: PendingWait | null  // 当前阻塞等待（跨 load 需取消）
+├── blockedPc: number           // 处于 'waiting' 时阻塞命令的下标
 ├── state: 'idle' | 'running' | 'waiting'
 │
-├── getPc(): number // pc在外部只读
-├── load(script: Script, startPc?: number): void
+├── getPc(): number  // 外部只读；'waiting' 时返回 blockedPc，否则返回 pc
+├── getBlockedCommandType(): string | null
+├── load(script: Script, startPc?: number, scriptId?: string): void
 ├── step(): void                // 执行下一条命令
 ├── jump(name: string): void
 ├── call(name: string): void
 ├── return(): void
-└── wait<K extends EventName>(event: K, handler: (payload: EngineEvents[K]) => void): void  // 暂停等待事件
+└── wait<K extends EventName>(event: K, handler: (payload: EngineEvents[K]) => void, cleanup?: () => void): void  // 暂停等待事件
 ```
 
 **命令执行流程：**
@@ -637,9 +646,9 @@ Interpreter
 ```
 step():
   1. 若 pc >= commands.length：
-       仅当 state 既非 'idle' 也非 'waiting' 时触发 script:end（保证只触发一次），返回
+       仅当 state 既非 'idle' 也非 'waiting' 时触发 script:end（endScript 幂等），返回
   2. 若 state === 'waiting' → 跳过（等待中的最后一条命令尚未结束，脚本不得提前收尾）
-  3. 获取 commands[pc]
+  3. 获取 commands[pc]，发射 script:command { cmd, args }（含流程命令；args 为共享引用）
   4. 流程命令（@label/@jump/@call/@return/@if/@elseif/@else/@endif/@end）由
      Interpreter 内部直接处理，不经过 CommandRegistry
   5. 其余命令 → 执行 CommandRegistry.execute(cmd, context)
@@ -647,13 +656,32 @@ step():
   7. 若 pc >= commands.length 且未处于 'waiting' → 触发 script:end
 
 等待类命令（@say, @choice, @wait, @pause）执行后:
-  state → 'waiting'
+  state → 'waiting'，blockedPc = 阻塞命令下标
   等待用户点击/选择/计时结束 → state → 'running' → 继续 step()
 ```
 
-`load(script, startPc?)` 会校验 `startPc` 为 `[0, commands.length]` 内的整数（`=== length` 视为「已跑完」的
-合法还原态），否则抛出清晰错误——该参数来自存档还原（见 §14.3 `GameStateSnapshot.scriptPC`），非法值
-（负数、越界、非整数）需在装载阶段而非首次 `step()` 时暴露。
+**错误模型：** 整个 `step()` 包裹在 try/catch 中。任一命令处理抛错时，Interpreter 不会把异常抛向帧循环
+（PixiJS `Ticker` 仅在帧回调正常返回后才重调度，抛出会导致整个游戏静默冻结），而是：
+
+1. 发射 `script:error`（`message` 原样取自 `Error.message`，并带 `script`/`line`/`command`）；
+2. `pc` 置为 `commands.length`；
+3. 以 `script:end` 收尾（`endScript` 幂等，`state === 'idle'` 时直接返回）。
+
+等待中事件处理器抛错同样走此路径（覆盖选项跳转目标标签不存在等 UI 点击路径）。`script:error` 监听器
+自身抛错不会逃出 `step()`。
+
+**`@if` 块与调用栈：** `@if` 执行时先预扫描配对的 `@endif`（未闭合立即报错，与条件真假无关），并在
+`ifStack` 压入 `{ hasMatched, ifPc, endifPc }`；`@elseif`/`@else` 依据栈顶 `endifPc` 跳转。
+`@jump` 跳出当前块时会弹出已不包含目标的块，但不会低于最内层调用帧的地板（`ifDepth`）；`@return` 把
+`ifStack` 截断回调用帧的 `ifDepth`。因此跳转/调用不会泄漏分支匹配态，也不会误报孤立的 `@endif`。
+
+`load(script, startPc?, scriptId?)` 会校验 `startPc` 为 `[0, commands.length]` 内的整数（`=== length` 视为
+「已跑完」的合法还原态），否则抛出清晰错误——该参数来自存档还原（见 §14.3 `GameStateSnapshot.scriptPC`），
+非法值（负数、越界、非整数）需在装载阶段而非首次 `step()` 时暴露。`load` 会先校验再取消挂起的等待
+（`eventBus.off` + cleanup），避免旧脚本的监听器/定时器跨脚本串扰。
+
+**等待期 `getPc()`：** 处于 `'waiting'` 时 `pc` 已指向阻塞命令之后，直接暴露会让存档恢复到错误位置，
+因此 `getPc()` 在等待期返回 `blockedPc`（阻塞命令本身，读档后重放该命令），非等待期返回 `pc`。
 
 ### 5.6 CommandRegistry（命令注册表）
 
@@ -691,9 +719,13 @@ class CommandRegistry {
 | 变量 | `@set`, `@add`, `@sub`, `@mul`, `@div`, `@mod`, `@random`                       | 变量操作               |
 | 旗标 | `@flag`, `@unflag`, `@toggle`, `@clearFlags`                                    | 旗标操作               |
 | 特效 | `@shake`, `@flash`, `@snow`, `@rain`, `@stopEffect`                             | 画面特效               |
-| 系统 | `@wait`, `@pause`, `@click`, `@clear`, `@end`                                   | 系统命令               |
+| 系统 | `@wait`, `@pause`, `@click`, `@clear`                                           | 系统命令（注册表内）   |
 
 内置命令实现位于 `src/script/commands/`（`state.ts` 变量/旗标、`presentation.ts` 表现、`dialogue.ts` 对话/阻塞），通过 `registerBuiltinCommands(registry)` 统一注册到 `CommandRegistry`。handler 通过 `ScriptContext` 读写 `VariableStore`、向 `eventBus` 发射事件，并调用 `interpreter.wait()` 阻塞等待用户输入（见 §5.5）。
+
+上表仅列出注册表内的命令。流程命令 `@label`/`@jump`/`@call`/`@return`/`@if`/`@elseif`/`@else`/`@endif`/`@end`
+不注册为 handler，由 Interpreter 内部直接处理（见 §5.5）；`@choice … @endchoice` 由 Parser 折叠为单条
+`choice` 命令。
 
 ### 5.7 自定义命令扩展示例
 
@@ -760,11 +792,13 @@ loadAudio(id):
   5. 发射 resource:progress
 
 loadScript(id):
-  1. url = manifest.scripts[id]
-  2. source = assetLoader.loadScript(url)    // 返回脚本文本
-  3. script = parser.parse(source)
-  4. cache.set(id, script)
-  5. 发射 resource:progress
+  1. cached = cache.script.get(id)
+     命中则直接返回，跳过后续步骤（不重复 fetch / 解析）
+  2. url = manifest.scripts[id]
+  3. source = assetLoader.loadScript(url)    // 返回脚本文本
+  4. script = parser.parseScript(source)
+  5. cache.set(id, script)
+  6. 发射 resource:progress
 ```
 
 Texture 由 pixi `Assets` 缓存（不再自维护一级缓存）；`ResourceCache`（§6.3）只缓存 AudioBuffer 与 Script。
@@ -1132,31 +1166,41 @@ Settings **独立持久化（全局一份），不嵌入每个存档槽中**。�
 ### 9.3 存档流程（SaveManager）
 
 ```
-Game.save(slot)
+Game.saveSlot(slot)
+  → saveManager.capture(engine, slot)
   → eventBus.emit('game:save', { slot })
 
 SaveManager.capture(engine, slot):
-  1. engine.pause()
-  2. 生成缩略图：`app.renderer.extract.texture({ target: app.stage })` → canvas.toBlob()（Blob 直接存，无需 base64）
-  3. 收集各子系统快照 → 组装 GameStateSnapshot
-  4. 获取当前对话文本截取（≤30字）作为 slotLabel
+  1. 读取各子系统快照：script.getState() / renderer.getState() / audio.getState() /
+     variableStore.dump() / ui.history.entries()
+  2. 若阻塞在 @say 上（getBlockedCommandType() === 'say'）且历史非空，裁掉历史末条
+     （该行重放时会再次记录，避免重复）
+  3. 组装 GameStateSnapshot { currentScript, scriptPC, variables, flags, bgImage,
+     characters, bgm, history, playTime }
+  4. 取当前对话文本截取（≤30字）作为 slotLabel
   5. 构建 SaveData { version, timestamp, thumbnail, slotLabel, gameState }
-  6. storage.setItem(`save_${slot}`, saveData)  // IndexedDB 优先，降级 localStorage
-  7. engine.resume()
-  8. eventBus.emit('game:saved', { slot })
+  6. storage.setItem(`save_${slot}`, JSON.stringify(saveData))  // IndexedDB 优先，降级 localStorage
+  （thumbnail / playTime 尚未接线，暂存空值）
+
+Game.loadSlot(slot)
+  → 若 state === 'running' 先 pause()
+  → saveManager.restore(engine, slot)
+  → eventBus.emit('game:load', { slot })
+  → finally：仅当原本在 running 且当前为 paused 时 resume()（ready/paused 不自动恢复）
 
 SaveManager.restore(engine, slot):
-  1. engine.pause()
-  2. saveData = storage.getItem(`save_${slot}`)
-  3. 版本迁移（如有需要）：逐版升级 saveData.gameState 结构
-  4. 恢复各子系统状态：
-     a. variableStore.restore(snapshot.variables, snapshot.flags)
-     b. resourceManager.preloadScene(snapshot.currentScript)  // 预加载依赖资源
-     c. renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
-     d. audioManager.setState(snapshot.bgm)
-     e. scriptEngine.load(snapshot.currentScript, await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
-  5. engine.resume()
-  6. eventBus.emit('game:loaded', { slot })
+  1. saveData = storage.getItem(`save_${slot}`)；空槽抛错，解析失败视为损坏
+  2. migrate(saveData)：校验版本，高于当前 SAVE_VERSION 抛错
+  3. 恢复各子系统状态（顺序敏感）：
+     a. variableStore.restore({ variables: gs.variables, flags: gs.flags })
+        // 变量先于脚本 load，分支条件按恢复后的变量求值
+     b. ui.history.restore(gs.history)
+     c. renderer.setState({ bgImage: gs.bgImage, characters: gs.characters })
+     d. 有 bgm → emit('audio:play', { id, type: 'bgm', loop: true }) 触发加载 buffer，
+        再 audio.setState(gs.bgm)；无 bgm → emit('audio:stop', { type: 'bgm' }) + setState(null)
+     e. script = await resourceManager.loadScript(gs.currentScript)
+        // loadScript 命中缓存则直接返回，不重复 fetch / 解析
+     f. scriptEngine.load(gs.currentScript, script, gs.scriptPC)
 ```
 
 读档的资源预加载优先走 pixi `Assets` 缓存（`Assets.cache`）与 `ResourceManager.cache`，命中则跳过网络请求。版本迁移由 `migrate(saveData)` 工具函数处理，按版本号逐级转换数据格式。
@@ -1275,7 +1319,7 @@ src/
 │   ├── grammar.pegjs              # Peggy 文法定义（VNScript 语法权威来源）
 │   ├── parser.js                  # 自动生成（Peggy 编译 grammar.pegjs 输出）
 │   ├── parser.d.ts                # 生成解析器的 TypeScript 类型声明
-│   ├── Parser.ts                  # 薄封装层，调用 parser.parse() 返回 Script
+│   ├── Parser.ts                  # 薄封装层，parseScript() 返回 Script
 │   ├── ScriptEngine.ts            # 脚本引擎（Interpreter 门面，脚本由资源系统解析并缓存）
 │   ├── VariableStore.ts            # 变量与旗标存储
 │   ├── Interpreter.ts             # 脚本解释器
@@ -1414,31 +1458,28 @@ Game.init(config)
 存档:
   UI点击存档槽
     → SaveLoadSlot.onClick()
-    → Game.save(slot)
+    → Game.saveSlot(slot)
     → SaveManager.capture(engine, slot)
-      → engine.pause()
-      → 生成缩略图（app.renderer.extract.texture → canvas.toBlob()）
-      → 遍历各子系统收集快照 → 组装 GameStateSnapshot
-      → 构建 SaveData
-      → IndexedDB 持久化
-      → engine.resume()
-      → EventBus 发送 'game:saved'
+      → 遍历各子系统收集快照（script/renderer/audio/variableStore/history）
+      → 阻塞在 @say 上时裁掉历史末条（重放会再次记录）
+      → 组装 GameStateSnapshot → 构建 SaveData
+      → IndexedDB 持久化（缩略图尚未接线）
+    → EventBus 发送 'game:save'
 
 读档:
   UI点击读档槽
     → SaveLoadSlot.onClick()
-    → Game.load(slot)
-    → SaveManager.restore(engine, slot)
-      → engine.pause()
-      → 从 IndexedDB 读取 SaveData
-      → 版本迁移（如有）
-      → variableStore.restore(snapshot.variables, snapshot.flags)
-      → resourceManager.preloadScene(snapshot.currentScript)
-      → renderer.setState({ bgImage: snapshot.bgImage, characters: snapshot.characters })
-      → audioManager.setState(snapshot.bgm)
-      → scriptEngine.load(snapshot.currentScript, await resourceManager.loadScript(snapshot.currentScript), snapshot.scriptPC)
-      → engine.resume()
-      → EventBus 发送 'game:loaded'
+    → Game.loadSlot(slot)
+      → 若在运行则先 pause()
+      → SaveManager.restore(engine, slot)
+        → 从存储读取 SaveData（空槽/损坏/版本过新均抛错）
+        → variableStore.restore({ variables, flags })  // 变量先于脚本 load
+        → ui.history.restore(snapshot.history)
+        → renderer.setState({ bgImage, characters })
+        → 有 bgm：emit('audio:play') 触发加载后 audio.setState；无则 emit('audio:stop')
+        → scriptEngine.load(currentScript, await resourceManager.loadScript(currentScript), scriptPC)
+      → EventBus 发送 'game:load'
+      → finally：原本在运行且当前暂停时 resume()
 ```
 
 ---
@@ -1675,23 +1716,20 @@ interface SaveData {
 
 interface GameStateSnapshot {
   currentScript: string;
-  scriptPC: number;
+  scriptPC: number; // 阻塞期即阻塞命令下标（见 §5.5 getPc 语义），读档会重放该命令
   variables: Record<string, unknown>;
   flags: string[];
   bgImage: string | null; // ↓ 两项即 RendererState（见 §14.1）
-  characters: Array<{
-    id: string;
-    spriteId: string;
-    position: string | { x: number; y: number };
-    opacity: number;
-  }>;
+  characters: CharacterState[];
   bgm: { id: string; progress: number } | null;
   history: DialogueEntrySnapshot[];
   playTime: number; // 累计游玩时间（毫秒）
 }
 ```
 
-**已知类型缺口（待接线 SaveManager 时解决）：** `GameStateSnapshot.characters[].position` 是 `string | { x, y }`，比 `RendererState` 的 `Position` 关键字联合更宽，因此 `renderer.setState(snapshot.characters)` 目前过不了 `tsc`。二选一：把 `types/save.ts` 的该字段改为 `Position`，或在 `SaveManager.restore` 里收窄（`PositionKeyword` 之外的名字渲染层会按 `center` 兜底）。`getState()` 方向（渲染 → 存档）可直接赋值，不受影响。
+`GameStateSnapshot.characters` 复用 `CharacterState[]`（`position: Position`），与渲染层 `RendererState` 的
+字段一致，`renderer.setState(snapshot.characters)` 可直接赋值、`tsc` 通过（此前的类型缺口已消除）。
+`thumbnail` / `playTime` 目前仍是占位（缩略图未接线、playTime 未累计）。
 
 ---
 

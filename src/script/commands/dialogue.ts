@@ -18,8 +18,11 @@ export const dialogueCommands: CommandHandler[] = [
   {
     type: 'say',
     execute: (ctx, args) => {
+      const text = asString(args.text);
+      if (text === undefined) {
+        throw new Error('@say requires dialogue text.');
+      }
       const speaker = asString(args.speaker) ?? '';
-      const text = asString(args.text) ?? '';
       ctx.engine.eventBus.emit('script:say', {
         speaker,
         text,
@@ -34,6 +37,9 @@ export const dialogueCommands: CommandHandler[] = [
     type: 'choice',
     execute: (ctx, args) => {
       const raw = Array.isArray(args.choices) ? (args.choices as Choice[]) : [];
+      if (raw.length === 0) {
+        throw new Error('@choice requires at least one choice.');
+      }
       const choices = raw.map((choice) =>
         choice.condition === undefined
           ? choice
@@ -57,10 +63,14 @@ export const dialogueCommands: CommandHandler[] = [
     type: 'wait',
     execute: (ctx, args) => {
       const ms = toMs(args['0']) ?? 0;
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         ctx.engine.eventBus.emit('script:wait:done', {});
       }, ms);
-      ctx.interpreter.wait('script:wait:done', () => {});
+      ctx.interpreter.wait(
+        'script:wait:done',
+        () => {},
+        () => clearTimeout(timer),
+      );
     },
   },
   { type: 'pause', execute: waitForClick },

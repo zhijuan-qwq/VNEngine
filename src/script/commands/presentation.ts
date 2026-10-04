@@ -1,5 +1,5 @@
 import type { CommandHandler } from '@/types/script';
-import type { Position } from '@/types/engine';
+import type { Position, PositionKeyword } from '@/types/engine';
 import { asNumber, asString, positionalArgs, toMs } from './utils';
 
 function requireString(pos: unknown[], index: number, message: string): string {
@@ -45,6 +45,40 @@ function withoutUndefined<T extends object>(obj: T): T {
   return out as T;
 }
 
+// Position is narrowed rather than blindly cast: an unknown keyword or a malformed
+// coord object falls back to 'center', mirroring the renderer's own fallback
+// (CharacterRegistry: POSITION_RATIOS[position] ?? center).
+const POSITION_KEYWORDS: readonly PositionKeyword[] = [
+  'farLeft',
+  'left',
+  'center',
+  'right',
+  'farRight',
+  'offLeft',
+  'offRight',
+];
+
+function isCoord(value: unknown): value is { x: number; y: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).x === 'number' &&
+    typeof (value as Record<string, unknown>).y === 'number'
+  );
+}
+
+function isPositionSpec(value: unknown): boolean {
+  return (
+    (typeof value === 'string' &&
+      POSITION_KEYWORDS.includes(value as PositionKeyword)) ||
+    isCoord(value)
+  );
+}
+
+function toPosition(value: unknown): Position {
+  return isPositionSpec(value) ? (value as Position) : 'center';
+}
+
 export const presentationCommands: CommandHandler[] = [
   {
     type: 'bg',
@@ -63,7 +97,7 @@ export const presentationCommands: CommandHandler[] = [
     execute: (ctx, args) => {
       const pos = positionalArgs(args);
       const id = requireString(pos, 0, '@show requires a character id');
-      const position = (asString(pos[1]) ?? 'center') as Position;
+      const position = toPosition(pos[1]);
       const { transition, duration } = parseTransition(pos, 2, args);
       ctx.engine.eventBus.emit('character:show', {
         id,
@@ -93,9 +127,27 @@ export const presentationCommands: CommandHandler[] = [
     execute: (ctx, args) => {
       const pos = positionalArgs(args);
       const id = requireString(pos, 0, '@move requires a character id');
-      const position = (asString(pos[1]) ?? 'center') as Position;
-      const duration = toMs(pos[2]) ?? toMs(args.duration);
-      const easing = asString(pos[3]) ?? asString(args.easing);
+      // The position is optional, so an omitted one must not shift the remaining
+      // args: only consume pos[1] as the position when it actually is one.
+      let rest = pos.slice(1);
+      let position: Position = 'center';
+      if (isPositionSpec(rest[0])) {
+        position = toPosition(rest[0]);
+        rest = rest.slice(1);
+      }
+      let duration: number | undefined;
+      let easing: string | undefined;
+      for (const arg of rest) {
+        const ms = toMs(arg);
+        if (ms !== undefined) {
+          duration = ms;
+          continue;
+        }
+        const name = asString(arg);
+        if (name !== undefined) easing = name;
+      }
+      if (duration === undefined) duration = toMs(args.duration);
+      if (easing === undefined) easing = asString(args.easing);
       ctx.engine.eventBus.emit('character:move', {
         id,
         position,

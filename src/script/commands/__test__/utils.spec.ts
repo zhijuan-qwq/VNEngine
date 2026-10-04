@@ -83,6 +83,17 @@ describe('command utils', () => {
       expect(positionalArgs({ '1': 'b' })).toEqual([]);
       expect(positionalArgs({ sprite: 'smile' })).toEqual([]);
     });
+
+    it('should stop scanning at an explicit undefined value', () => {
+      expect(positionalArgs({ '0': 'a', '1': undefined, '2': 'c' })).toEqual([
+        'a',
+      ]);
+      expect(positionalArgs({ '0': undefined, '1': 'b' })).toEqual([]);
+    });
+
+    it('should keep null values because only undefined ends the scan', () => {
+      expect(positionalArgs({ '0': null, '1': 'b' })).toEqual([null, 'b']);
+    });
   });
 
   describe('getVarName', () => {

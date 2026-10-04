@@ -23,6 +23,7 @@ export class FakeGainNode extends FakeAudioNode {
 export class FakeBufferSourceNode extends FakeAudioNode {
   public buffer: AudioBuffer | null = null;
   public loop = false;
+  public onended: (() => void) | null = null;
   public starts: Array<{ when: number; offset: number | undefined }> = [];
   public stopCount = 0;
 
@@ -32,6 +33,11 @@ export class FakeBufferSourceNode extends FakeAudioNode {
 
   public stop(): void {
     this.stopCount += 1;
+  }
+
+  /** Simulates the buffer reaching its natural end. */
+  public emitEnded(): void {
+    this.onended?.();
   }
 }
 

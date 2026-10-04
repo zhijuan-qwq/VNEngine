@@ -60,6 +60,12 @@ describe('presentation commands', () => {
       expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
     });
 
+    it('should fall back to center for an unknown position', () => {
+      const spy = listen('character:show');
+      execute('show', { '0': 'ch_hero', '1': 'middle' });
+      expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
+    });
+
     it('should include the sprite option', () => {
       const spy = listen('character:show');
       execute('show', {
@@ -174,6 +180,21 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should keep duration and easing when the position is omitted', () => {
+      const spy = listen('character:move');
+      execute('move', {
+        '0': 'ch_hero',
+        '1': { value: 1, unit: 's' },
+        '2': 'easeOut',
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'center',
+        duration: 1000,
+        easing: 'easeOut',
+      });
+    });
+
     it('should throw when id is missing', () => {
       expect(() => execute('move', {})).toThrow(
         '@move requires a character id',
@@ -212,7 +233,7 @@ describe('presentation commands', () => {
   });
 
   describe('audio commands', () => {
-    it('@playBgm should emit audio:play with type bgm and options', () => {
+    it('should emit audio:play for @playBgm with type bgm and options', () => {
       const spy = listen('audio:play');
       execute('playBgm', {
         '0': 'school_theme',
@@ -229,7 +250,7 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@playBgm should treat once as non-looping', () => {
+    it('should treat @playBgm once as non-looping', () => {
       const spy = listen('audio:play');
       execute('playBgm', { '0': 'tense_bgm', '1': 'once' });
       expect(spy).toHaveBeenCalledWith({
@@ -239,7 +260,7 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@playBgm should forward loop count', () => {
+    it('should forward the @playBgm loop count', () => {
       const spy = listen('audio:play');
       execute('playBgm', { '0': 'theme', loop: 3 });
       expect(spy).toHaveBeenCalledWith({
@@ -249,13 +270,13 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@stopBgm should emit audio:stop with fade out', () => {
+    it('should emit audio:stop for @stopBgm with fade out', () => {
       const spy = listen('audio:stop');
       execute('stopBgm', { fade: { value: 2, unit: 's' } });
       expect(spy).toHaveBeenCalledWith({ type: 'bgm', fadeOut: 2000 });
     });
 
-    it('@playSe should emit audio:play with type se and volume', () => {
+    it('should emit audio:play for @playSe with type se and volume', () => {
       const spy = listen('audio:play');
       execute('playSe', { '0': 'door_open', volume: 0.8 });
       expect(spy).toHaveBeenCalledWith({
@@ -265,13 +286,13 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@playVoice should emit audio:play with type voice', () => {
+    it('should emit audio:play for @playVoice with type voice', () => {
       const spy = listen('audio:play');
       execute('playVoice', { '0': 'hero_001' });
       expect(spy).toHaveBeenCalledWith({ id: 'hero_001', type: 'voice' });
     });
 
-    it('@playAmbient should emit audio:play with type ambient', () => {
+    it('should emit audio:play for @playAmbient with type ambient', () => {
       const spy = listen('audio:play');
       execute('playAmbient', { '0': 'rain_loop', '1': 'loop' });
       expect(spy).toHaveBeenCalledWith({
@@ -281,7 +302,7 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@stopAmbient should emit audio:stop with type ambient', () => {
+    it('should emit audio:stop for @stopAmbient with type ambient', () => {
       const spy = listen('audio:stop');
       execute('stopAmbient', {});
       expect(spy).toHaveBeenCalledWith({ type: 'ambient' });
@@ -295,7 +316,7 @@ describe('presentation commands', () => {
   });
 
   describe('screen effect commands', () => {
-    it('@shake should emit effect:play with duration and intensity', () => {
+    it('should emit effect:play for @shake with duration and intensity', () => {
       const spy = listen('effect:play');
       execute('shake', { '0': { value: 1, unit: 's' }, intensity: 0.8 });
       expect(spy).toHaveBeenCalledWith({
@@ -305,7 +326,7 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@flash should emit effect:play with color and duration', () => {
+    it('should emit effect:play for @flash with color and duration', () => {
       const spy = listen('effect:play');
       execute('flash', {
         color: '#FFFFFF',
@@ -318,7 +339,7 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@flash should accept a positional duration', () => {
+    it('should accept a positional duration for @flash', () => {
       const spy = listen('effect:play');
       execute('flash', { '0': { value: 1, unit: 's' }, color: '#000000' });
       expect(spy).toHaveBeenCalledWith({
@@ -328,19 +349,19 @@ describe('presentation commands', () => {
       });
     });
 
-    it('@snow should emit effect:play with density', () => {
+    it('should emit effect:play for @snow with density', () => {
       const spy = listen('effect:play');
       execute('snow', { density: 0.6 });
       expect(spy).toHaveBeenCalledWith({ type: 'snow', density: 0.6 });
     });
 
-    it('@rain should emit effect:play with density', () => {
+    it('should emit effect:play for @rain with density', () => {
       const spy = listen('effect:play');
       execute('rain', { density: 0.3 });
       expect(spy).toHaveBeenCalledWith({ type: 'rain', density: 0.3 });
     });
 
-    it('@stopEffect should emit effect:stop', () => {
+    it('should emit effect:stop for @stopEffect', () => {
       const spy = listen('effect:stop');
       execute('stopEffect', {});
       expect(spy).toHaveBeenCalledWith({});

@@ -489,6 +489,61 @@ describe('Game', () => {
       expect(h.emitSpy).toHaveBeenCalledWith('game:load', { slot: 2 });
     });
 
+    it('should pause while restoring and resume afterwards when running', async () => {
+      const restore = vi.fn(async () => {});
+      const save: ISaveManager = {
+        capture: vi.fn(async () => ({}) as never),
+        restore,
+        list: vi.fn(() => []),
+      };
+      const h = makeHarness({ save });
+      await h.game.init(h.config);
+      h.game.start();
+      expect(h.game.status).toBe('running');
+
+      await h.game.loadSlot(2);
+
+      expect(h.emitSpy).toHaveBeenCalledWith('game:pause', {});
+      expect(h.emitSpy).toHaveBeenCalledWith('game:resume', {});
+      expect(h.game.status).toBe('running');
+    });
+
+    it('should not pause or resume when the game is not running', async () => {
+      const restore = vi.fn(async () => {});
+      const save: ISaveManager = {
+        capture: vi.fn(async () => ({}) as never),
+        restore,
+        list: vi.fn(() => []),
+      };
+      const h = makeHarness({ save });
+      await h.game.init(h.config);
+      expect(h.game.status).toBe('ready');
+
+      await h.game.loadSlot(2);
+
+      expect(h.emitSpy).not.toHaveBeenCalledWith('game:pause', {});
+      expect(h.emitSpy).not.toHaveBeenCalledWith('game:resume', {});
+      expect(h.game.status).toBe('ready');
+    });
+
+    it('should resume even when the restore rejects', async () => {
+      const save: ISaveManager = {
+        capture: vi.fn(async () => ({}) as never),
+        restore: vi.fn(async () => {
+          throw new Error('corrupted');
+        }),
+        list: vi.fn(() => []),
+      };
+      const h = makeHarness({ save });
+      await h.game.init(h.config);
+      h.game.start();
+
+      await expect(h.game.loadSlot(2)).rejects.toThrow(/corrupted/);
+
+      expect(h.emitSpy).toHaveBeenCalledWith('game:resume', {});
+      expect(h.game.status).toBe('running');
+    });
+
     it('should report a failing save instead of leaking a rejection', async () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const save: ISaveManager = {

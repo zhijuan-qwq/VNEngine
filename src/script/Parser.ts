@@ -28,7 +28,11 @@ class Parser {
     };
     parseResult.commands.forEach((command, index) => {
       if (command.type === 'label' && typeof command.args.name === 'string') {
-        script.labels.set(command.args.name, index);
+        const name = command.args.name;
+        if (script.labels.has(name)) {
+          throw new Error(`Duplicate label "${name}" at line ${command.line}.`);
+        }
+        script.labels.set(name, index);
       }
     });
     return script;

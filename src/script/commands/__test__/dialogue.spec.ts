@@ -53,6 +53,13 @@ describe('dialogue commands', () => {
       expect(spy).toHaveBeenCalledWith({ speaker: '', text: '......' });
     });
 
+    it('should reject @say without text', () => {
+      expect(() => execute('say', { speaker: 'Hero' })).toThrow(
+        '@say requires dialogue text.',
+      );
+      expect(() => execute('say', {})).toThrow('@say requires dialogue text.');
+    });
+
     it('should resume when the wait event fires', () => {
       listen('script:say');
       execute('say', { speaker: 'Hero', text: 'Hi' });
@@ -73,16 +80,27 @@ describe('dialogue commands', () => {
       expect(env.wait.event).toBe('script:choice:selected');
     });
 
-    it('should default to empty choices and adv mode when missing', () => {
+    it('should default to adv mode when missing', () => {
       const spy = listen('script:choice');
-      execute('choice', {});
-      expect(spy).toHaveBeenCalledWith({ choices: [], mode: 'adv' });
+      const choices = [{ text: '回应他', label: 'respond' }];
+      execute('choice', { choices });
+      expect(spy).toHaveBeenCalledWith({ choices, mode: 'adv' });
     });
 
     it('should forward the nvl mode', () => {
       const spy = listen('script:choice');
-      execute('choice', { choices: [], mode: 'nvl' });
-      expect(spy).toHaveBeenCalledWith({ choices: [], mode: 'nvl' });
+      const choices = [{ text: '回应他', label: 'respond' }];
+      execute('choice', { choices, mode: 'nvl' });
+      expect(spy).toHaveBeenCalledWith({ choices, mode: 'nvl' });
+    });
+
+    it('should reject @choice without any choices', () => {
+      expect(() => execute('choice', { choices: [] })).toThrow(
+        '@choice requires at least one choice.',
+      );
+      expect(() => execute('choice', {})).toThrow(
+        '@choice requires at least one choice.',
+      );
     });
 
     it('should jump to the selected label when a choice is picked', () => {
@@ -168,15 +186,38 @@ describe('dialogue commands', () => {
         vi.useRealTimers();
       }
     });
+
+    it('should pass a cleanup to the interpreter wait', () => {
+      vi.useFakeTimers();
+      try {
+        execute('wait', { '0': { value: 1, unit: 's' } });
+        expect(env.wait.cleanup).toBeDefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should cancel the pending timer when the wait is cancelled', () => {
+      vi.useFakeTimers();
+      try {
+        const spy = listen('script:wait:done');
+        execute('wait', { '0': { value: 1.5, unit: 's' } });
+        env.wait.cleanup?.();
+        vi.advanceTimersByTime(1500);
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('@pause / @click', () => {
-    it('@pause should block on click', () => {
+    it('should block @pause on click', () => {
       execute('pause', {});
       expect(env.wait.event).toBe('input:click');
     });
 
-    it('@click should block on click', () => {
+    it('should block @click on click', () => {
       execute('click', {});
       expect(env.wait.event).toBe('input:click');
     });
