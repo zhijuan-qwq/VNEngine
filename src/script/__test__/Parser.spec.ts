@@ -97,6 +97,12 @@ describe('Parser', () => {
     expect(script.labels.has('after_greeting')).toBe(true);
   });
 
+  it('should reject a duplicate @label', () => {
+    expect(() =>
+      parser.parseScript('@label start\n@set $a 1\n@label start\n'),
+    ).toThrow('Duplicate label "start" at line 3.');
+  });
+
   it('should have correct label positions', () => {
     const script = parser.parseScript(COMPLETE_SCRIPT);
     const labelCommands = script.commands.filter((c) => c.type === 'label');
