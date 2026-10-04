@@ -284,8 +284,16 @@ class Game {
 
   public async loadSlot(slot: number): Promise<void> {
     const saveManager = this.requireSaveManager();
-    await saveManager.restore(this.engine, slot);
-    this.eventBus.emit('game:load', { slot });
+    // 恢复期间冻结帧循环，避免读到一半的状态被渲染；仅从 running 进入，
+    // ready/paused 不自动恢复（respect 调用方原本的暂停状态）。
+    const wasRunning = this.state === 'running';
+    if (wasRunning) this.pause();
+    try {
+      await saveManager.restore(this.engine, slot);
+      this.eventBus.emit('game:load', { slot });
+    } finally {
+      if (wasRunning && this.state === 'paused') this.resume();
+    }
   }
 
   /** VNEngine 门面：同步签名，内部转发到异步 saveSlot */

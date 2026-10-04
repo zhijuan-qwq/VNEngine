@@ -121,6 +121,8 @@ export class UIManager {
     bus.on('script:clear', this.handleClear);
     bus.on('script:choice', this.handleChoice);
     bus.on('script:end', this.handleEnd);
+    // 读档后脚本会从阻塞指令重放，先清掉旧对话/选项，重放事件会重新填充
+    bus.on('game:load', this.handleEnd);
     bus.on('ui:open', this.handleOpen);
     bus.on('ui:close', this.handleClose);
 
@@ -177,6 +179,7 @@ export class UIManager {
     this.bus.off('script:clear', this.handleClear);
     this.bus.off('script:choice', this.handleChoice);
     this.bus.off('script:end', this.handleEnd);
+    this.bus.off('game:load', this.handleEnd);
     this.bus.off('ui:open', this.handleOpen);
     this.bus.off('ui:close', this.handleClose);
     this.dialogueBox.destroy();
