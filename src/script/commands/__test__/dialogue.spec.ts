@@ -212,12 +212,12 @@ describe('dialogue commands', () => {
   });
 
   describe('@pause / @click', () => {
-    it('@pause should block on click', () => {
+    it('should block @pause on click', () => {
       execute('pause', {});
       expect(env.wait.event).toBe('input:click');
     });
 
-    it('@click should block on click', () => {
+    it('should block @click on click', () => {
       execute('click', {});
       expect(env.wait.event).toBe('input:click');
     });
