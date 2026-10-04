@@ -18,6 +18,7 @@ class Interpreter {
   private callStack: number[];
   private ifStack: IfState[];
   private state: 'idle' | 'running' | 'waiting';
+  private scriptId: string;
 
   constructor(
     store: VariableStore,
@@ -32,24 +33,30 @@ class Interpreter {
     this.callStack = [];
     this.ifStack = [];
     this.state = 'idle';
+    this.scriptId = '';
   }
 
   public getPc(): number {
     return this.pc;
   }
 
-  public load(script: Script, startPc: number = 0): void {
+  public load(
+    script: Script,
+    startPc: number = 0,
+    scriptId: string = script.name,
+  ): void {
     if (
       !Number.isInteger(startPc) ||
       startPc < 0 ||
       startPc > script.commands.length
     ) {
       throw new Error(
-        `Invalid startPc ${startPc} for script "${script.name}" ` +
+        `Invalid startPc ${startPc} for script "${scriptId}" ` +
           `(expected an integer in 0..${script.commands.length}).`,
       );
     }
     this.script = script;
+    this.scriptId = scriptId;
     this.pc = startPc;
     this.callStack = [];
     this.ifStack = [];
@@ -57,6 +64,14 @@ class Interpreter {
   }
 
   public step(): void {
+    try {
+      this.stepInternal();
+    } catch (error) {
+      this.fail(error, this.script.commands[this.pc]);
+    }
+  }
+
+  private stepInternal(): void {
     if (this.pc >= this.script.commands.length) {
       if (this.state !== 'idle' && this.state !== 'waiting') {
         this.endScript();
@@ -222,8 +237,31 @@ class Interpreter {
   }
 
   private endScript(): void {
+    if (this.state === 'idle') return;
     this.state = 'idle';
     this.engine.eventBus.emit('script:end', {});
+  }
+
+  // A command failure must never escape step(): the pixi ticker reschedules the
+  // next frame only after update() returns normally, so a throw would silently
+  // freeze the whole game loop.
+  private fail(error: unknown, command?: Command): void {
+    const payload: EngineEvents['script:error'] = {
+      message: error instanceof Error ? error.message : String(error),
+      script: this.scriptId,
+      ...(command ? { line: command.line, command: command.type } : {}),
+    };
+    try {
+      this.engine.eventBus.emit('script:error', payload);
+    } catch (listenerError) {
+      console.error('[VNEngine] script:error listener threw', listenerError);
+    }
+    this.pc = this.script.commands.length;
+    try {
+      this.endScript();
+    } catch (listenerError) {
+      console.error('[VNEngine] script:end listener threw', listenerError);
+    }
   }
 
   private resolveLabel(name: string): number {

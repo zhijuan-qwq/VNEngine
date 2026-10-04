@@ -240,6 +240,108 @@ describe('Interpreter', () => {
     });
   });
 
+  describe('errors', () => {
+    it('should emit script:error and keep running when a handler throws', () => {
+      const errorHandler = vi.fn();
+      const endHandler = vi.fn();
+      bus.on('script:error', errorHandler);
+      bus.on('script:end', endHandler);
+      registry.register({
+        type: 'say',
+        execute: () => {
+          throw new Error('boom');
+        },
+      });
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      expect(() => interpreter.step()).not.toThrow();
+      expect(errorHandler).toHaveBeenCalledWith({
+        message: 'boom',
+        script: 'test',
+        line: 1,
+        command: 'say',
+      });
+      expect(endHandler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should include the command type and line in the payload', () => {
+      const errorHandler = vi.fn();
+      bus.on('script:error', errorHandler);
+      registry.register({ type: 'say', execute: vi.fn() });
+      registry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('nope');
+        },
+      });
+      interpreter.load(
+        makeScript([makeCmd('say', {}, 1), makeCmd('boom', {}, 7)]),
+      );
+      interpreter.step();
+      interpreter.step();
+      expect(errorHandler).toHaveBeenCalledWith({
+        message: 'nope',
+        script: 'test',
+        line: 7,
+        command: 'boom',
+      });
+    });
+
+    it('should not run subsequent commands after a script error', () => {
+      registry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('boom');
+        },
+      });
+      const sayExecute = vi.fn();
+      registry.register({ type: 'say', execute: sayExecute });
+      interpreter.load(
+        makeScript([makeCmd('boom', {}, 1), makeCmd('say', {}, 2)]),
+      );
+      interpreter.step();
+      expect(interpreter.getPc()).toBe(2);
+      interpreter.step();
+      expect(sayExecute).not.toHaveBeenCalled();
+    });
+
+    it('should emit script:error only once when steps continue', () => {
+      const errorHandler = vi.fn();
+      bus.on('script:error', errorHandler);
+      registry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('boom');
+        },
+      });
+      interpreter.load(makeScript([makeCmd('boom', {}, 1)]));
+      interpreter.step();
+      interpreter.step();
+      interpreter.step();
+      expect(errorHandler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not let a script:error listener failure escape step', () => {
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const endHandler = vi.fn();
+      bus.on('script:error', () => {
+        throw new Error('listener boom');
+      });
+      bus.on('script:end', endHandler);
+      registry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('boom');
+        },
+      });
+      interpreter.load(makeScript([makeCmd('boom', {}, 1)]));
+      expect(() => interpreter.step()).not.toThrow();
+      expect(endHandler).toHaveBeenCalledTimes(1);
+      consoleSpy.mockRestore();
+    });
+  });
+
   describe('jump', () => {
     it('should set pc to the label position', () => {
       const script = makeScript([
@@ -373,12 +475,21 @@ describe('Interpreter', () => {
         expect(interpreter.getPc()).toBe(2);
       });
 
-      it('should error on jump via step to non-existent label', () => {
+      it('should report a missing jump label via script:error', () => {
+        const errorHandler = vi.fn();
+        const endHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        bus.on('script:end', endHandler);
         const script = makeScript([makeCmd('jump', { '0': 'missing' }, 1)]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow(
-          'Label "missing" not found in script "test".',
-        );
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: 'Label "missing" not found in script "test".',
+          script: 'test',
+          line: 1,
+          command: 'jump',
+        });
+        expect(endHandler).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -433,12 +544,18 @@ describe('Interpreter', () => {
         });
       });
 
-      it('should error on @return with empty call stack via step', () => {
+      it('should report an empty call stack via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         const script = makeScript([makeCmd('return', {}, 1)]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow(
-          'Call stack is empty. Cannot return from function.',
-        );
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: 'Call stack is empty. Cannot return from function.',
+          script: 'test',
+          line: 1,
+          command: 'return',
+        });
       });
     });
 
@@ -600,41 +717,71 @@ describe('Interpreter', () => {
         });
       });
 
-      it('should error on @elseif without @if', () => {
+      it('should report @elseif without @if via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         const script = makeScript([
           makeCmd('elseif', { expression: createGtExpr('x', 0) }, 1),
         ]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow(
-          '@elseif without matching @if',
-        );
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: '@elseif without matching @if',
+          script: 'test',
+          line: 1,
+          command: 'elseif',
+        });
       });
 
-      it('should error on @else without @if', () => {
+      it('should report @else without @if via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         const script = makeScript([makeCmd('else', {}, 1)]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow('@else without matching @if');
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: '@else without matching @if',
+          script: 'test',
+          line: 1,
+          command: 'else',
+        });
       });
 
-      it('should error on @endif without @if', () => {
+      it('should report @endif without @if via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         const script = makeScript([makeCmd('endif', {}, 1)]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow('@endif without matching @if');
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: '@endif without matching @if',
+          script: 'test',
+          line: 1,
+          command: 'endif',
+        });
       });
 
-      it('should error on unclosed @if', () => {
+      it('should report an unclosed @if via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         store.set('x', 0);
         const script = makeScript([
           makeCmd('if', { expression: createGtExpr('x', 5) }, 1),
           makeCmd('say', {}, 2),
         ]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow(
-          'Unclosed @if block starting at line 1.',
-        );
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: 'Unclosed @if block starting at line 1.',
+          script: 'test',
+          line: 1,
+          command: 'if',
+        });
       });
 
-      it('should error on unclosed nested @if', () => {
+      it('should report an unclosed nested @if via script:error', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
         store.set('x', 0);
         const script = makeScript([
           makeCmd('if', { expression: createGtExpr('x', 5) }, 1),
@@ -643,9 +790,13 @@ describe('Interpreter', () => {
           makeCmd('endif', {}, 4),
         ]);
         interpreter.load(script);
-        expect(() => interpreter.step()).toThrow(
-          'Unclosed @if block starting at line 1.',
-        );
+        expect(() => interpreter.step()).not.toThrow();
+        expect(errorHandler).toHaveBeenCalledWith({
+          message: 'Unclosed @if block starting at line 1.',
+          script: 'test',
+          line: 1,
+          command: 'if',
+        });
       });
 
       it('should evaluate flag conditions', () => {

@@ -18,6 +18,12 @@ export type EngineEvents = {
   'script:choice:selected': { label: string };
   'script:wait:done': Record<string, never>;
   'script:end': Record<string, never>;
+  'script:error': {
+    message: string;
+    script: string;
+    line?: number;
+    command?: string;
+  };
   'render:frame': { dt: number };
   'character:show': {
     id: string;

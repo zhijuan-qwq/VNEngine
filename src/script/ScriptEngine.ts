@@ -61,7 +61,7 @@ class ScriptEngine {
       }
     }
     this.currentScript = id;
-    this.interpreter.load(script, startPc);
+    this.interpreter.load(script, startPc, id);
   }
 
   public getState(): { currentScript: string; pc: number } {
