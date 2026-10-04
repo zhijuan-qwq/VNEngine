@@ -14,6 +14,9 @@ class AudioTrack {
   private fadeFrom: number;
   private fadeTo: number;
   private fadeTarget: 'playing' | 'stopped';
+  private loop: boolean;
+  private loopCount: number;
+  private playedCount: number;
 
   constructor(
     type: 'bgm' | 'se' | 'voice' | 'ambient',
@@ -35,6 +38,9 @@ class AudioTrack {
     this.fadeFrom = 0;
     this.fadeTo = 0;
     this.fadeTarget = 'playing';
+    this.loop = false;
+    this.loopCount = 0;
+    this.playedCount = 0;
   }
 
   private computeOffset(): number {
@@ -44,18 +50,34 @@ class AudioTrack {
 
   public play(
     buffer: AudioBuffer,
-    options?: { loop?: boolean; fadeIn?: number },
+    options?: { loop?: boolean; loopCount?: number; fadeIn?: number },
   ): void {
     this.stopSource();
     this.buffer = buffer;
-    this.source = this.context.createBufferSource();
-    this.source.buffer = buffer;
-    this.source.loop = options?.loop ?? false;
-    this.source.connect(this.gain);
-    this.startTime = this.context.currentTime;
-    this.source.start(0);
+    this.loop = options?.loop ?? false;
+    const loopCount = Math.floor(options?.loopCount ?? 0);
+    this.loopCount = loopCount > 0 ? loopCount : 0;
+    this.playedCount = 0;
+    this.startSource(options?.fadeIn ?? 0);
+  }
 
-    const fadeIn = options?.fadeIn ?? 0;
+  // Starts (or restarts) the buffer source. A finite loop is driven by
+  // `onended` so it can stop after `loopCount` plays; an unlimited loop uses the
+  // native `source.loop`.
+  private startSource(fadeIn: number, offset = 0): void {
+    if (!this.buffer) return;
+    const source = this.context.createBufferSource();
+    source.buffer = this.buffer;
+    source.loop = this.loop && this.loopCount === 0;
+    source.connect(this.gain);
+    this.source = source;
+    this.playedCount += 1;
+    this.startTime = this.context.currentTime - offset;
+    if (this.loopCount > 0) {
+      source.onended = () => this.handleLoopEnd(source);
+    }
+    source.start(0, offset);
+
     if (fadeIn > 0) {
       this.state = 'fading';
       this.fadeFrom = 0;
@@ -67,6 +89,20 @@ class AudioTrack {
     } else {
       this.gain.gain.value = this.volume;
       this.state = 'playing';
+    }
+  }
+
+  private handleLoopEnd(source: AudioBufferSourceNode): void {
+    // A source replaced by an explicit stop/pause has already been cleared;
+    // only a natural end continues the finite loop.
+    if (this.source !== source) return;
+    source.disconnect();
+    if (this.playedCount < this.loopCount) {
+      this.startSource(0);
+    } else {
+      this.source = null;
+      this.state = 'stopped';
+      this.onFadeComplete?.();
     }
   }
 
