@@ -117,6 +117,12 @@ class Interpreter {
     }
 
     const command = this.script.commands[this.pc];
+    // Broadcast every command (flow commands included) before it runs. The args
+    // object is shared by reference, so listeners must not mutate it.
+    this.engine.eventBus.emit('script:command', {
+      cmd: command.type,
+      args: command.args,
+    });
 
     if (this.handleFlowCommand(command)) {
       return;

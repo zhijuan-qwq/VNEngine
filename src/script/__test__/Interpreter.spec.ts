@@ -219,6 +219,43 @@ describe('Interpreter', () => {
       expect(execute).toHaveBeenCalledOnce();
     });
 
+    it('should emit script:command before executing a command', () => {
+      const order: string[] = [];
+      bus.on('script:command', (payload) =>
+        order.push(`cmd:${(payload as { cmd: string }).cmd}`),
+      );
+      registry.register({
+        type: 'say',
+        execute: () => order.push('exec:say'),
+      });
+      interpreter.load(makeScript([makeCmd('say', { text: 'Hi' }, 1)]));
+      interpreter.step();
+      expect(order).toEqual(['cmd:say', 'exec:say']);
+    });
+
+    it('should include the command args in the script:command payload', () => {
+      const handler = vi.fn();
+      bus.on('script:command', handler);
+      registry.register({ type: 'say', execute: vi.fn() });
+      interpreter.load(makeScript([makeCmd('say', { text: 'Hi' }, 1)]));
+      interpreter.step();
+      expect(handler).toHaveBeenCalledWith({
+        cmd: 'say',
+        args: { text: 'Hi' },
+      });
+    });
+
+    it('should emit script:command for flow commands too', () => {
+      const handler = vi.fn();
+      bus.on('script:command', handler);
+      interpreter.load(makeScript([makeCmd('label', { name: 'x' }, 1)]));
+      interpreter.step();
+      expect(handler).toHaveBeenCalledWith({
+        cmd: 'label',
+        args: { name: 'x' },
+      });
+    });
+
     it('should increment pc after executing a command', () => {
       registry.register({ type: 'say', execute: vi.fn() });
       const script = makeScript([
