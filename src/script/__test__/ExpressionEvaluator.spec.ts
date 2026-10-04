@@ -330,6 +330,10 @@ describe('ExpressionEvaluator', () => {
       expect(isTruthy(0)).toBe(false);
     });
 
+    it('should return false for NaN', () => {
+      expect(isTruthy(Number.NaN)).toBe(false);
+    });
+
     it('should return false for empty string', () => {
       expect(isTruthy('')).toBe(false);
     });
