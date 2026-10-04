@@ -7,6 +7,19 @@ import Interpreter from './Interpreter';
 import CommandRegistry from './CommandRegistry';
 import { registerBuiltinCommands } from './commands';
 
+// 由 Interpreter.handleFlowCommand 直接处理的流程指令，不经过 CommandRegistry。
+const FLOW_COMMANDS = new Set([
+  'label',
+  'jump',
+  'call',
+  'return',
+  'if',
+  'elseif',
+  'else',
+  'endif',
+  'end',
+]);
+
 class ScriptEngine {
   public readonly commandRegistry: CommandRegistry;
   private interpreter: Interpreter;
@@ -26,6 +39,27 @@ class ScriptEngine {
   }
 
   public load(id: string, script: Script, startPc: number = 0): void {
+    if (
+      !Number.isInteger(startPc) ||
+      startPc < 0 ||
+      startPc > script.commands.length
+    ) {
+      throw new Error(
+        `Invalid startPc ${startPc} for script "${id}" ` +
+          `(expected an integer in 0..${script.commands.length}).`,
+      );
+    }
+    for (const command of script.commands) {
+      if (
+        !FLOW_COMMANDS.has(command.type) &&
+        !this.commandRegistry.has(command.type)
+      ) {
+        throw new Error(
+          `Unknown command "@${command.type}" in script "${id}" ` +
+            `at line ${command.line}.`,
+        );
+      }
+    }
     this.currentScript = id;
     this.interpreter.load(script, startPc);
   }

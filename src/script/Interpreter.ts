@@ -39,6 +39,16 @@ class Interpreter {
   }
 
   public load(script: Script, startPc: number = 0): void {
+    if (
+      !Number.isInteger(startPc) ||
+      startPc < 0 ||
+      startPc > script.commands.length
+    ) {
+      throw new Error(
+        `Invalid startPc ${startPc} for script "${script.name}" ` +
+          `(expected an integer in 0..${script.commands.length}).`,
+      );
+    }
     this.script = script;
     this.pc = startPc;
     this.callStack = [];
@@ -48,7 +58,9 @@ class Interpreter {
 
   public step(): void {
     if (this.pc >= this.script.commands.length) {
-      this.endScript();
+      if (this.state !== 'idle' && this.state !== 'waiting') {
+        this.endScript();
+      }
       return;
     }
     if (this.state === 'waiting') {
@@ -68,9 +80,15 @@ class Interpreter {
     };
     this.registry.execute(ctx, command);
     this.pc++;
-    if (this.pc >= this.script.commands.length) {
+    if (this.pc >= this.script.commands.length && !this.isWaiting()) {
       this.endScript();
     }
+  }
+
+  // A command's handler may switch the interpreter into 'waiting' while it runs,
+  // so the state must be re-read through a call rather than a narrowed local.
+  private isWaiting(): boolean {
+    return this.state === 'waiting';
   }
 
   private handleFlowCommand(command: Command): boolean {

@@ -44,6 +44,7 @@ Line
   / LabelDeclaration
   / MetadataLine
   / DialogLine
+  / VariableCommandLine
   / GenericCommandLine
   / CommentLine
   / BlankLine
@@ -60,6 +61,12 @@ __ "mandatory whitespace"
 
 _lineEnd "line end"
   = "\r\n" / "\n" / "\r"
+
+TrailingComment "trailing comment"
+  = "//" [^\r\n]*
+
+EndOfLine "end of line"
+  = _ TrailingComment? _lineEnd
 
 // ============================================================
 // 标识符与字面量
@@ -191,9 +198,9 @@ MetadataKey
   = "author" / "version" / "title"
 
 MetadataLine "metadata line"
-  = _ "@" key:MetadataKey __ value:StringLiteral _ _lineEnd
+  = _ "@" key:MetadataKey __ value:StringLiteral EndOfLine
   { return { type: 'meta', key, value }; }
-  / _ "@" key:MetadataKey _ rest:$([^\r\n]+) _ _lineEnd
+  / _ "@" key:MetadataKey _ rest:$((!TrailingComment [^\r\n])*) EndOfLine
   { return { type: 'meta', key, value: rest.trim() }; }
 
 // ============================================================
@@ -201,7 +208,7 @@ MetadataLine "metadata line"
 // ============================================================
 
 LabelDeclaration "label declaration"
-  = _ "@label" __ id:Identifier _ _lineEnd
+  = _ "@label" __ id:Identifier EndOfLine
   {
     return {
       type: 'command',
@@ -219,7 +226,7 @@ LabelDeclaration "label declaration"
 // ============================================================
 
 IfLine "if/elseif line"
-  = _ "@if" !IdentifierChar __ expr:OrExpr _ _lineEnd
+  = _ "@if" !IdentifierChar __ expr:OrExpr EndOfLine
   {
     return {
       type: 'command',
@@ -230,7 +237,7 @@ IfLine "if/elseif line"
       },
     };
   }
-  / _ "@elseif" !IdentifierChar __ expr:OrExpr _ _lineEnd
+  / _ "@elseif" !IdentifierChar __ expr:OrExpr EndOfLine
   {
     return {
       type: 'command',
@@ -248,7 +255,7 @@ IfLine "if/elseif line"
 
 SayLine "say command"
   = _ "@say" __ speaker:(StringLiteral / Identifier)
-    __ text:StringLiteral options:(__ @SayOption)* _ _lineEnd
+    __ text:StringLiteral options:(__ @SayOption)* EndOfLine
   {
     const args = { speaker, text };
     for (const opt of options) {
@@ -262,7 +269,7 @@ SayLine "say command"
 
 DialogLine "inline dialogue (语法糖)"
   = _ speaker:Identifier __ text:StringLiteral
-    options:(__ @SayOption)* _ _lineEnd
+    options:(__ @SayOption)* EndOfLine
   {
     const args = { speaker, text };
     for (const opt of options) {
@@ -286,9 +293,9 @@ SayOption "say option"
 // ============================================================
 
 ChoiceBlock "choice block"
-  = _ "@choice" _ mode:ChoiceMode? _ _lineEnd
+  = _ "@choice" _ mode:ChoiceMode? EndOfLine
     choices:ChoiceOptionLine*
-    _ "@endchoice" _ _lineEnd
+    _ "@endchoice" _ EndOfLine
   {
     return {
       type: 'command',
@@ -308,14 +315,37 @@ ChoiceMode "choice mode"
 
 ChoiceOptionLine "choice option"
   = _ "->" __ text:StringLiteral _ ":" _ label:Identifier
-    condition:(__ "if" __ cond:$([^\r\n]*) { return cond.trim(); })?
-    _ _lineEnd
+    condition:(__ "if" __ expr:OrExpr { return expr; })?
+    EndOfLine
   {
     const choice = { text, label };
     if (condition !== null) {
-      choice.condition = condition || undefined;
+      choice.condition = condition;
     }
     return choice;
+  }
+
+// ============================================================
+// 变量指令 — 右值允许完整表达式
+// 这些命令的 handler 会对 args['1']…（以及 @random 的 args['2']）求值，
+// 因此语法层必须放行表达式，而不是只接受单个字面量。
+// ============================================================
+
+VariableCommandName "variable command name"
+  = "set" / "add" / "sub" / "mul" / "div" / "mod" / "random"
+
+VariableCommandLine "variable command"
+  = _ "@" name:VariableCommandName __ target:VariableRef
+    values:(__ @OrExpr)* EndOfLine
+  {
+    const args = { '0': target };
+    values.forEach((value, index) => {
+      args[String(index + 1)] = value;
+    });
+    return {
+      type: 'command',
+      command: { type: name, args, line: location().start.line },
+    };
   }
 
 // ============================================================
@@ -324,7 +354,7 @@ ChoiceOptionLine "choice option"
 // ============================================================
 
 GenericCommandLine "generic @command"
-  = _ "@" name:Identifier args:(__ @Arg)* _ _lineEnd
+  = _ "@" name:Identifier args:(__ @Arg)* EndOfLine
   {
     const argsObj = {};
     let posIndex = 0;

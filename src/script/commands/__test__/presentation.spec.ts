@@ -90,6 +90,22 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should accept transition and duration as positional args', () => {
+      const spy = listen('character:show');
+      execute('show', {
+        '0': 'ch_hero',
+        '1': 'center',
+        '2': 'fade',
+        '3': { value: 500, unit: 'ms' },
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'center',
+        transition: 'fade',
+        duration: 500,
+      });
+    });
+
     it('should throw when id is missing', () => {
       expect(() => execute('show', {})).toThrow(
         '@show requires a character id',
@@ -139,6 +155,22 @@ describe('presentation commands', () => {
         position: 'center',
         duration: 1000,
         easing: 'easeOut',
+      });
+    });
+
+    it('should accept duration and easing from key-value args', () => {
+      const spy = listen('character:move');
+      execute('move', {
+        '0': 'ch_hero',
+        '1': 'left',
+        duration: { value: 2, unit: 's' },
+        easing: 'linear',
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'left',
+        duration: 2000,
+        easing: 'linear',
       });
     });
 
@@ -283,6 +315,16 @@ describe('presentation commands', () => {
         type: 'flash',
         color: '#FFFFFF',
         duration: 200,
+      });
+    });
+
+    it('@flash should accept a positional duration', () => {
+      const spy = listen('effect:play');
+      execute('flash', { '0': { value: 1, unit: 's' }, color: '#000000' });
+      expect(spy).toHaveBeenCalledWith({
+        type: 'flash',
+        color: '#000000',
+        duration: 1000,
       });
     });
 

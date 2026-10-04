@@ -64,13 +64,29 @@ class VariableStore {
   }
 
   public restore(data: VariableStoreData): void {
+    const { variables, flags } = data;
+    if (
+      typeof variables !== 'object' ||
+      variables === null ||
+      Array.isArray(variables)
+    ) {
+      throw new TypeError(
+        'VariableStore.restore expects data.variables to be an object',
+      );
+    }
+    if (!Array.isArray(flags)) {
+      throw new TypeError(
+        'VariableStore.restore expects data.flags to be an array',
+      );
+    }
+
     this.variables.clear();
-    for (const [key, value] of Object.entries(data.variables)) {
+    for (const [key, value] of Object.entries(variables)) {
       this.variables.set(key, value);
     }
 
     this.flags.clear();
-    for (const flag of data.flags) {
+    for (const flag of flags) {
       this.flags.add(flag);
     }
   }

@@ -96,6 +96,25 @@ describe('ScriptEngine', () => {
       engine.update();
       expect(endSpy).toHaveBeenCalled();
     });
+
+    it('should throw on a negative startPc and not mutate currentScript', () => {
+      const script = makeScript('@set $a 1\n');
+      expect(() => engine.load('vars', script, -1)).toThrow(
+        'Invalid startPc -1 for script "vars" (expected an integer in 0..1).',
+      );
+      expect(engine.getState().currentScript).toBe('');
+    });
+
+    it('should throw when startPc is beyond the last command', () => {
+      expect(() => engine.load('vars', makeScript('@set $a 1\n'), 2)).toThrow(
+        /Invalid startPc 2/,
+      );
+    });
+
+    it('should accept startPc equal to the command count', () => {
+      engine.load('vars', makeScript('@set $a 1\n'), 1);
+      expect(engine.getState().pc).toBe(1);
+    });
   });
 
   describe('getState', () => {
@@ -129,17 +148,39 @@ describe('ScriptEngine', () => {
       expect(engine.getState().pc).toBe(2);
     });
 
-    it('should emit script:end when script completes', () => {
+    it('should emit script:end exactly once when script completes', () => {
       const endSpy = vi.fn();
       bus.on('script:end', endSpy);
 
       engine.load('short', makeScript('@set $x 1\n'));
-      engine.update(); // executes @set
+      engine.update(); // executes @set and completes
       expect(endSpy).toHaveBeenCalledTimes(1);
 
-      // script:end fires every step after completion (pc stays at end)
+      // calling update again must not re-emit
       engine.update();
-      expect(endSpy).toHaveBeenCalledTimes(2);
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not end while the last @say is still waiting for a click', () => {
+      const endSpy = vi.fn();
+      bus.on('script:end', endSpy);
+
+      engine.load('last', makeScript('Hero "最后一句"\n'));
+      engine.update(); // emits script:say and enters waiting
+      expect(endSpy).not.toHaveBeenCalled();
+
+      // still waiting — no premature end on subsequent frames
+      engine.update();
+      expect(endSpy).not.toHaveBeenCalled();
+
+      // the click resolves the wait, then the script ends exactly once
+      bus.emit('input:click', { x: 0, y: 0 });
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
+
+      engine.update();
+      expect(endSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should handle flag commands', () => {
@@ -323,15 +364,27 @@ describe('ScriptEngine', () => {
       expect(executeSpy).toHaveBeenCalledOnce();
     });
 
-    it('should allow unregistering and re-registering commands', () => {
+    it('should reject a script that uses an unregistered command', () => {
       engine.commandRegistry.unregister('set');
 
-      // After unregistering, @set should warn but not throw
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      engine.load('test', makeScript('@set $x 1\n'));
-      expect(() => engine.update()).not.toThrow();
-      expect(store.get('x')).toBeUndefined();
-      warnSpy.mockRestore();
+      expect(() => engine.load('test', makeScript('@set $x 1\n'))).toThrow(
+        'Unknown command "@set" in script "test" at line 1.',
+      );
+    });
+
+    it('should reject an unknown command at load time', () => {
+      expect(() => engine.load('bad', makeScript('@nope 1\n'))).toThrow(
+        'Unknown command "@nope" in script "bad" at line 1.',
+      );
+    });
+
+    it('should accept registered builtins and flow commands', () => {
+      expect(() =>
+        engine.load(
+          'ok',
+          makeScript('@label start\n@set $x 1\n@if $x > 0\n@endif\n'),
+        ),
+      ).not.toThrow();
     });
   });
 

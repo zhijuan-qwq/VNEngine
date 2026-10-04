@@ -1,6 +1,7 @@
 import type { VNEngine } from './engine';
 import type { VariableStore } from '../script/VariableStore';
 import type { Interpreter } from '../script/Interpreter';
+import type { ExpressionNode } from '../script/ExpressionEvaluator';
 
 export interface Script {
   name: string;
@@ -24,7 +25,7 @@ export interface ScriptContext {
 export interface Choice {
   text: string;
   label: string;
-  condition?: string;
+  condition?: ExpressionNode;
   enabled?: boolean;
 }
 

@@ -73,6 +73,12 @@ describe('state commands', () => {
         execute('add', { '0': varRef('score'), '1': 'text' }),
       ).toThrow('Expected a number');
     });
+
+    it('should treat a null variable value as zero', () => {
+      env.store.set('score', null);
+      execute('add', { '0': varRef('score'), '1': 4 });
+      expect(env.store.get('score')).toBe(4);
+    });
   });
 
   describe('@random', () => {
@@ -116,6 +122,12 @@ describe('state commands', () => {
       execute('clearFlags', {});
       expect(env.store.hasFlag('a')).toBe(false);
       expect(env.store.hasFlag('b')).toBe(false);
+    });
+
+    it('should throw when the flag name is not a string', () => {
+      expect(() => execute('flag', { '0': 123 })).toThrow(
+        'Expected a flag name, got 123',
+      );
     });
   });
 });

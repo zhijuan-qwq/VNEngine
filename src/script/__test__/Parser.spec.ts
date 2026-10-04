@@ -123,7 +123,12 @@ describe('Parser', () => {
     expect(choices[2]).toMatchObject({
       text: '恶作剧',
       label: 'prank',
-      condition: '$confidence >= 50',
+      condition: {
+        type: 'binary',
+        op: '>=',
+        left: { type: 'var', name: 'confidence' },
+        right: 50,
+      },
     });
   });
 
@@ -167,6 +172,91 @@ describe('Parser', () => {
       name: 'affection',
     });
     expect(setCommand!.args['1']).toBe(10);
+  });
+
+  it('should parse expressions as variable command values', () => {
+    const script = parser.parseScript(
+      '@set $x 1 + 2\n' + '@add $y $base - 1\n' + '@random $d 1 6\n',
+    );
+
+    expect(script.commands[0]).toMatchObject({
+      type: 'set',
+      args: {
+        '0': { type: 'var', name: 'x' },
+        '1': {
+          type: 'binary',
+          op: '+',
+          left: 1,
+          right: 2,
+        },
+      },
+    });
+    expect(script.commands[1]).toMatchObject({
+      type: 'add',
+      args: {
+        '0': { type: 'var', name: 'y' },
+        '1': {
+          type: 'binary',
+          op: '-',
+          left: { type: 'var', name: 'base' },
+          right: 1,
+        },
+      },
+    });
+    expect(script.commands[2]).toMatchObject({
+      type: 'random',
+      args: { '0': { type: 'var', name: 'd' }, '1': 1, '2': 6 },
+    });
+  });
+
+  it('should parse a unary minus value in variable commands', () => {
+    const script = parser.parseScript('@add $x - 1\n');
+
+    expect(script.commands[0]).toMatchObject({
+      type: 'add',
+      args: {
+        '0': { type: 'var', name: 'x' },
+        '1': { type: 'unary', op: '-', expr: 1 },
+      },
+    });
+  });
+
+  it('should parse trailing comments on metadata and command lines', () => {
+    const script = parser.parseScript(
+      '@title My Game // the title\n' +
+        '@author Alice\n' +
+        '\n' +
+        '@label start // entry\n' +
+        '@bg classroom day // scene // note\n' +
+        '@set $x 1 // set x\n' +
+        'Hero "Hi" // greet\n',
+    );
+
+    expect(script.metadata).toEqual({ title: 'My Game', author: 'Alice' });
+    expect(script.labels.get('start')).toBe(0);
+    expect(script.commands[1]).toMatchObject({
+      type: 'bg',
+      args: { '0': 'classroom', '1': 'day' },
+    });
+    expect(script.commands[2]).toMatchObject({
+      type: 'set',
+      args: { '0': { type: 'var', name: 'x' }, '1': 1 },
+    });
+    expect(script.commands[3]).toMatchObject({
+      type: 'say',
+      args: { speaker: 'Hero', text: 'Hi' },
+    });
+  });
+
+  it('should keep quoted metadata intact when a trailing comment follows', () => {
+    const script = parser.parseScript('@title "A // B" // real comment\n');
+    expect(script.metadata.title).toBe('A // B');
+  });
+
+  it('should still parse whole-line comments', () => {
+    const script = parser.parseScript('// a comment\n@set $x 1\n');
+    expect(script.commands).toHaveLength(1);
+    expect(script.commands[0].type).toBe('set');
   });
 
   it('should throw TypeError for non-string input', () => {

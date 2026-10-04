@@ -15,6 +15,10 @@ class CommandRegistry {
     this.commands.delete(type);
   }
 
+  public has(type: string): boolean {
+    return this.commands.has(type);
+  }
+
   public execute(ctx: ScriptContext, cmd: Command): void {
     const handler = this.commands.get(cmd.type);
     if (!handler) {
