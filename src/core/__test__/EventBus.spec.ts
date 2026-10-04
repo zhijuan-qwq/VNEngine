@@ -72,6 +72,26 @@ describe('EventBus', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('should remove a once handler before invoking it', () => {
+    let calls = 0;
+    bus.once('script:end', () => {
+      calls += 1;
+      bus.emit('script:end', {});
+    });
+    bus.emit('script:end', {});
+    expect(calls).toBe(1);
+  });
+
+  it('should not keep a once handler that throws', () => {
+    const handler = vi.fn(() => {
+      throw new Error('boom');
+    });
+    bus.once('script:end', handler);
+    expect(() => bus.emit('script:end', {})).toThrow('boom');
+    expect(() => bus.emit('script:end', {})).not.toThrow();
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('should remove all listeners of an event with removeAllListeners()', () => {
     const h1 = vi.fn();
     const h2 = vi.fn();

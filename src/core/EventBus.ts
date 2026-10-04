@@ -27,8 +27,8 @@ class EventBus<T extends Record<string, unknown> = Record<string, unknown>> {
 
   public once<K extends keyof T>(event: K, handler: Handler<T[K]>): void {
     const onceHandler = ((payload: unknown) => {
-      (handler as Handler<unknown>)(payload);
       this.off(event, onceHandler as Handler<T[K]>);
+      (handler as Handler<unknown>)(payload);
     }) as Handler<unknown>;
     this.onceWrappers.set(handler as Handler<unknown>, onceHandler);
     this.on(event, onceHandler as Handler<T[K]>);
