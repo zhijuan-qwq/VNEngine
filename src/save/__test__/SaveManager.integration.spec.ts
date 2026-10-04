@@ -36,10 +36,8 @@ function makeEngine(
 ): Harness {
   const bus = new EventBus<EngineEvents>();
   const variableStore = new VariableStore();
-  const script = new ScriptEngine(bus, variableStore);
   const engine = {
     eventBus: bus,
-    script,
     variableStore,
     resource: {
       loadScript: async (id: string) => {
@@ -65,6 +63,8 @@ function makeEngine(
       },
     },
   } as unknown as VNEngine;
+  const script = new ScriptEngine(engine, variableStore);
+  (engine as unknown as { script: ScriptEngine }).script = script;
   return { engine, script, variableStore };
 }
 

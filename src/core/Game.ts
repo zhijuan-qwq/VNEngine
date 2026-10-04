@@ -187,7 +187,7 @@ class Game {
       this.input?.setUIRoot(this.ui.root);
     }
 
-    this.script = new ScriptEngine(this.eventBus, this.variableStore);
+    this.script = new ScriptEngine(this.engine, this.variableStore);
 
     this.plugins = new PluginManager(this.engine);
     this.plugins.loadAll(config.plugins ?? []);

@@ -1,5 +1,3 @@
-import type { EventBus } from '@/core/EventBus';
-import type { EngineEvents } from '@/types/events';
 import type { VNEngine } from '@/types/engine';
 import type { Script } from '@/types/script';
 import VariableStore from './VariableStore';
@@ -25,12 +23,14 @@ class ScriptEngine {
   private interpreter: Interpreter;
   private currentScript: string;
 
-  constructor(eventBus: EventBus<EngineEvents>, variableStore: VariableStore) {
+  constructor(engine: VNEngine, variableStore: VariableStore) {
     this.commandRegistry = new CommandRegistry();
     registerBuiltinCommands(this.commandRegistry);
-    this.interpreter = new Interpreter(variableStore, this.commandRegistry, {
-      eventBus,
-    } as VNEngine);
+    this.interpreter = new Interpreter(
+      variableStore,
+      this.commandRegistry,
+      engine,
+    );
     this.currentScript = '';
   }
 

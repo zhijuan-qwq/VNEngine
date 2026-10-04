@@ -3,6 +3,7 @@ import EventBus from '../../core/EventBus';
 import VariableStore from '../VariableStore';
 import Parser from '../Parser';
 import type { EngineEvents } from '@/types/events';
+import type { VNEngine } from '@/types/engine';
 import type { Script } from '@/types/script';
 
 function makeBus(): EventBus<EngineEvents> {
@@ -23,7 +24,7 @@ describe('ScriptEngine', () => {
   beforeEach(() => {
     bus = makeBus();
     store = new VariableStore();
-    engine = new ScriptEngine(bus, store);
+    engine = new ScriptEngine({ eventBus: bus } as unknown as VNEngine, store);
   });
 
   describe('constructor', () => {
@@ -419,6 +420,23 @@ describe('ScriptEngine', () => {
   });
 
   describe('commandRegistry', () => {
+    it('should expose the injected engine to command handlers', () => {
+      const injected = { eventBus: bus } as unknown as VNEngine;
+      const localEngine = new ScriptEngine(injected, store);
+      let seen: VNEngine | undefined;
+      localEngine.commandRegistry.register({
+        type: 'peek',
+        execute: (ctx) => {
+          seen = ctx.engine;
+        },
+      });
+
+      localEngine.load('peek', makeScript('@peek\n'));
+      localEngine.update();
+
+      expect(seen).toBe(injected);
+    });
+
     it('should allow registering custom commands', () => {
       const executeSpy = vi.fn();
       engine.commandRegistry.register({
