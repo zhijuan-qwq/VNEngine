@@ -26,6 +26,9 @@ export const stateCommands: CommandHandler[] = [
   {
     type: 'set',
     execute: (ctx, args) => {
+      if (args['1'] === undefined) {
+        throw new Error('@set requires a value.');
+      }
       ctx.store.set(
         getVarName(args['0']),
         evaluateExpression(args['1'], ctx.store),
@@ -68,6 +71,11 @@ export const stateCommands: CommandHandler[] = [
       const name = getVarName(args['0']);
       const min = toNumber(evaluateExpression(args['1'], ctx.store));
       const max = toNumber(evaluateExpression(args['2'], ctx.store));
+      if (!Number.isInteger(min) || !Number.isInteger(max) || min > max) {
+        throw new Error(
+          `@random requires integer bounds with min <= max, got ${min}..${max}.`,
+        );
+      }
       ctx.store.set(name, Math.floor(Math.random() * (max - min + 1)) + min);
     },
   },
