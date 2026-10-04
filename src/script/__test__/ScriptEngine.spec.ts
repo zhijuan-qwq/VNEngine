@@ -311,18 +311,86 @@ describe('ScriptEngine', () => {
     it('should handle inline dialogue and waiting state', () => {
       engine.load('dialogue', makeScript('Hero "你好"\nHeroine "早上好"\n'));
 
-      // First dialogue: enters waiting state for input:click
+      // First dialogue: enters waiting state for input:click, reporting the
+      // blocked command's pc so a save replays it
       engine.update();
-      expect(engine.getState().pc).toBe(1); // pc advanced but state=waiting
+      expect(engine.getState().pc).toBe(0);
 
       // Second update: should skip because still waiting
       engine.update();
-      expect(engine.getState().pc).toBe(1); // pc unchanged
+      expect(engine.getState().pc).toBe(0);
 
       // Simulate user click to unblock
       bus.emit('input:click', { x: 0, y: 0 });
       engine.update();
-      expect(engine.getState().pc).toBe(2); // now at second dialogue
+      expect(engine.getState().pc).toBe(1); // now blocked on second dialogue
+    });
+
+    it('should report the blocked command type while waiting', () => {
+      engine.load('dialogue', makeScript('Hero "你好"\n'));
+
+      engine.update();
+      expect(engine.getBlockedCommandType()).toBe('say');
+
+      bus.emit('input:click', { x: 0, y: 0 });
+      engine.update();
+      expect(engine.getBlockedCommandType()).toBeNull();
+    });
+
+    it('should replay the blocked command after reloading at the blocked pc', () => {
+      const saySpy = vi.fn();
+      bus.on('script:say', saySpy);
+      const script = makeScript('Hero "你好"\nHeroine "早上好"\n');
+      engine.load('dialogue', script);
+
+      engine.update();
+      expect(saySpy).toHaveBeenCalledTimes(1);
+
+      const saved = engine.getState();
+      // Restore: reload the same script at the blocked pc
+      engine.load(saved.currentScript, script, saved.pc);
+      engine.update();
+      expect(saySpy).toHaveBeenCalledTimes(2);
+      expect(saySpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ speaker: 'Hero', text: '你好' }),
+      );
+    });
+
+    it('should pass the resource id in the script:error payload', () => {
+      const errorSpy = vi.fn();
+      bus.on('script:error', errorSpy);
+      engine.commandRegistry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('nope');
+        },
+      });
+
+      engine.load('chapter-1', makeScript('@boom\n'));
+      engine.update();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'nope', script: 'chapter-1' }),
+      );
+    });
+
+    it('should keep updating after a command fails', () => {
+      const endSpy = vi.fn();
+      bus.on('script:end', endSpy);
+      engine.commandRegistry.register({
+        type: 'boom',
+        execute: () => {
+          throw new Error('nope');
+        },
+      });
+
+      engine.load('bad', makeScript('@boom\n@set $x 1\n'));
+      expect(() => engine.update()).not.toThrow();
+      expect(endSpy).toHaveBeenCalledTimes(1);
+      expect(store.get('x')).toBeUndefined();
+
+      expect(() => engine.update()).not.toThrow();
+      expect(endSpy).toHaveBeenCalledTimes(1);
     });
   });
 

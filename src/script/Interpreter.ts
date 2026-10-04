@@ -25,6 +25,7 @@ class Interpreter {
   private state: 'idle' | 'running' | 'waiting';
   private scriptId: string;
   private pendingWait: PendingWait | null;
+  private blockedPc: number;
 
   constructor(
     store: VariableStore,
@@ -41,10 +42,20 @@ class Interpreter {
     this.state = 'idle';
     this.scriptId = '';
     this.pendingWait = null;
+    this.blockedPc = 0;
   }
 
+  // While waiting the pc already points past the blocking command, so exposing
+  // the raw pc would make a save resume *after* the command and skip it. Report
+  // the blocking command itself so restoring replays it.
   public getPc(): number {
-    return this.pc;
+    return this.state === 'waiting' ? this.blockedPc : this.pc;
+  }
+
+  public getBlockedCommandType(): string | null {
+    return this.state === 'waiting'
+      ? (this.script.commands[this.blockedPc]?.type ?? null)
+      : null;
   }
 
   public load(
@@ -70,6 +81,7 @@ class Interpreter {
     this.script = script;
     this.scriptId = scriptId;
     this.pc = startPc;
+    this.blockedPc = startPc;
     this.callStack = [];
     this.ifStack = [];
     this.state = 'running';
@@ -317,9 +329,11 @@ class Interpreter {
           `"${String(this.pendingWait.event)}".`,
       );
     }
-    // The pc has not advanced past the blocking command yet, so it still
-    // identifies the command a handler failure should be reported against.
-    const blockedCommand = this.script.commands[this.pc];
+    // The pc has not advanced past the blocking command yet, so it identifies
+    // both the command a handler failure is reported against and the pc a save
+    // resumes from.
+    const blockedPc = this.pc;
+    const blockedCommand = this.script.commands[blockedPc];
     const onEvent = (payload: EngineEvents[K]): void => {
       this.pendingWait = null;
       this.state = 'running';
@@ -337,6 +351,7 @@ class Interpreter {
         this.runCleanup(cleanup);
       },
     };
+    this.blockedPc = blockedPc;
     this.state = 'waiting';
     this.engine.eventBus.once(event, onEvent);
   }

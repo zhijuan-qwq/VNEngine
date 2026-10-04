@@ -62,6 +62,48 @@ describe('Interpreter', () => {
       interpreter.load(script, 1);
       expect(interpreter.getPc()).toBe(1);
     });
+
+    it('should report the blocked command pc while waiting', () => {
+      registry.register({
+        type: 'say',
+        execute: (ctx) => {
+          ctx.interpreter.wait('input:click', () => {});
+        },
+      });
+      const script = makeScript([
+        makeCmd('say', { text: 'a' }, 1),
+        makeCmd('say', { text: 'b' }, 2),
+      ]);
+      interpreter.load(script);
+      interpreter.step(); // blocks at the first @say
+      expect(interpreter.getPc()).toBe(0);
+
+      bus.emit('input:click', { x: 0, y: 0 });
+      interpreter.step(); // resumes and blocks at the second @say
+      expect(interpreter.getPc()).toBe(1);
+    });
+  });
+
+  describe('getBlockedCommandType', () => {
+    it('should return null when not waiting', () => {
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      expect(interpreter.getBlockedCommandType()).toBeNull();
+    });
+
+    it('should return the blocked command type while waiting', () => {
+      registry.register({
+        type: 'say',
+        execute: (ctx) => {
+          ctx.interpreter.wait('input:click', () => {});
+        },
+      });
+      interpreter.load(makeScript([makeCmd('say', {}, 1)]));
+      interpreter.step();
+      expect(interpreter.getBlockedCommandType()).toBe('say');
+
+      bus.emit('input:click', { x: 0, y: 0 });
+      expect(interpreter.getBlockedCommandType()).toBeNull();
+    });
   });
 
   describe('load', () => {

@@ -70,6 +70,11 @@ class ScriptEngine {
       pc: this.interpreter.getPc(),
     };
   }
+
+  /** 等待中返回阻塞指令的类型（用于存档捕获；其余时候为 null） */
+  public getBlockedCommandType(): string | null {
+    return this.interpreter.getBlockedCommandType();
+  }
 }
 
 export default ScriptEngine;
