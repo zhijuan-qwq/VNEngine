@@ -145,5 +145,33 @@ describe('CommandRegistry', () => {
         }),
       ).not.toThrow();
     });
+
+    it('should propagate an error thrown by the handler', () => {
+      const boom = new Error('handler failed');
+      registry.register(
+        makeHandler('say', () => {
+          throw boom;
+        }),
+      );
+
+      expect(() =>
+        registry.execute(makeCtx(), { type: 'say', args: {}, line: 1 }),
+      ).toThrow(boom);
+    });
+  });
+
+  describe('register after unregister', () => {
+    it('should register a handler again for a previously removed type', () => {
+      registry.register(makeHandler('say'));
+      registry.unregister('say');
+      expect(registry.has('say')).toBe(false);
+
+      const execute = vi.fn();
+      registry.register(makeHandler('say', execute));
+
+      expect(registry.has('say')).toBe(true);
+      registry.execute(makeCtx(), { type: 'say', args: {}, line: 1 });
+      expect(execute).toHaveBeenCalledOnce();
+    });
   });
 });
