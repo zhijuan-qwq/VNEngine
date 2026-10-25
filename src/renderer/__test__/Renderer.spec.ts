@@ -119,8 +119,9 @@ describe('Renderer', () => {
 
       expect(layer('chara').children).toHaveLength(1);
       const sprite = layer('chara').children[0] as Sprite;
+      // 关键字位置：顶部偏移 + 显示高度（600 × 1.75 = 1050），下半身出画
       expect(sprite.x).toBe(200);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(600 * -0.04 + 1050);
       expect(sprite.anchor.y).toBe(1);
       expect(sprite.texture.frame.width).toBe(32);
       expect(sprite.texture.frame.height).toBe(64);
