@@ -1,0 +1,1235 @@
+@title 星星落进我家冰箱
+@author VNEngine
+@version 1.0
+
+@label start
+@set $affection 0
+
+// ======== 序章「冰箱里的星空」 ========
+// --- 场景 1｜公司会议室｜六月・周五夜 ---
+@bg office_5 fade 800ms
+@say "我（心声）" "[i]那一年的季度复盘，开到了晚上十点半。[/i]"
+@say "我（心声）" "[i]投影仪的光打在每个人脸上，像一层廉价的柔焦。[/i]"
+@say "我（心声）" "[i]散会时，组长拍我的肩。说小林辛苦了，下周继续。[/i]"
+@say "我" "好的组长。"
+@say "我（心声）" "[i]并不好。[/i]"
+@say "我（心声）" "[i]我叫林寻。二十七岁。业务支撑部，普通职员。[/i]"
+@say "我（心声）" "[i]专业技能：做 PPT，背锅，以及在深夜的便利店精准锁定最后一个限定布丁。[/i]"
+@say "我（心声）" "[i]人生目标：无。[/i]"
+@say "我（心声）" "[i]硬要说的话——冰箱里永远有甜点，是我对生活唯一的坚持。[/i]"
+@say "我（心声）" "[i]甜点这种东西，其实都有保质期。[/i]"
+@say "我（心声）" "[i]但我从来没看过。[/i]"
+@say "我（心声）" "[i]保质期这种东西，跟我这种人有关系吗。[/i]"
+// --- 场景 2｜末班电车｜同夜 ---
+@bg subway_1 fade 800ms
+@playBgm time loop
+@say "我（心声）" "[i]末班车，空得能听见空调滴水。[/i]"
+@say "我（心声）" "[i]车窗上映出我的脸。眼睛半睁，领带歪着，像一张没加载完的图。[/i]"
+@say "我（心声）" "[i]到站。撑伞。雨点砸在伞面上，噼里啪啦。[/i]"
+// --- 场景 3｜商店街｜同夜 ---
+@bg street_2 fade 800ms
+@playBgm amatsubu loop
+@rain
+@say "我（心声）" "[i]六月的雨，下得毫无诚意。像要把整个梅雨季的份额一次预支完。[/i]"
+@say "我" "……蛋糕。冰箱里好像还剩半块。"
+@say "我（心声）" "[i]加班的夜晚，撑住我的就两样东西。工资到账的短信，和冰箱里的甜点。[/i]"
+@say "我（心声）" "[i]还好，今天发工资。便利店买一送一的草莓蛋糕，最后一个，被我抢到了。[/i]"
+@say "我（心声）" "[i]回家的路，请快点走完。[/i]"
+// --- 场景 4｜林寻的公寓·客厅｜同夜 ---
+@bg living_room_3 fade 800ms
+@stopBgm fade=800ms
+@stopEffect
+@say "我（心声）" "[i]开门。玄关的灯应声亮起。[/i]"
+@say "我（心声）" "[i]然后，我看见了。[/i]"
+@say "我（心声）" "[i]餐桌歪着。椅子倒着。冰箱门大敞，像一张惊愕的嘴。[/i]"
+@say "我（心声）" "[i]我放在冰箱顶上的草莓蛋糕，盒子空了，躺在客厅正中央。[/i]"
+@say "我（心声）" "[i]奶油在地板上拖出一条白色的痕迹，一路延伸到沙发。[/i]"
+@say "我（心声）" "[i]痕迹的尽头，睡着一个戴巨大尖顶帽的小小身影。[/i]"
+@playBgm nichijonoyume loop fadein=2s
+@show xingmi center sprite=c1_f1_eyes_closed_black transition=fade duration=500ms
+@say "？？？" "唔……第五块……还有布丁……别跑……"
+@say "我" "喂。"
+@sprite xingmi c1_f1_astonished_black fade 300ms
+@say "？？？" "……"
+@say "我" "喂——"
+@say "？？？" "哇哇哇哇哇——！！"
+@shake 500ms intensity=0.6
+@say "我（心声）" "[i]尖顶帽腾空而起。小身影连滚带爬退到墙角，手里多了一根闪着蓝光的……拖把。[/i]"
+@sprite xingmi c1_f1_not_good_black fade 300ms
+@say "？？？" "别、别过来！我警告你，我可是大魔女的高徒！"
+@say "我" "……你手里拿的是我家拖把。"
+@say "？？？" "……现在，它是法杖了。"
+@say "我" "那根法杖刚才扫到了开关。灯灭了一下。"
+@sprite xingmi c1_f1_black_black fade 300ms
+@say "？？？" "……错觉。"
+@say "我（心声）" "[i]一段漫长的沉默。雨声从窗外灌进来。[/i]"
+@sprite xingmi c1_f1_sigh_black fade 300ms
+@say "？？？" "……那个。我可以解释。"
+@say "我" "请。"
+@say "星弥" "我叫星弥！环游世界修行的魔女！今晚只是临时借用你家的小冰箱，补给魔力！"
+@say "我" "蛋糕呢。"
+@say "星弥" "补给了。"
+@say "我" "奶油呢。"
+@say "星弥" "路过了。"
+@say "我" "布丁呢。"
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "星弥" "……本魔女拒绝回答侮辱性的问题。"
+@say "我" "不，重点不是这个。门锁着。你怎么进来的。"
+@say "星弥" "说了是魔法。"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "看好了哦——空间转移！"
+@flash 200ms
+@shake 800ms intensity=0.8
+@say "我（心声）" "[i]蓝光炸开。她原地起跳，划出一道完美的抛物线——撞上天花板，摔回沙发。[/i]"
+@sprite xingmi c1_f1_astonished_black fade 300ms
+@say "星弥" "……疼。"
+@say "我" "……这就是魔法。"
+@sprite xingmi c1_f1_not_good_black fade 300ms
+@say "星弥" "雨夜！雨夜的魔力会受潮！很合理的！"
+@say "我（心声）" "[i]她一边嘴硬，一边飞快结了个手印。[/i]"
+@say "我（心声）" "[i]这次，一团星星似的光真的浮了起来。转了两圈。[/i]"
+@say "我（心声）" "[i]啵。炸成二十个空蛋糕盒。[/i]"
+@sprite xingmi c1_f1_black_black fade 300ms
+@say "星弥" "……"
+@say "我" "变回去。"
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "星弥" "变不回去。"
+@say "我（心声）" "[i]又是一段漫长的沉默。[/i]"
+@say "我（心声）" "[i]钟指向 23:47。窗外的雨没有要停的意思。[/i]"
+@say "我（心声）" "[i]她抱着膝盖缩在沙发上，像一只淋湿的猫。[/i]"
+@say "我（心声）" "[i]像一只淋湿的、偷吃了我蛋糕还振振有词的猫。[/i]"
+@say "我" "……今晚睡沙发。不许出声，不许乱碰东西。明天一早收拾干净，然后回家。"
+@sprite xingmi c1_f1_surprised_but_black fade 300ms
+@say "星弥" "诶。可以吗？"
+@say "我" "说好了，一晚。"
+@sprite xingmi c1_f1_smile_close_black fade 300ms
+@say "星弥" "好人！老板！恩人！贵姓！"
+@say "我" "林寻。"
+@say "星弥" "星星的星，寻找的寻？"
+@say "我" "随便你怎么记。"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "很好记。我记住了。"
+@say "我（心声）" "[i]后来我无数次回想这一晚。[/i]"
+@say "我（心声）" "[i]如果那时候我报警，或者把她扔出门外，之后所有的故事就都不会发生。[/i]"
+@say "我（心声）" "[i]可惜没有如果。[/i]"
+@say "我（心声）" "[i]当时的我只是叹了口气，把最后一盒布丁从她怀里抽出来，插上勺子，递回去。[/i]"
+@say "我" "吃完睡觉。别剩。"
+@sprite xingmi c1_f1_cat_mouth_black fade 300ms
+@say "星弥" "……你不吃？"
+@say "我" "今天吃过了。谢谢你的\"路过\"。"
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "星弥" "那我不客气了。"
+@say "我（心声）" "[i]她抱着布丁，像抱着什么稀世珍宝，一小口一小口地吃。[/i]"
+@say "我（心声）" "[i]吃到一半，忽然停下来，望着窗外。[/i]"
+@sprite xingmi c1_f1_calm_black fade 300ms
+@say "星弥" "……表世界的雨。和里世界的，好像也没差多少嘛。"
+@say "我" "嗯？"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "没什么。魔女用语。晚安，林寻。"
+@hide all fade 500ms
+// --- 场景 5｜林寻的公寓·卧室｜同夜 ---
+@bg bedroom_3 fade 800ms
+@stopBgm fade=800ms
+@say "我（心声）" "[i]我躺在床上，竖着耳朵听客厅的动静。[/i]"
+@say "我（心声）" "[i]没有魔法爆炸声，没有奇怪的咒语。[/i]"
+@say "我（心声）" "[i]只有很轻很轻的吸布丁的声音，和杯子碰到桌面的轻响。[/i]"
+@say "我（心声）" "[i]不知过了多久，睡着了。[/i]"
+@say "我（心声）" "[i]那晚我做了个梦。天上掉下来一颗星星。不大，也不亮。咚的一声，砸穿了我家的冰箱。[/i]"
+@say "我（心声）" "[i]醒来时我还在想，这梦也太没想象力了。[/i]"
+@say "我（心声）" "[i]——毕竟，谁家冰箱会掉星星啊。[/i]"
+@flag met_xingmi
+// ======== 第一章「同居守则一百条」 ========
+// --- 场景 1｜林寻的公寓·厨房｜六月・周六清晨 ---
+@bg living_room_4 fade 800ms
+@playBgm ontama_piano1_chikokushichau loop
+@show xingmi center sprite=c1_f1_eyes_closed_black transition=fade duration=500ms
+@say "我（心声）" "[i]清晨六点半。厨房里有动静。[/i]"
+@say "我（心声）" "[i]沙发上，昨晚那位\"大魔女高徒\"睡得四仰八叉，尖顶帽盖在脸上。[/i]"
+@say "我（心声）" "[i]而厨房里，牛奶在锅子里咕嘟咕嘟，煎蛋滋滋作响。[/i]"
+@say "我（心声）" "[i]正常得可疑。[/i]"
+@sprite xingmi c1_f1_smile_close_black fade 300ms
+@say "星弥" "唔嗯……好香……"
+@say "我（心声）" "[i]她迷迷糊糊飘进厨房，抓起牛奶盒，念念有词。[/i]"
+@say "我（心声）" "[i]下一秒，锅里啵啵啵炸开一片星星形状的糖粒，把煎蛋盖得严严实实。[/i]"
+@say "我" "等等。你对我的煎蛋做了什么。"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "魔力早餐。星星糖。可以补一整天的魔法能量哦。"
+@say "我" "我不需要魔法能量。"
+@say "我（心声）" "[i]她眨着眼，把一颗星星糖递到我嘴边。[/i]"
+@say "我（心声）" "[i]……尝了一口。意外地好吃。蜂蜜味。[/i]"
+@say "我" "……还行。"
+@sprite xingmi c1_f1_laugh_open_black fade 300ms
+@say "星弥" "嘿嘿。我就说嘛。\"有趣\"，是本魔女的第一原则。"
+@say "我（心声）" "[i]顺便一提，那锅星星糖，她一颗没剩全吃光了。[/i]"
+@say "我（心声）" "[i]所谓的能量补给。听起来就是想吃甜的。[/i]"
+// --- 场景 2｜客厅｜同日上午 ---
+@stopBgm fade=800ms
+@say "我" "那么。早餐解决了，来谈正事——你什么时候回去。"
+@sprite xingmi c1_f1_not_good_black fade 300ms
+@say "星弥" "回、回去？"
+@say "我" "你家。里世界。随便哪。"
+@sprite xingmi c1_f1_sigh_black fade 300ms
+@say "星弥" "传送是坏的。雨夜的魔力受潮，要晒很久。常识。"
+@say "我" "今天可是大晴天。"
+@sprite xingmi c1_f1_calm_black fade 300ms
+@say "星弥" "屋檐下是阴的。"
+@say "我（心声）" "[i]她的手指悄悄指向窗外。眼神笔直，毫无愧意。[/i]"
+@say "我（心声）" "[i]不行。不能被她带节奏。我清了清嗓子，拿出社会人的威严。[/i]"
+@say "我" "总之。不管你是魔女还是什么，私闯民宅是违法的。今天你必须——"
+@sprite xingmi c1_f1_focus_black fade 300ms
+@say "星弥" "啊，等一下。你知道\"魔女职业操守\"吗。"
+@say "我" "不知道。也不想知——"
+@say "星弥" "第一条。擅自闯入民宅的魔女，必须待到\"魔法失效日\"才能离开。铁律。"
+@say "我" "现编的吧。"
+@say "我（心声）" "[i]她\"唰\"地指向玄关。电梯门上贴着物业通知：例行维修，预计一周。[/i]"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "看。你家的电梯坏了。魔法是跟着业主的心情走的。至少失效一周哦。"
+@say "我" "电梯坏了和我有什么关系。"
+@sprite xingmi c1_f1_pout_black fade 300ms
+@say "星弥" "和魔法有关系。"
+@say "我（心声）" "[i]……和谁讲道理呢。和魔女吗。[/i]"
+@say "我（心声）" "[i]十分钟后，我签下了这份不平等条约。[/i]"
+@say "我" "住到\"魔法失效日\"。就一周。水电费你拿什么付。"
+@say "星弥" "用\"有趣\"付。"
+@say "我" "那玩意交不了物业费。"
+// --- 场景 3｜客厅·茶几｜同日下午 ---
+@playBgm ontama_piano2_taikutsuhashiawase loop
+@say "我（心声）" "[i]当天下午，茶几上摊开一张纸。标题：《同居守则》。[/i]"
+@say "我" "第一条。不许用魔法做家务。"
+@sprite xingmi c1_f1_not_good_black fade 300ms
+@say "星弥" "为什么！"
+@say "我" "你自己昨晚的杰作，二十个蛋糕盒，还堆在阳台上。再说，你之前没试过？"
+@sprite xingmi c1_f1_sigh_black fade 300ms
+@say "星弥" "……修行的时候。我把大魔女的扫帚变成过一只鸟。"
+@say "我" "然后呢。"
+@sprite xingmi c1_f1_black_black fade 300ms
+@say "星弥" "鸟撞翻了药水架。炸了半个药圃。然后我扫了三年药圃。"
+@say "我" "三年。"
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "星弥" "三年。"
+@say "我（心声）" "[i]意外的有说服力。第一条通过。[/i]"
+@say "我" "第二条。甜点要留一半。冰箱里的东西，不许全吃完。"
+@sprite xingmi c1_f1_cat_mouth_black fade 300ms
+@say "星弥" "两盒布丁以下不算！"
+@say "我" "两盒布丁以下全算。"
+@say "我" "第三条。出门必须穿便服。还有那顶帽子，藏起来。"
+@say "星弥" "帽子不行。这是魔女的命。"
+@say "我" "那你出什么门。"
+@sprite xingmi c1_f1_calm_black fade 300ms
+@say "星弥" "……帽子可以谈。"
+@say "我（心声）" "[i]谈判的结果：帽子的\"星空\"部分，被压缩进一枚星星形状的发夹。[/i]"
+@say "我（心声）" "[i]原理不明。她说是大魔女的收尾手艺。[/i]"
+@say "我（心声）" "[i]总之，看起来就像个普通的、有点可爱的小发夹。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "怎么样。"
+@say "我（心声）" "[i]牛仔外套，印着黑猫的 T 恤，蕾丝边裙摆。[/i]"
+@say "我（心声）" "[i]不知道她从哪变出来的。用魔法变的，后来她承认了。[/i]"
+@say "我（心声）" "[i]但意外地合适。[/i]"
+@say "我" "……挺像普通初中生。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "本魔女一百多岁了。"
+@say "我" "好好好。一百多岁的小学生。走吧。"
+// --- 场景 4｜商店街｜同日白天 ---
+@bg street_1 fade 800ms
+@playBgm lemonica loop
+@say "我（心声）" "[i]六月的商店街。阳光晒得柏油路面发亮。[/i]"
+@say "我（心声）" "[i]自动门唰地滑开。她一个箭步蹿进门里，退出来，又蹿进去。[/i]"
+@sprite xingmi c2_f1_oo_black fade 300ms
+@say "星弥" "会自己开的门！林寻！这个门会自己开！"
+@say "我" "自动门。很正常。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "里世界的门，只认血统和咒语。"
+@say "我" "你们的门好冷漠。"
+@say "我（心声）" "[i]一路上，她的惊喜清单持续更新。[/i]"
+@say "我（心声）" "[i]会喷雾的空调外机。井盖上的花纹。贩卖机里晃动的布丁剪影。[/i]"
+@say "我（心声）" "[i]一百多岁的好奇心，比春游的小学生还旺盛。[/i]"
+// --- 场景 5｜超市｜同日 ---
+@bg shop_6 fade 800ms
+@playBgm suika loop
+@say "我（心声）" "[i]超市冷气十足。购物车推到生鲜区，她突然刹住。[/i]"
+@sprite xingmi c2_f1_cat_mouth_black fade 300ms
+@say "星弥" "这个……绿油油的大家伙。"
+@say "我" "西瓜。"
+@say "星弥" "西瓜！里世界传说中的\"夏日红宝石\"！"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "大魔女说过。人类的世界，有一种把整个夏天装进肚子里的水果。"
+@say "星弥" "原来是真的。真的有这么多。"
+@say "我" "要吗。"
+@say "星弥" "要！"
+@sprite xingmi c2_f1_not_good_black fade 300ms
+@say "星弥" "……但是。要怎么吃。"
+@choice
+  -> "回家教她吃西瓜": c1_1_a
+  -> "默默放进购物车": c1_1_b
+@endchoice
+@label c1_1_a
+@add $affection 10
+@say "我" "回家我教你。切两半，拿勺子挖着吃。吃完了瓜皮还能扣头上。"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "扣头上？！人类好野蛮！"
+@say "我" "开玩笑的。……一半玩笑。"
+@jump c1_1_end
+@label c1_1_b
+@add $affection 5
+@say "我（心声）" "[i]我把西瓜默默放进购物车。[/i]"
+@say "我（心声）" "[i]她两只手抱着它，从生鲜区一路抱到收银台。谁碰跟谁急。[/i]"
+@jump c1_1_end
+@label c1_1_end
+// --- 场景 6｜商店街·贩卖机前｜同日 ---
+@say "我（心声）" "[i]回去的路上，她卡在一台贩卖机前。[/i]"
+@say "我（心声）" "[i]不动。就那么盯着里面的布丁剪影。[/i]"
+@sprite xingmi c2_f1_bewilderment_black fade 300ms
+@say "星弥" "这个钢铁匣子。里面的布丁在动。"
+@say "我" "那是样品。投硬币，按按钮，布丁才会掉下来。"
+@say "我（心声）" "[i]她捏着硬币研究半天，对着投币口比划了三次。[/i]"
+@say "我（心声）" "[i]都没塞进去。[/i]"
+@choice
+  -> "手把手教她": c1_2_a
+  -> "替她投币": c1_2_b
+  -> "笑她土气": c1_2_c
+@endchoice
+@label c1_2_a
+@add $affection 10
+@say "我" "手给我。……硬币放平，推进去。对。然后按 B3。"
+@say "我（心声）" "[i]咚。布丁滚下来。她盯着取物口，眼睛比布丁还亮。[/i]"
+@jump c1_2_end
+@label c1_2_b
+@add $affection 5
+@say "我（心声）" "[i]我把硬币拿过来，替她投了。买好布丁，递给她。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "人类的世界，真方便呀。"
+@jump c1_2_end
+@label c1_2_c
+@add $affection -5
+@say "我" "连贩卖机都不会用。魔女的修行不行啊。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "这、这是本魔女第一次见！下次就会了！哼！"
+@jump c1_2_end
+@label c1_2_end
+// --- 场景 7｜回家路上｜同日黄昏 ---
+@say "我（心声）" "[i]变故发生在回家路上。她的购物袋飘起来了。[/i]"
+@say "我（心声）" "[i]塑料袋、西瓜、面包。连成一串，晃晃悠悠往天上飘。[/i]"
+@say "我（心声）" "[i]路过的小孩\"哇\"地瞪圆了眼，仰着头。[/i]"
+@say "我（心声）" "[i]我的第一反应：完了。第二反应：她要怎么收场。[/i]"
+@say "我（心声）" "[i]她愣了半秒。然后蹲下来，冲小孩眨了眨眼。[/i]"
+@sprite xingmi c2_f1_not_good_black fade 300ms
+@say "星弥" "嘘——是魔法哦。"
+@say "小孩" "哇！！哥哥你看！魔法！是魔法！！"
+@say "我（心声）" "[i]小孩蹦蹦跳跳跑远了。[/i]"
+@say "我（心声）" "[i]飘在半空的购物袋轻飘飘落回她手里，被她一把抓稳。[/i]"
+@say "我（心声）" "[i]她站在原地，看着小孩跑走的方向。愣了好一会儿。[/i]"
+@say "我" "喂。魔法少女。走了。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "……嗯。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "刚才那个小孩。相信我了。"
+@say "我" "小孩子的世界简单。"
+@sprite xingmi c2_f1_smile_close_black fade 300ms
+@say "星弥" "嘿嘿。表世界，不错嘛。"
+// --- 场景 8｜公寓·阳台｜同夜 ---
+@bg living_room_2 fade 800ms
+@playBgm lemonsui loop
+@say "我（心声）" "[i]晚上。她趴在阳台栏杆上，看楼下的城市灯火。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "表世界的夜晚，好吵。"
+@say "我" "抱歉啊。城市就这样。"
+@say "星弥" "车在跑，人在走，家家户户亮着灯。吵得不行。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "但是好温暖。"
+@say "我（心声）" "[i]她伸出手，像要把远处的灯串捞进手心。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "里世界的夜晚很安静。安静得能听见星星眨眼的声音。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "不过今天。我觉得，吵一点也挺好。"
+@say "我（心声）" "[i]夜风把她的长发吹起来。星星发夹在灯下闪了一下。[/i]"
+@say "我（心声）" "[i]那天晚上，我翻出《同居守则》。发现纸的背面被她画满了小人。[/i]"
+@say "我（心声）" "[i]最后一条，是她用花体字郑重其事添上的。[/i]"
+@say "我（心声）" "[i]第一百条：要一直，有趣下去。[/i]"
+@say "我（心声）" "[i]前九十九条都是玩笑。[/i]"
+@say "我（心声）" "[i]只有这一条，她写得很认真。[/i]"
+// ======== 第二章「雨停之前，先烤蛋糕」 ========
+// --- 场景 1｜公寓·客厅｜七月・雨日 ---
+@bg living_room_1 fade 800ms
+@playBgm aoringo loop
+@rain
+@sprite xingmi c2_f1_sigh_black fade 300ms
+@say "我（心声）" "[i]进入七月，梅雨认认真真地下了一个星期。[/i]"
+@say "我（心声）" "[i]阳台上的二十个空蛋糕盒，早就收拾干净了。[/i]"
+@say "我（心声）" "[i]取而代之的，是一只蔫掉的魔女。[/i]"
+@say "星弥" "……"
+@say "我" "喂。电视不好看？"
+@sprite xingmi c2_f1_black_black fade 300ms
+@say "星弥" "魔力受潮。全身没劲。脑袋像泡了水的饼干。"
+@say "我" "你上周还说，受潮的魔力晒晒就好。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "屋檐下是阴的。"
+@say "我" "又来。"
+@say "我（心声）" "[i]她趴在窗边，看外面的雨。看了很久。[/i]"
+@say "我（心声）" "[i]雨点顺着玻璃往下爬。一道叠着一道。[/i]"
+@say "星弥" "……一百年前的雨。也是这样下的。"
+@say "我" "嗯？"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "没什么。本魔女在背雨的分类学。小雨、中雨、大雨、豪雨，以及\"梅雨\"。"
+@say "我（心声）" "[i]分得太熟了。熟得不像现编的。[/i]"
+@say "我（心声）" "[i]但我没接话。[/i]"
+@say "我（心声）" "[i]她的背影贴着玻璃，像一张被雨水泡褪色的贴纸。[/i]"
+@say "我（心声）" "[i]那天她一整天没什么精神。晚饭吃了两口，放下了筷子。[/i]"
+@say "我" "……喂。想吃甜的吗？"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "诶？"
+@say "我" "冰箱里还有奶油和低筋粉。反正下雨也出不去——"
+@say "我" "烤个蛋糕吧。反正你烤蛋挞这么厉害。"
+// --- 场景 2｜厨房｜同日 ---
+@stopBgm fade=800ms
+@stopEffect
+@bg kitchen_1 fade 800ms
+@playBgm tedzukurinomahou loop
+@sprite xingmi c2_f1_oo_black fade 300ms
+@say "星弥" "烤蛋糕。本魔女的领域。"
+@say "我（心声）" "[i]她瞬间满血复活，袖子一挽，冲进了厨房。[/i]"
+@say "我（心声）" "[i]然后，我看到了完全不像\"冒失魔女\"的一幕。[/i]"
+@say "我（心声）" "[i]打蛋。手腕悬着，力道又轻又稳。[/i]"
+@say "我（心声）" "[i]分蛋。蛋黄在两半蛋壳间来回，一滴清都没混进去。[/i]"
+@say "我（心声）" "[i]打发奶油。盆子斜着转，纹路立得笔直。[/i]"
+@say "我" "……你是不是偷偷练过。"
+@sprite xingmi c2_f1_focus_black fade 300ms
+@say "星弥" "手法的修行，是魔女的必修课哦。魔力会失误，手不会。"
+@say "我（心声）" "[i]她把烤盘送进烤箱。动作行云流水。[/i]"
+@say "我（心声）" "[i]然后一边盯着火候，一边随口说——[/i]"
+@say "星弥" "以前修行的时候，给大魔女烤过几百个蛋挞。闭着眼都不会糊——"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "……"
+@say "我（心声）" "[i]空气凝固了半秒。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "哈、哈哈。开玩笑的啦。几百个，怎么可能。顶多几十个。"
+@say "我（心声）" "[i]她笑得很响。[/i]"
+@say "我（心声）" "[i]响得反而不像玩笑。[/i]"
+@choice
+  -> "追问“几百年？”": c2_1_a
+  -> "装作没听见": c2_1_b
+@endchoice
+@label c2_1_a
+@add $affection 10
+@flag heard_age
+@say "我" "几百个……星弥。你到底几岁。"
+@sprite xingmi c2_f1_not_good_black fade 300ms
+@say "星弥" "[pause=600]……秘密。"
+@say "我" "魔女的年龄也算秘密？"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "女性都说秘密。魔女要加倍。"
+@say "我（心声）" "[i]她笑着把话题岔开。[/i]"
+@say "我（心声）" "[i]但那半秒里，她眼底掠过的东西，像针一样扎人。[/i]"
+@jump c2_1_end
+@label c2_1_b
+@add $affection -5
+@say "我（心声）" "[i]我把疑问咽了回去。像把一颗草莓，轻轻按进奶油深处。[/i]"
+@say "我（心声）" "[i]有些数字，不问，就不用面对答案。[/i]"
+@jump c2_1_end
+@label c2_1_end
+@shake 800ms intensity=0.5
+@say "我（心声）" "[i]烤箱响了。我们同时凑过去。[/i]"
+@say "我（心声）" "[i]她拉开箱门的瞬间，一小团热气糊了她一脸。[/i]"
+@say "我（心声）" "[i]蛋糕出锅。卖相——糊了半边。[/i]"
+@say "我（心声）" "[i]焦黑的那半边，还在冒小烟。[/i]"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "糊了？！本魔女的蛋糕怎么会糊！"
+@say "我" "刚才你说\"闭着眼都不会糊\"来着。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "魔力受潮。烤箱的脾气我摸不准嘛。"
+@say "我（心声）" "[i]她盯着那半边焦黑。[/i]"
+@say "我（心声）" "[i]蔫下去的肩膀，比刚才趴在窗边时还要低。[/i]"
+@choice
+  -> "“焦香限定”": c2_2_a
+  -> "抢过来自己吃": c2_2_b
+@endchoice
+@label c2_2_a
+@add $affection 10
+@say "我" "这是新流派。\"焦香限定\"。外面有钱都买不到。"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "焦、焦香限定？"
+@say "我" "嗯。限定本店。仅此一份。"
+@sprite xingmi c2_f1_laugh_open_black fade 300ms
+@say "星弥" "噗——哈哈。林寻，你这个人真的很奇怪！"
+@jump c2_2_end
+@label c2_2_b
+@add $affection 5
+@say "我（心声）" "[i]我掰下焦的那半边，咬了一口。[/i]"
+@say "我" "嗯。苦的。归我了。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "[pause=500]……苦的为什么归你。"
+@say "我" "因为难吃的部分要有人吃掉。天经地义。"
+@say "我（心声）" "[i]她抢过那半边蛋糕，背过身，一口一口吃完了。[/i]"
+@jump c2_2_end
+@label c2_2_end
+// --- 场景 3｜客厅·茶几｜同日午后 ---
+@playBgm ontama_piano1_fuwaritoamaikyuusoku loop
+@bg living_room_4 fade 800ms
+@say "我（心声）" "[i]午后。雨小了。[/i]"
+@say "我（心声）" "[i]没糊的那半边蛋糕摆在茶几上。两个人，一勺一勺，分掉了。[/i]"
+@say "我（心声）" "[i]海绵湿润，奶油微甜。[/i]"
+@say "我（心声）" "[i]草莓是她用\"挑拣魔法\"选的。其实就是挨个捏。意外地都很甜。[/i]"
+@sprite xingmi c2_f1_smile_close_black fade 300ms
+@say "星弥" "好吃。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "……人类做的东西。明明没有魔法，却比魔法做的好吃多了。"
+@say "我" "魔法做的什么味。"
+@sprite xingmi c2_f1_black_black fade 300ms
+@say "星弥" "星星糖那个味。齁甜齁甜，吃多了想打嗝。"
+@say "我" "听起来毫无魔力。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "所以说呀——手作的，才是魔法。"
+@say "我（心声）" "[i]她说这话的时候，语气很轻。像在念一句咒语。[/i]"
+@say "我（心声）" "[i]我没听懂。[/i]"
+@say "我（心声）" "[i]后来才懂。[/i]"
+// --- 场景 4｜公寓天台｜同日黄昏 ---
+@stopBgm fade=800ms
+@stopEffect
+@bg community_4 fade 800ms
+@playBgm kumomakarataiyou loop
+@say "我（心声）" "[i]傍晚，雨彻底停了。[/i]"
+@say "我（心声）" "[i]云层裂开一道缝，金红色的光从云间泻下来。[/i]"
+@say "我（心声）" "[i]她拉着我上天台。说是\"魔力要晒太阳\"。[/i]"
+@say "我（心声）" "[i]天台上风很大。她张开手臂，让风吹裙摆，转了个圈。[/i]"
+@sprite xingmi c2_f1_laugh_open_black fade 300ms
+@say "星弥" "活过来了。魔力充能 100%。"
+@say "我（心声）" "[i]然后她哼起了歌。[/i]"
+@say "我（心声）" "[i]调子很怪。不是这边的音阶。像风铃，又像水滴，一段一段往下坠。[/i]"
+@say "我（心声）" "[i]她哼着哼着，忽然停了。[/i]"
+@say "我" "怎么不唱了？"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "……想不起来。后面两句，想不起来了。"
+@say "我（心声）" "[i]骗人。[/i]"
+@say "我（心声）" "[i]她低下头去踢脚下的小石子。踢得很用力。[/i]"
+@say "我（心声）" "[i]像要把什么东西，踢远一点。[/i]"
+// --- 场景 5｜天台→公寓｜同夜 ---
+@stopBgm fade=800ms
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "林寻。"
+@say "星弥" "……我才不是笨蛋呢。"
+@say "星弥" "只是，不想去面对而已。"
+@say "我" "什么？"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "什么都没说哦。"
+@say "我（心声）" "[i]她转过身时，脸上又是那个亮晶晶的笑。[/i]"
+@say "我（心声）" "[i]云缝里的光落在她头顶。星星发夹闪了一下，像一颗很小的星星。[/i]"
+@say "我（心声）" "[i]那天晚上的她——哼到一半的歌，说一半的话，还有没说完的\"一百年前\"。[/i]"
+@say "我（心声）" "[i]全都一起，被我按进了心里那个越来越沉的地方。[/i]"
+// ======== 第三章「摩天轮的第 37 次夏天」 ========
+// --- 场景 1｜公寓·客厅｜八月・周五夜 ---
+@bg living_room_1 fade 800ms
+@playBgm ontama_piano1_mizuiro loop
+@sprite xingmi c2_f1_oo_black fade 300ms
+@say "我（心声）" "[i]八月初。我的信箱里塞进来一张游乐园的传单。[/i]"
+@say "我（心声）" "[i]准确地说，是被某人从信箱里\"考古\"出来的。[/i]"
+@say "星弥" "林寻！这个大圆环。我知道这个！"
+@say "我" "摩天轮。"
+@say "星弥" "我坐过。整整 37 次——"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "[pause=500]……梦里。在梦里坐过。"
+@say "我" "哪里的梦，能精确到次数啊。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "梦是自由的。"
+@say "我（心声）" "[i]她的眼睛亮得像通了电。传单被她捏在手里，边角都攥卷了。[/i]"
+@say "我（心声）" "[i]叹气。拿外套。拿钱包。[/i]"
+@say "我" "换衣服。出发。"
+// --- 场景 2｜电车｜同日 ---
+@stopBgm fade=800ms
+@say "我（心声）" "[i]去程的车厢不算挤。她整个人贴在车门上，看隧道里的灯一盏一盏往后飞。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "灯在追我们。"
+@say "我" "是我们在追灯。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "一样的嘛。"
+@say "我（心声）" "[i]出了地面，阳光哗地灌进车厢。她眯起眼睛，伸手挡了挡。[/i]"
+// --- 场景 3｜游乐园｜同日白天 ---
+@bg amusement_park_1 fade 800ms
+@playBgm ontama_piano1_jujitsunojikan loop
+@say "我（心声）" "[i]周六的游乐园，人山人海。旋转木马的八音盒声混着尖叫，飘在半空。[/i]"
+@sprite xingmi c2_f1_laugh_open_black fade 300ms
+@say "星弥" "那个！转圈的马！还有那个！大圆环！那边还有棉花糖的甜味！"
+@say "我（心声）" "[i]她原地转了一圈，像要把整个乐园塞进眼睛里。[/i]"
+@say "我（心声）" "[i]第一站，旋转木马。[/i]"
+@say "我（心声）" "[i]排队的时候，她盯着那些木马看得出神。手指悄悄结了个手印——[/i]"
+@say "我" "住手。"
+@sprite xingmi c2_f1_not_good_black fade 300ms
+@say "星弥" "我什么都没做。"
+@say "我" "你想让木马起飞。我看见你手印了。"
+@sprite xingmi c2_f1_black_black fade 300ms
+@say "星弥" "……木马又不会真飞。就离地一点点。"
+@say "我" "一点点也不行。上面的小孩会吓哭。"
+@sprite xingmi c2_f1_sigh_black fade 300ms
+@say "星弥" "哦……"
+@say "我（心声）" "[i]她蔫蔫地收了手印。轮到我们的时候，她挑了最华丽的那匹白马，坐上去，抱住马脖子。[/i]"
+@say "我（心声）" "[i]木马升升降降。八音盒叮叮当当。[/i]"
+@say "我（心声）" "[i]她笑得像个真正的小学生。[/i]"
+@say "我（心声）" "[i]——好险。没飞起来。[/i]"
+@shake 500ms intensity=0.3
+@say "我（心声）" "[i]射击摊位。汽水瓶排成三排。[/i]"
+@sprite xingmi c2_f1_focus_black fade 300ms
+@say "星弥" "老板。那个星星挂饰。"
+@say "我（心声）" "[i]老板递来软弹枪。她端起来，眯眼，屏息——[/i]"
+@say "我（心声）" "[i]啪。啪。啪。[/i]"
+@say "我（心声）" "[i]十发。十个瓶子。整整齐齐。[/i]"
+@say "老板" "小姑娘，你这个……练过？"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "直觉而已。"
+@say "我（心声）" "[i]直觉个头。那是弹道演算吧。绝对是吧。[/i]"
+@say "我（心声）" "[i]她抱着星星挂饰，昂首挺胸，走路带风。[/i]"
+// --- 场景 4｜园区餐厅｜同日中午 ---
+@bg shop_4 fade 800ms
+@say "我（心声）" "[i]中午，园区餐厅。窗边座位。两份套餐，和——冰淇淋。[/i]"
+@say "我（心声）" "[i]玻璃柜台里排着一列甜筒。巧克力脆皮在灯下闪闪发亮。[/i]"
+@sprite xingmi c2_f1_cat_mouth_black fade 300ms
+@say "星弥" "……"
+@say "我" "想吃什么？"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "本魔女在思考\"甜度与体积的最优解\"。"
+@say "我" "直接说想吃的。"
+@say "星弥" "最上面那个。最大的。"
+@choice
+  -> "同款的，两份": c3_1_a
+  -> "小孩子才吃甜筒": c3_1_b
+@endchoice
+@label c3_1_a
+@add $affection 10
+@say "我" "同款的。两份。"
+@say "我（心声）" "[i]店员包好递过来。她两手各举一个，左看右看，不知道先吃哪个。[/i]"
+@jump c3_1_end
+@label c3_1_b
+@add $affection 5
+@say "我" "小孩子才吃甜筒。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "你说谁小孩子！"
+@say "我（心声）" "[i]我买了一个，咬了一口，塞进她手里。[/i]"
+@say "我" "给你。替我吃\"小孩子\"的部分。"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "[pause=400]……哼。看在冰淇淋的份上，原谅你。"
+@jump c3_1_end
+@label c3_1_end
+// --- 场景 5｜摩天轮｜同日下午 ---
+@bg sky_1 fade 800ms
+@playBgm ontama_piano1_fluitsmillefe loop
+@say "我（心声）" "[i]下午三点，摩天轮。轿厢缓缓上升。游乐园在脚下铺开，缩成一张彩色的地图。[/i]"
+@sprite xingmi c2_f1_oo_black fade 300ms
+@say "星弥" "哇……"
+@say "我（心声）" "[i]她趴在玻璃上。看木马变小，看人群变小，看过山车的尖叫也变远。[/i]"
+@say "我（心声）" "[i]轿厢升到顶点的那一瞬间，整片天空扑面而来。[/i]"
+@say "我（心声）" "[i]云很多。风把云推着跑。光从云的间隙里，一格一格刷下来。[/i]"
+@say "我（心声）" "[i]她安静下来了。看着窗外。忽然开口。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "第 37 次坐摩天轮，就是这个位子。靠窗，正对太阳的那边。"
+@say "我" "……你不是说，是在梦里坐的？"
+@sprite xingmi c2_f1_not_good_black fade 300ms
+@say "星弥" "[pause=600]"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "……第一次坐的时候，它还不叫摩天轮。叫\"观星车\"。是魔女们拿来看星象用的。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "啊——又差点说漏了。真是的，今天怎么老是……"
+@say "我（心声）" "[i]她吐了吐舌头，做作地笑了两声。[/i]"
+@say "我（心声）" "[i]轿厢在最高点停了一会儿。很安静。只有风声。[/i]"
+@say "我（心声）" "[i]她闭上眼睛，双手合在胸前，嘴唇动了动。[/i]"
+@say "我（心声）" "[i]许愿？[/i]"
+@say "我" "许了什么？"
+@say "星弥" "说出来就不灵了。"
+@say "我（心声）" "[i]她顿了顿。看着窗外。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "……不过，和\"明年\"有关。"
+@choice
+  -> "希望明年，也能这样": c3_2_a
+  -> "希望年终奖多一点": c3_2_b
+  -> "沉默着看风景": c3_2_c
+@endchoice
+@label c3_2_a
+@add $affection 10
+@say "我" "那我也许一个。希望明年，也能这样。"
+@say "我（心声）" "[i]她猛地转过头看我，睫毛眨了好几下。[/i]"
+@sprite xingmi c2_f1_shy_shy fade 300ms
+@say "星弥" "[pause=400]……笨蛋。愿望说出来就不灵了哦。"
+@jump c3_2_end
+@label c3_2_b
+@add $affection 5
+@say "我" "希望今年年终奖，发得多一点。"
+@sprite xingmi c2_f1_laugh_open_black fade 300ms
+@say "星弥" "噗——好庸俗！哈哈哈哈！"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "不过。庸俗的愿望比较容易实现嘛。"
+@jump c3_2_end
+@label c3_2_c
+@say "我（心声）" "[i]我没有接话。轿厢开始下降，云被抛在头顶。[/i]"
+@say "我（心声）" "[i]她靠在玻璃上，轻轻哼起了那首调子很怪的歌。[/i]"
+@jump c3_2_end
+@label c3_2_end
+// --- 场景 6｜归途｜同日黄昏 ---
+@bg street_4 fade 800ms
+@playBgm ontama_piano2_taikutsuhashiawase loop
+@say "我（心声）" "[i]归途。黄昏把街道染成橘子汽水的颜色。[/i]"
+@say "我（心声）" "[i]她手里举着战利品——射击摊赢来的星星挂饰，一路晃。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "像不像法杖。小型的。"
+@say "我" "像。魔女界最水的法杖。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "它可是\"直觉\"的结晶。"
+@say "我（心声）" "[i]路灯一盏一盏亮起来。她走在前面半步。[/i]"
+@say "我（心声）" "[i]影子被拉得很长，和我的影子在地上碰来碰去。[/i]"
+@say "我（心声）" "[i]到家门口，她忽然停下。转身。把星星挂饰举到我眼前。[/i]"
+@sprite xingmi c2_f1_focus_black fade 300ms
+@say "星弥" "林寻。拉钩。"
+@say "我" "拉什么钩。"
+@say "星弥" "今天的事，不许忘。旋转木马、棉花糖、摩天轮顶上的云。全部，不许忘。"
+@say "我（心声）" "[i]她伸出小拇指，表情严肃得像在缔结什么魔法条约。[/i]"
+@say "我（心声）" "[i]我伸出小拇指，勾住了。[/i]"
+@say "我" "契约成立。"
+@sprite xingmi c2_f1_smile_close_black fade 300ms
+@say "星弥" "嘿嘿。本魔女见证。"
+// --- 场景 7｜附近的公园｜同夜 ---
+@bg park_4 fade 800ms
+@playBgm miagerusora loop
+@say "我（心声）" "[i]晚饭后她说要去\"消食\"，拉着我绕到了附近的公园。[/i]"
+@say "我（心声）" "[i]夏夜的风终于凉了下来。长椅。路灯。草丛里的虫鸣。[/i]"
+@say "我（心声）" "[i]她仰着头数星星。数着数着，声音低了下去。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "如果有一天，我回去了……"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "[pause=500]没、没什么。我什么都没说。"
+@say "我（心声）" "[i]夜色遮住了她大半的表情。[/i]"
+@choice
+  -> "牵住她的手": c3_3_a
+  -> "假装看星星": c3_3_b
+@endchoice
+@label c3_3_a
+@add $affection 10
+@say "我（心声）" "[i]我伸出手，握住她的手。小小的，凉凉的。指尖却一下子蜷紧了。[/i]"
+@say "我" "回不回去，今天先不想。"
+@say "我（心声）" "[i]她没抽手。过了很久，轻轻\"嗯\"了一声。[/i]"
+@sprite xingmi c2_f1_shy_shy fade 300ms
+@say "星弥" "……手汗。魔女也会手汗的。"
+@jump c3_3_end
+@label c3_3_b
+@add $affection 5
+@say "我（心声）" "[i]我张了张嘴，最后假装抬头看星星。[/i]"
+@say "我" "……今天的星星，挺亮。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "嗯。挺亮。"
+@say "我（心声）" "[i]两个人的沉默混着虫鸣，一直到很晚。[/i]"
+@jump c3_3_end
+@label c3_3_end
+@bg park_3 fade 800ms
+@say "我（心声）" "[i]回去之前，她又看了一眼夜空。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "里世界的星星，是会唱歌的。"
+@say "我" "会唱歌？"
+@say "星弥" "整片星空连起来，像一个大大的八音盒。转一圈，一个调。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "这边的不会。……但今天，好像也听见了。"
+@say "我（心声）" "[i]她说完，自己愣了一下。然后用笑容把这句话吹散了。[/i]"
+@sprite xingmi c2_f1_laugh_open_black fade 300ms
+@say "星弥" "好了。回家。明天想吃蛋挞。"
+@say "我（心声）" "[i]那天之后，\"明年\"这个词，开始频繁出现在我们的对话里。[/i]"
+@say "我（心声）" "[i]明年教她包饺子。明年的西瓜要挑更大的。明年的星星挂饰，要再赢一个。[/i]"
+@say "我（心声）" "[i]我那时候没有意识到。[/i]"
+@say "我（心声）" "[i]对一个\"明年\"多到数不清的人来说——反复提起\"明年\"，意味着什么。[/i]"
+// ======== 第四章「大魔女的信」 ========
+// --- 场景 1｜公司｜次年三月・某日下午 ---
+@bg office_1 fade 800ms
+@playBgm ontama_piano1_harunohi loop
+@say "我（心声）" "[i]次年三月。日历翻到了信件抵达的那一页。[/i]"
+@say "我（心声）" "[i]那段时间的生活很规律。上班，下班，回家路上拐进超市。[/i]"
+@say "我（心声）" "[i]以前我囤甜点是为了自己。[/i]"
+@say "我（心声）" "[i]现在冰箱里的清单越来越长。蛋挞皮两份，草莓两盒，奶油要动物性的。[/i]"
+@say "我（心声）" "[i]同事说我最近气色好了。我说家里添了张嘴。[/i]"
+@say "我（心声）" "[i]他们问。养的猫？[/i]"
+@say "我" "嗯。差不多。会说话的猫。"
+@stopBgm fade=800ms
+@say "我（心声）" "[i]那个下午，季度会议开到一半。[/i]"
+@say "我（心声）" "[i]会议室的玻璃幕墙，忽然\"咔\"地一声。[/i]"
+@flash 300ms
+@shake 800ms intensity=0.8
+@say "我（心声）" "[i]一道蓝光穿窗而入。擦着我的头顶飞过。\"啪\"地拍在我面前的会议桌上。[/i]"
+@say "我（心声）" "[i]全场安静。灯闪了两下。[/i]"
+@say "我（心声）" "[i]桌上躺着一封信。信封是深蓝色的，星星的暗纹在表面缓缓流动。像活的。[/i]"
+@say "我（心声）" "[i]组长张着嘴。看看信。又看看我。[/i]"
+@say "我" "……我的快递。我先走了。"
+@say "我（心声）" "[i]我抓起信冲出会议室。身后传来组长的怒吼。[/i]"
+@say "我（心声）" "[i]管不了了。[/i]"
+// --- 场景 2｜电车｜同日下午 ---
+@bg subway_2 fade 800ms
+@playBgm maou_bgm_piano15 loop
+@say "我（心声）" "[i]车厢里，我拆开了信。[/i]"
+@say "我（心声）" "[i]字迹锋利，像用剑尖写的——[/i]"
+@say "我（心声）" "[i]_\"星巡之夜，归途之门将开一次。回不回来，随你。魔法的钟，只走这一回。——大魔女\"_[/i]"
+@say "我（心声）" "[i]落款下面，还有一行小字。[/i]"
+@say "我（心声）" "[i]_\"另：点心钱记你账上了。利息按魔女历算。\"_[/i]"
+@say "我（心声）" "[i]星巡之夜。归途之门。[/i]"
+@say "我（心声）" "[i]车窗上，我的脸皱成一团。[/i]"
+@say "我（心声）" "[i]那天晚上回到家，我把信放在餐桌上。[/i]"
+@say "我（心声）" "[i]她正在看电视。[/i]"
+// --- 场景 3｜公寓·客厅｜同晚 ---
+@bg living_room_2 fade 800ms
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "回来啦。哦，那个信啊——"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "例行通知而已。里世界每年都会群发的。别在意。"
+@say "我" "信上写着\"归途之门\"。"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "营销短信而已啦。魔女界也流行这个。"
+@say "我（心声）" "[i]她摆摆手，把话题引到晚饭上。手法熟练得像变魔术。[/i]"
+@say "我（心声）" "[i]那天的晚饭，她多吃了半碗。[/i]"
+@say "我（心声）" "[i]多半碗饭的人，都在隐藏什么。[/i]"
+@say "我（心声）" "[i]这是我一年多来，学到的经验。[/i]"
+// --- 场景 4｜伪装的日常｜之后的数日 ---
+@playBgm ontama_piano1_hontopiano loop
+@bg shop_6 fade 800ms
+@say "我（心声）" "[i]之后的日子。表面上一如既往。[/i]"
+@say "我（心声）" "[i]超市。她还是抱着西瓜不撒手。[/i]"
+@bg kitchen_2 fade 800ms
+@say "我（心声）" "[i]厨房。她还是把牛奶变出星星糖。虽然没劲的时候，变出来的星星会缺角。[/i]"
+@bg living_room_1 fade 800ms
+@say "我（心声）" "[i]客厅。她还是霸占着遥控器，看到无聊的广告也会跟着念。[/i]"
+@say "我（心声）" "[i]只是——[/i]"
+@say "我（心声）" "[i]她笑之前，会先停半秒。[/i]"
+@say "我（心声）" "[i]她趴在窗边的次数，变多了。[/i]"
+@say "我（心声）" "[i]深夜客厅的灯，亮到很晚。[/i]"
+@say "我（心声）" "[i]伪装。我们俩心照不宣地，陪着彼此伪装。[/i]"
+@say "我（心声）" "[i]直到那一晚。[/i]"
+// --- 场景 5｜公寓天台｜凌晨两点 ---
+@stopBgm fade=800ms
+@bg community_5 fade 800ms
+@playBgm maou_bgm_piano31 loop
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "我（心声）" "[i]凌晨两点。我起来倒水，发现阳台的门开着一条缝。[/i]"
+@say "我（心声）" "[i]天台上没有人影——不对。[/i]"
+@say "我（心声）" "[i]栏杆边上，立着一个尖顶帽的轮廓。[/i]"
+@say "我（心声）" "[i]她换回了那身星空裙摆的魔女装。大半夜的。[/i]"
+@say "我（心声）" "[i]我推开门走到一半。停住了。[/i]"
+@say "我（心声）" "[i]因为她在说话。[/i]"
+@sprite xingmi c1_f1_calm_black fade 300ms
+@say "星弥" "……\"再见\"。"
+@say "星弥" "太轻了。重来。"
+@sprite xingmi c1_f1_smile_black fade 300ms
+@say "星弥" "那，再见啦，林寻。"
+@sprite xingmi c1_f1_black_black fade 300ms
+@say "星弥" "不行。像去买烟的。重来。"
+@sprite xingmi c1_f1_smile_close_black fade 300ms
+@say "星弥" "多谢款待！本魔女就此告辞——"
+@sprite xingmi c1_f1_eyes_closed_black fade 300ms
+@say "星弥" "……"
+@say "星弥" "[pause=600]……练不出来了。"
+@say "我（心声）" "[i]她的声音散在夜风里。[/i]"
+@say "我（心声）" "[i]我退了回去，轻轻带上阳台的门。[/i]"
+@say "我（心声）" "[i]那天晚上，我假装什么都没看见。[/i]"
+@say "我（心声）" "[i]假装。是我们俩最擅长的魔法。[/i]"
+// --- 场景 6｜附近的公园·长椅｜数日后・黄昏 ---
+@bg park_4 fade 800ms
+@playBgm itoshikihibi loop
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "我（心声）" "[i]几天后的傍晚。她说想出去走走。我们绕到了公园。[/i]"
+@say "我（心声）" "[i]黄昏的长椅。她抱着膝盖坐着，影子拉得老长。[/i]"
+@say "星弥" "林寻。给你讲个故事吧。"
+@say "星弥" "很长的故事。听完不许笑。"
+@say "我" "好。"
+@say "星弥" "从前有个小魔女。笨手笨脚的。什么魔法都学不会，只会烤蛋挞。"
+@say "星弥" "她跟着大魔女修行。修行的地方，在两个世界的夹缝里。有时候，会借宿在你们表世界。"
+@say "星弥" "借宿她的人家，是一位老奶奶。老伴走很多年了。一个人住。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "老奶奶做的炖菜特别难吃。咸得要命。但是小魔女天天吃。"
+@say "星弥" "因为老奶奶会讲很多很多老掉牙的故事。讲她年轻的时候。讲她和她老伴怎么认识的。"
+@say "我（心声）" "[i]她讲得很慢。黄昏的光，一点点暗下去。[/i]"
+@say "星弥" "小魔女发现，老奶奶的时间，过得比谁都快。"
+@say "星弥" "人类的寿命，短得像一根火柴。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "她害怕极了。她见过太多次了——火柴烧到头，就灭了。"
+@say "星弥" "所以她翻遍了禁书，找到了一个\"轻松的答案\"。"
+@say "星弥" "她跑到老奶奶面前。说：我给你签契约吧。签了契约，你的寿命就和我一样长。我们就能一直、一直在一起了。"
+@say "我" "……契约？"
+@say "星弥" "嗯。里世界的规矩——魔女可以和表世界的人定下契约，把近乎永恒的寿命，分给对方。"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "你猜老奶奶说什么。"
+@say "我（心声）" "[i]她笑了。笑得很轻。[/i]"
+@say "星弥" "她说——\"谢谢你，小家伙。但是，正因为会结束，每一天才算数啊。\""
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "小魔女不懂。她气坏了。她觉得老奶奶是笨蛋。"
+@say "我（心声）" "[i]风把落叶吹过脚边。[/i]"
+@say "星弥" "后来，老奶奶走了。就在一个雨天。"
+@say "星弥" "小魔女疯了。她把自己关在借宿的屋子里，翻出了最危险的那本禁书。"
+@say "星弥" "她想，既然契约不行，那就用禁咒，把时间倒回去。倒回到老奶奶还活着的时候——"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "她当然失败了。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "禁咒的反噬，把她自己的时间，钉住了。"
+@say "我（心声）" "[i]她抬起手，看着自己的指尖。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "从那天起，就一直是这个样子了。不长大，不变老。"
+@say "星弥" "头发会长长。仅此而已。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "大魔女把她捞回来。罚扫了三年药圃。然后说了一句话——"
+@say "星弥" "时间被钉住的人，最怕的不是死。是\"再一次留下来\"。"
+@say "星弥" "她听不懂。于是她离开夹缝，一个人去旅行。"
+@say "星弥" "不交朋友，不进人家的门。看到火柴，就绕路走。"
+@say "我（心声）" "[i]她把脸埋进膝盖里。[/i]"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "直到那一个雨夜。"
+@say "星弥" "一个冰箱里塞满甜点的、看起来浑浑噩噩的家。门没锁好。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "里面的蛋糕，看起来好好吃。"
+@say "我（心声）" "[i]她抬起头。眼睛红红的，却在笑。[/i]"
+@say "星弥" "林寻。和你在一起的日子，特别特别有趣。"
+@say "星弥" "有趣到我每天早上都在想，今天的蛋糕会是什么味。今天的电视，会有什么无聊的广告——"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "有趣到，我害怕\"最后一集\"。"
+@say "我" "星弥。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "我才不是笨蛋呢。"
+@say "星弥" "我只是，不想去面对那个过于残酷的现实罢了。"
+@say "我（心声）" "[i]名台词。第二次听。[/i]"
+@say "我（心声）" "[i]字字都是真的。[/i]"
+@if ?heard_age
+  @jump fb1_a
+@else
+  @jump fb1_b
+@endif
+@label fb1_a
+@say "我" "\"几百个蛋挞\"那天，我就猜到了。"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "诶？！"
+@say "我" "嗯。所以这次，别一个人练\"再见\"了。"
+@say "我（心声）" "[i]她瞪大眼睛。半晌，用袖子胡乱抹了一把脸。[/i]"
+@sprite xingmi c2_f1_black_black fade 300ms
+@say "星弥" "……哼。早说嘛。害我练了那么多遍。"
+@jump fb1_end
+@label fb1_b
+@say "我" "……原来那首歌，唱的是她。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "嗯。后面两句，我其实一直记得。"
+@say "我（心声）" "[i]只是不敢唱完。[/i]"
+@label fb1_end
+// --- 场景 7｜公寓·玄关｜又数日后・傍晚 ---
+@playBgm maou_bgm_piano15 loop
+@bg living_room_3 fade 800ms
+@say "我（心声）" "[i]又过了几天。[/i]"
+@say "我（心声）" "[i]我下班回家。一开门，就愣住了。[/i]"
+@say "我（心声）" "[i]玄关立着一只旧行李箱。[/i]"
+@say "我（心声）" "[i]旧得过分。箱角的磨损，像装着一整个世纪。[/i]"
+@say "我（心声）" "[i]客厅里，她背对着我站着。[/i]"
+@say "我（心声）" "[i]穿着那身星空裙摆的魔女装。尖顶帽，端端正正地戴在头上。[/i]"
+@say "我（心声）" "[i]她回过头。[/i]"
+@sprite xingmi c1_f1_calm_black fade 300ms
+@say "星弥" "回来啦。"
+@say "我（心声）" "[i]她换回了\"魔女\"的样子。[/i]"
+@say "我（心声）" "[i]——是要出发的人的样子。[/i]"
+@choice
+  -> "“要带我去哪？我帮你拎”": c4_1_a
+  -> "“你要走了？”": c4_1_b
+@endchoice
+@label c4_1_a
+@add $affection 10
+@say "我" "……要带我去哪。我帮你拎。"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "[pause=500]……噗。都这时候了，你还接得住啊。"
+@say "我（心声）" "[i]她笑着。眼圈却红了。[/i]"
+@jump c4_1_end
+@label c4_1_b
+@add $affection -5
+@say "我" "你要走了？"
+@say "星弥" "嗯。门快开了。"
+@say "我（心声）" "[i]她的回答又轻又稳。稳得让人心里发凉。[/i]"
+@jump c4_1_end
+@label c4_1_end
+// --- 场景 8｜公寓天台｜出发前夜 ---
+@bg community_5 fade 800ms
+@stopBgm fade=800ms
+@say "我（心声）" "[i]最后一晚。天台。[/i]"
+@say "我（心声）" "[i]星空好得过分。她背对着我，看天。[/i]"
+@say "星弥" "我明天早上出发。趁你没醒，比较有魔女范儿。"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "行李箱里装了两盒布丁。别拦我。"
+@say "我（心声）" "[i]她努力把气氛搞轻。[/i]"
+@say "我（心声）" "[i]轻得像随时会飘走的羽毛。[/i]"
+@choice
+  -> "“我不想听再见”": c4_2_a
+  -> "“我尊重你的决定”": c4_2_b
+@endchoice
+@label c4_2_a
+@add $affection 10
+@say "我" "星弥。我不想听\"再见\"。"
+@sprite xingmi c2_f1_astonished_black fade 300ms
+@say "星弥" "……"
+@say "我" "其他都可以。除了\"再见\"。"
+@say "我（心声）" "[i]她的肩膀，慢慢地、慢慢地垮了下来。[/i]"
+@say "星弥" "……笨蛋。这种时候说这种话，我很难办的啊。"
+@jump c4_2_end
+@label c4_2_b
+@add $affection 5
+@say "我" "……我尊重你的决定。"
+@say "星弥" "谢谢。"
+@say "我（心声）" "[i]她笑得很标准。标准得让人心慌。[/i]"
+@jump c4_2_end
+@label c4_2_end
+@playBgm ontama_piano1_nichijonoyume loop fadein=2s
+@say "我（心声）" "[i]风停了。她转过身，仰头看着我。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "喂，林寻。"
+@say "星弥" "在门打开之前……回家吧。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "今天的晚饭，我想吃你煮的面。"
+@say "我（心声）" "[i]那一晚的面，我们煮了很久，也吃得很慢很慢。[/i]"
+@say "我（心声）" "[i]汤都喝完了。[/i]"
+@say "我（心声）" "[i]谁都没有提明天。[/i]"
+// ======== 终章「星巡之夜」 ========
+// --- 场景 1｜公寓·厨房｜星巡之夜・白天 ---
+@bg living_room_4 fade 800ms
+@playBgm ontama_piano1_nichijonoyume loop
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "我（心声）" "[i]星巡之夜。白天。[/i]"
+@say "我（心声）" "[i]她把行李箱立在玄关。然后系上围裙，钻进了厨房。[/i]"
+@say "星弥" "今天的晚饭，本魔女来做。"
+@say "我" "……你上次\"亲手\"做的晚饭，是星星糖盖饭。"
+@sprite xingmi c2_f1_pout_black fade 300ms
+@say "星弥" "这次不用魔法。纯手作。手作的才是魔法——你自己说的。"
+@say "我（心声）" "[i]厨房里乒乒乓乓，响了两个小时。[/i]"
+@say "我（心声）" "[i]端出来的成品：炖菜。咸得要命。像那个故事里的老奶奶做的。[/i]"
+@say "我（心声）" "[i]蛋挞。完美。[/i]"
+@say "我（心声）" "[i]饭团。捏成了星星的形状。[/i]"
+@say "我" "炖菜……"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "嗯。故意的。咸一点，好记住。"
+@say "我（心声）" "[i]我们慢慢地吃完了这顿饭。[/i]"
+@say "我（心声）" "[i]连咸得皱眉的那道汤，都喝到了最后一口。[/i]"
+// --- 场景 2｜公寓天台｜同夜 ---
+@stopBgm fade=800ms
+@bg community_5 fade 800ms
+@say "我（心声）" "[i]夜里。天台。[/i]"
+@say "我（心声）" "[i]她穿回了魔女装。行李箱放在脚边。[/i]"
+@say "我（心声）" "[i]说是\"回乡的礼服，要穿全套\"。[/i]"
+@say "我（心声）" "[i]我们并排靠着栏杆。谁也没说话。[/i]"
+// --- 场景 3｜流星雨｜同夜 ---
+@bg sky_3 fade 800ms
+@playBgm maou_bgm_piano_song_ahurera loop fadein=2s
+@say "我（心声）" "[i]流星来了。[/i]"
+@say "我（心声）" "[i]第一颗划过头顶的时候，她轻轻吸了一口气。[/i]"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "开始了。"
+@say "我（心声）" "[i]第二颗。第三颗。[/i]"
+@say "我（心声）" "[i]然后——夜空\"裂\"开了。[/i]"
+@flash 400ms
+@bg sky_7 fade 800ms
+@say "我（心声）" "[i]星光聚成光带，在云层上勾出一圈圈轮廓。[/i]"
+@say "我（心声）" "[i]兔子。小熊。好像是谁的玩偶，悬在半空。[/i]"
+@flash 400ms
+@bg sky_8 fade 800ms
+@say "我（心声）" "[i]光带继续铺开，绽成一朵一朵青色的花。一开一合，像在呼吸。[/i]"
+@flash 400ms
+@bg sky_9 fade 800ms
+@say "我（心声）" "[i]最后，无数小小的光点从云间升起，扑扇着翅膀，围着光门打转。[/i]"
+@say "我（心声）" "[i]像一群提灯的小仙子。[/i]"
+@say "我（心声）" "[i]门开了。[/i]"
+@say "我（心声）" "[i]就在我们头顶。直径十米。里面是缓缓旋转的、深深浅浅的蓝。[/i]"
+@stopEffect
+@stopBgm fade=800ms
+@say "？？？" "——星弥。"
+@say "我（心声）" "[i]声音从门里传出来。苍老，慵懒。隔着很远的距离。[/i]"
+@say "？？？" "门只开到流星落尽。你的答案呢。"
+@say "星弥" "……来了。"
+@say "我（心声）" "[i]她深吸一口气。转过身。面对我。[/i]"
+@say "我（心声）" "[i]然后，行了一个标准的魔女礼。裙摆上的星空，哗地展开。[/i]"
+@sprite xingmi c2_f1_smile_black fade 300ms
+@say "星弥" "林寻。一年零三个月前，你家的冰箱收留了一颗掉下来的星星。"
+@say "星弥" "蛋糕好吃。布丁好吃。蛋挞做得比里世界任何一家店都好吃。"
+@say "星弥" "所以本魔女决定——把最后的提问权，留给你。"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "我的答案，其实早就有了。"
+@sprite xingmi c2_f1_calm_black fade 300ms
+@say "星弥" "但是你的。我想亲耳听。"
+@say "我（心声）" "[i]流星还在落。门在头顶旋转。她的眼睛一眨不眨地看着我。[/i]"
+@say "我（心声）" "[i]说不清从什么时候开始——[/i]"
+@say "我（心声）" "[i]也许是拒绝电梯的那天。也许是咬下\"焦香限定\"的那天。也许是勾小拇指的那天。[/i]"
+@say "我（心声）" "[i]我开始认真地想\"想要什么\"这个问题了。[/i]"
+@say "我（心声）" "[i]现在，答案就在舌尖上。[/i]"
+@if $affection >= 50
+  @jump gate_2
+@else
+  @jump ending_d
+@endif
+@label gate_2
+// --- 选项 5-1（仅好感度达标时出现） ---
+@choice
+  -> "留下来——我们一年一年地约定下去": ending_a
+  -> "和我签订契约吧": ending_b
+  -> "我送你回家": ending_c
+@endchoice
+@end
+@label ending_a
+// ======== 结局 A《365 日的约定》（True End） ========
+@playBgm maou_bgm_piano_song_ahurera loop
+@say "我" "留下来。"
+@say "我" "星弥。我不需要永远。"
+@say "我" "我要的是——明年还能跟你抢最后一个布丁。明年夏天还能去坐一次摩天轮。"
+@say "我" "明年、后年、大后年。每一年，都跟你一起数日子。"
+@say "我" "所以，一年一年地约定下去吧。每过完一年，就再约下一年。"
+@say "我（心声）" "[i]她瞪着我。睫毛抖得厉害。[/i]"
+@sprite xingmi c2_f1_eyes_closed_black fade 300ms
+@say "星弥" "……你这个人。明明有更轻松的答案。"
+@say "我" "轻松的答案里，没有你说的那种\"有趣\"。"
+@sprite xingmi c2_f1_cry_cry fade 300ms
+@say "星弥" "……呜。"
+@say "我（心声）" "[i]她的眼泪毫无预兆地砸下来。砸得我措手不及。[/i]"
+@say "星弥" "笨蛋……真的、真的超大笨蛋……！"
+@say "星弥" "哪有人往契约里写\"一年\"的啊！魔女界的契约，都是写\"永恒\"的！"
+@say "我" "那正好。本店只提供限定款。"
+@say "我（心声）" "[i]她哭着笑了。用袖子胡乱抹脸。越抹，眼泪越多。[/i]"
+@say "？？？" "[pause=600]……唉。"
+@say "我（心声）" "[i]门里传来一声长长的、认输似的叹息。[/i]"
+@say "？？？" "选了最麻烦的一条路啊，小家伙。"
+@say "？？？" "也罢。——这一份\"归乡许可\"，本座收回。点心钱，两清。"
+@say "我（心声）" "[i]指尖大的光点从门里飘出来，落在她的发夹上。闪了一下。熄了。[/i]"
+@sprite xingmi c2_f1_black_cry fade 300ms
+@say "星弥" "等、等等！大魔女！点心钱能商量一下吗！"
+@say "？？？" "利息照旧。星巡之夜，见。"
+@say "我（心声）" "[i]门，安安静静地合上了。光点散尽。星空恢复了原样。[/i]"
+@say "我（心声）" "[i]只剩漫天的流星还在落。[/i]"
+@say "我（心声）" "[i]她抱着行李箱站在原地。哭花了脸，笑得像个傻子。[/i]"
+@flash 600ms
+@bg sky_10 fade 800ms
+@playBgm ontama_piano1_taisetsunayakusoku loop fadein=3s
+@say "我（心声）" "[i]深夜。她的行李箱被重新打开了。[/i]"
+@say "我（心声）" "[i]两盒布丁拿出来，放回了冰箱。[/i]"
+@say "我（心声）" "[i]然后她从箱底翻出一个小瓶子，冲着夜空，抛了上去。[/i]"
+@sprite xingmi c2_f1_laugh_open_cry fade 300ms
+@say "星弥" "大魔女的临别礼。启封——！"
+@say "我（心声）" "[i]砰。[/i]"
+@say "我（心声）" "[i]一朵紫色的烟花在头顶炸开。光雨簌簌落下来。[/i]"
+@say "我（心声）" "[i]瓶子里，是一整年份的烟花票。每年星巡之夜，自动到货。[/i]"
+@sprite xingmi c2_f1_smile_cry fade 300ms
+@say "星弥" "听到了吗，林寻。这是\"明年也一起\"的声音。"
+@say "我（心声）" "[i]烟花一朵接一朵。她的裙摆和夜空，连成一片。[/i]"
+@say "我（心声）" "[i]我伸手，勾住她的小拇指。[/i]"
+@say "我" "契约成立。第 1 年。"
+@sprite xingmi c2_f1_smile_close_cry fade 300ms
+@say "星弥" "本魔女见证。"
+@playBgm sundasora loop
+@bg living_room_4 fade 800ms
+@say "我（心声）" "[i]次年。初夏。[/i]"
+@say "我（心声）" "[i]清晨六点半。厨房咕嘟咕嘟。煎蛋滋滋作响。[/i]"
+@say "我（心声）" "[i]冰箱门上贴着新的《同居守则》。一百条。最后一条没变。[/i]"
+@say "我（心声）" "[i]第一百条：要一直，有趣下去。[/i]"
+@say "我（心声）" "[i]守则旁边多了一张字条。字迹锋利，像用剑尖写的。[/i]"
+@say "我（心声）" "[i]_\"今年的点心钱，两清了。最后一盒布丁是本座的。——大魔女\"_[/i]"
+@say "我" "喂！冰箱里的布丁谁吃了！"
+@sprite xingmi c2_f1_laugh_open_cry fade 300ms
+@say "星弥" "不是我！"
+@say "我（心声）" "[i]叫嚷声。笑声。碗筷声。[/i]"
+@say "我（心声）" "[i]我叫林寻。找了很久，才知道要找的东西长什么样。[/i]"
+@say "我（心声）" "[i]不在远方。[/i]"
+@say "我（心声）" "[i]就在冰箱里，少了半块蛋糕的地方。[/i]"
+// 【END A《365 日的约定》】
+@end
+@label ending_b
+// ======== 结局 B《漫长的同格》（End） ========
+@playBgm maou_bgm_piano_song_ahurera loop
+@say "我" "和我签契约吧。"
+@say "我（心声）" "[i]说出这句话的瞬间，她的表情僵住了。[/i]"
+@sprite xingmi c2_f1_calm_cry fade 300ms
+@say "星弥" "……你知道自己在说什么吗。"
+@say "我" "知道。"
+@say "我" "我怕的不是死。"
+@say "我" "是\"没有你的明年\"。是明年夏天，一个人坐摩天轮。是冰箱里的蛋挞，再也没人抢。"
+@say "我" "是数到一半的《同居守则》，永远停在第一百条。"
+@sprite xingmi c2_f1_eyes_closed_cry fade 300ms
+@say "星弥" "[pause=800]"
+@say "我（心声）" "[i]她沉默了很久很久。久到流星都落了一半。[/i]"
+@sprite xingmi c2_f1_calm_cry fade 300ms
+@say "星弥" "……当年，老奶奶拒绝我的时候，也说了差不多的话。"
+@say "星弥" "她说。正因为会结束，每一天才算数。"
+@say "我" "那是因为。她还有你，陪她数。"
+@say "我" "我不一样。我还没数够。"
+@say "我（心声）" "[i]她看着我。[/i]"
+@say "我（心声）" "[i]那双眼睛里，翻涌着我读不懂的东西。是恐惧。是怜悯。还是别的什么。[/i]"
+@say "我（心声）" "[i]最后，她伸出了手。[/i]"
+@say "星弥" "……好。"
+@say "星弥" "本魔女，星弥，应允此契——"
+@flash 800ms
+@say "我（心声）" "[i]光从相扣的指尖漫上来。缠上手腕。像一圈温柔的镣铐。[/i]"
+@say "我（心声）" "[i]凉。契约的刻印，很凉。[/i]"
+@say "？？？" "[pause=600]……表世界的人啊。"
+@say "我（心声）" "[i]门里的声音很轻。轻得像在念悼词。[/i]"
+@say "？？？" "你拿走的，是\"结束\"。"
+@say "我（心声）" "[i]门合上了。流星落尽了。[/i]"
+@bg sky_3 fade 800ms
+@playBgm maou_bgm_piano15 loop
+@say "我（心声）" "[i]之后的日子，什么都没有变。[/i]"
+@say "我（心声）" "[i]或者说，什么都变了。只是我们都假装没变。[/i]"
+@say "我（心声）" "[i]蛋挞还是那个蛋挞。西瓜还是那个西瓜。摩天轮还是那个摩天轮。[/i]"
+@say "我（心声）" "[i]只是我们再也不用赶在什么之前，做点什么了。[/i]"
+@say "我（心声）" "[i]明天有很多。明年有很多。\"以后\"，要多到用不完。[/i]"
+@bg community_5 fade 800ms
+@say "我（心声）" "[i]第 100 个夏天。天台。[/i]"
+@say "我（心声）" "[i]她数着流星。我数着她数的流星。[/i]"
+@say "星弥" "第 100 个夏天。"
+@say "我" "嗯。"
+@say "星弥" "今年，想做什么？"
+@say "我" "……没想好。明年再想吧。"
+@say "我（心声）" "[i]她\"嗯\"了一声。没再说话。[/i]"
+@say "我（心声）" "[i]我们拥有所有的明年。[/i]"
+@say "我（心声）" "[i]所以哪一年，都无关紧要了。[/i]"
+// 【END B《漫长的同格》】
+@end
+@label ending_c
+// ======== 结局 C《星空的信》（End） ========
+@playBgm maou_bgm_piano_song_ahurera loop
+@say "我" "……我送你回家。"
+@say "我（心声）" "[i]她愣住了。睫毛颤了好几下。[/i]"
+@sprite xingmi c2_f1_smile_cry fade 300ms
+@say "星弥" "[pause=600]……嗯。"
+@say "星弥" "嗯。好。"
+@say "我（心声）" "[i]她笑着，朝我端端正正地鞠了一躬。[/i]"
+@sprite xingmi c2_f1_smile_close_cry fade 300ms
+@say "星弥" "被送行过的魔女，是可以名正言顺想家的哦。"
+@say "我（心声）" "[i]她拖起行李箱。走到门前。又回头。[/i]"
+@sprite xingmi c2_f1_calm_cry fade 300ms
+@say "星弥" "守则第一百条，我带走了。"
+@sprite xingmi c2_f1_smile_cry fade 300ms
+@say "星弥" "要一直，有趣下去。……你也一样哦，林寻。"
+@say "我" "嗯。你也是。"
+@say "我（心声）" "[i]她走进光里。行李箱的轮子声，渐远。[/i]"
+@sprite xingmi c2_f1_eyes_closed_cry fade 300ms
+@say "星弥" "林寻。谢谢你的冰箱。"
+@say "我（心声）" "[i]门，合上了。[/i]"
+@bg sky_3 fade 800ms
+@playBgm ontama_piano1_miagerusora loop fadein=3s
+@say "我（心声）" "[i]星巡之夜，每年都有。[/i]"
+@say "我（心声）" "[i]第一年。流星雨照常落。只有我一个人在天台。[/i]"
+@say "我（心声）" "[i]然后我看见了——流星群的缝隙里，\"砰\"地开出一朵小小的紫色烟花。[/i]"
+@say "我（心声）" "[i]就一朵。歪歪扭扭的。像涂鸦。[/i]"
+@say "我（心声）" "[i]里世界寄来的信。[/i]"
+@say "我（心声）" "[i]第二年，一朵。第三年，一朵。[/i]"
+@say "我（心声）" "[i]每年我都举着甜筒上天台。举到烟花落尽。[/i]"
+@say "我（心声）" "[i]第四年。第五年。[/i]"
+@say "我（心声）" "[i]不知道第几年。那朵例行的烟花旁边，忽然多了一点光。[/i]"
+@say "我（心声）" "[i]很小的。不亮的一颗。慢慢悠悠，从云层里坠下来——[/i]"
+@say "我（心声）" "[i]朝着我家冰箱的方向。[/i]"
+@say "我（心声）" "[i]（未完）[/i]"
+// 【END C《星空的信》】
+@end
+@label ending_d
+// ======== 结局 D《少了一块蛋糕》（Normal End，好感度不足自动进入） ========
+@playBgm maou_bgm_piano13 loop
+@bg sky_3 fade 800ms
+@say "我（心声）" "[i]门开的时候，她的行李箱已经立在脚边了。[/i]"
+@say "我（心声）" "[i]原来她早就收拾好了。早到我以为只是随口一提。[/i]"
+@sprite xingmi c2_f1_smile_cry fade 300ms
+@say "星弥" "林寻。谢谢你的蛋糕，和沙发。"
+@say "星弥" "人类的世界，很有趣。"
+@say "我（心声）" "[i]她说得又轻又快。像背了很多遍的台词。[/i]"
+@say "我（心声）" "[i]我张开嘴。喉咙里堵着一句很长很长的话。一个字都挤不出来。[/i]"
+@say "我（心声）" "[i]流星落尽。门合上了。[/i]"
+@say "我（心声）" "[i]她自始至终，笑着。[/i]"
+@bg living_room_2 fade 800ms
+@say "我（心声）" "[i]生活恢复原样。[/i]"
+@say "我（心声）" "[i]上班，下班，便利店，加班。[/i]"
+@say "我（心声）" "[i]只是冰箱里的蛋糕，我总会多买一块。放在最里面的位置。[/i]"
+@say "我（心声）" "[i]放着放着，就少了半块。[/i]"
+@say "我（心声）" "[i]阳台的花盆里，偶尔会闪过星星糖一样的光。[/i]"
+@say "我（心声）" "[i]谁家冰箱会掉星星啊。[/i]"
+@say "我（心声）" "[i]——我家会。曾经会。[/i]"
+// 【END D《少了一块蛋糕》】
+
+@end
