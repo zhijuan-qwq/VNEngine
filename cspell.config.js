@@ -55,6 +55,8 @@ export default {
     '.husky',
     'package-lock.json',
     'doc',
+    'public/**',
+    'src/game/manifest.gen.ts',
   ],
   language: 'en',
 };
