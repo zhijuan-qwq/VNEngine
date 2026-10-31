@@ -64,10 +64,14 @@ export class UIManager {
     this.root.y = options.y ?? 0;
 
     const dialogue = options.dialogueBox ?? {};
+    // 缺省为底部对话框条（高度的 30%），避免整屏遮罩
+    const boxHeight = dialogue.height ?? Math.round(options.height * 0.3);
     this.dialogueBox = new DialogueBox({
       ...dialogue,
+      x: dialogue.x ?? 0,
+      y: dialogue.y ?? options.height - boxHeight,
       width: dialogue.width ?? options.width,
-      height: dialogue.height ?? options.height,
+      height: boxHeight,
       eventBus: bus,
       resolveVar: options.resolveVar,
     });
