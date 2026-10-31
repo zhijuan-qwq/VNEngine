@@ -140,7 +140,7 @@ export class SaveLoadMenu extends UIComponent {
 
   private rebuild(): void {
     this.clearButtons();
-    const slots =
+    const slots: readonly SaveSlotInfo[] =
       this.opts.getSlots?.() ?? this.opts.slots.map((slot) => ({ slot }));
 
     if (slots.length === 0) {
@@ -157,13 +157,17 @@ export class SaveLoadMenu extends UIComponent {
     const cellWidth = (this.contentWidth - GAP * (columns - 1)) / columns;
     for (let index = 0; index < slots.length; index += 1) {
       const info = slots[index];
+      // 读档模式下空槽不可用：没有存档可恢复，点了只会触发一次注定失败的读取
+      const disabled =
+        this.currentMode === 'load' && info.timestamp === undefined;
       const button = createButton({
         width: cellWidth,
         height: BUTTON_HEIGHT,
         label: this.labelFor(info),
         fontSize: this.opts.fontSize,
-        onTap: () => this.select(info.slot),
+        onTap: disabled ? undefined : () => this.select(info.slot),
       });
+      if (disabled) button.alpha = 0.45;
       button.x = (index % columns) * (cellWidth + GAP);
       button.y = Math.floor(index / columns) * (BUTTON_HEIGHT + GAP);
       this.slotButtons.push(button);
