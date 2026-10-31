@@ -1,0 +1,24 @@
+@title VNEngine Demo
+@author VNEngine
+@version 1.0
+
+// 最小可运行示例：背景 / 立绘 / 富文本心声 / 选项 / 面板入口
+@label start
+@bg kitchen_1 fade 600ms
+@show xingmi center sprite=c1_f1_calm_black transition=fade duration=500ms
+@say "星弥" "你好，我是星弥。这是一个最小可运行的 VNEngine demo。"
+@say "我（心声）" "[i]这段是心声。打开「历史」可以检查富文本标记是否被正确剥离。[/i]"
+@sprite xingmi c1_f1_astonished_black fade 300ms
+@say "星弥" "下面是一个选项，用来检查选项面板的位置。"
+@choice
+  -> "继续看下去": demo_continue
+  -> "到此结束": demo_finish
+@endchoice
+@label demo_continue
+@say "星弥" "你选择了继续。"
+@jump demo_tail
+@label demo_finish
+@say "星弥" "你选择了结束。"
+@label demo_tail
+@say "星弥" "Demo 结束。右上角可以打开设置、存档、读档和历史面板。"
+@end

@@ -47,6 +47,8 @@ export default {
     'pointerupoutside',
     'relayout',
     'boldmore',
+    'worktree',
+    'xingmi',
   ],
   ignorePaths: [
     'node_modules',
