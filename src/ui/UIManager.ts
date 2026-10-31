@@ -76,6 +76,7 @@ export class UIManager {
     this.choicePanel = new ChoicePanel({
       ...choice,
       width: choice.width ?? options.width,
+      height: choice.height ?? options.height,
       onSelect: (label) => bus.emit('script:choice:selected', { label }),
     });
 
