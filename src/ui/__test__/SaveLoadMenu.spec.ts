@@ -29,6 +29,13 @@ function labelOf(menu: SaveLoadMenu, index: number): string {
   return label.text;
 }
 
+/** 槽位卡上的全部文字（标题/时间/摘要顺序不保证，按内容断言用） */
+function textsOf(menu: SaveLoadMenu, index: number): string[] {
+  return menu.buttons[index].children
+    .filter((child) => 'text' in child)
+    .map((child) => (child as unknown as { text: string }).text);
+}
+
 describe('SaveLoadMenu', () => {
   it('should start hidden in load mode', () => {
     const menu = makeMenu();
@@ -80,10 +87,36 @@ describe('SaveLoadMenu', () => {
 
   it('should call onLoad with the slot in load mode', () => {
     const onLoad = vi.fn();
-    const menu = makeMenu({ onLoad });
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      onLoad,
+      getSlots: () => [
+        { slot: 0 },
+        { slot: 1 },
+        { slot: 2, label: '章节二', timestamp: 1716900000000 },
+      ],
+    });
     menu.show('load');
     tap(menu.buttons[2]);
     expect(onLoad).toHaveBeenCalledWith(2);
+  });
+
+  it('should disable empty slots in load mode', () => {
+    const onLoad = vi.fn();
+    const menu = makeMenu({ onLoad, slots: [0, 1, 2] });
+    menu.show('load');
+    expect(menu.buttons[2].alpha).toBeLessThan(1);
+    tap(menu.buttons[2]);
+    expect(onLoad).not.toHaveBeenCalled();
+  });
+
+  it('should allow saving into an empty slot in save mode', () => {
+    const onSave = vi.fn();
+    const menu = makeMenu({ onSave, slots: [0, 1, 2] });
+    menu.show('save');
+    tap(menu.buttons[2]);
+    expect(onSave).toHaveBeenCalledWith(2);
   });
 
   it('should prefer getSlots over slots', () => {
@@ -91,12 +124,33 @@ describe('SaveLoadMenu', () => {
       width: 800,
       height: 600,
       slots: [0],
-      getSlots: () => [{ slot: 5, label: '章节一' }, { slot: 6 }],
+      getSlots: () => [
+        { slot: 5, label: '章节一', timestamp: 1716900000000 },
+        { slot: 6 },
+      ],
     });
     menu.show('load');
     expect(menu.buttons).toHaveLength(2);
-    expect(labelOf(menu, 0)).toBe('存档 6  章节一');
-    expect(labelOf(menu, 1)).toBe('存档 7  空');
+    expect(labelOf(menu, 0)).toBe('存档 6');
+    expect(textsOf(menu, 0)).toContain('章节一');
+    expect(labelOf(menu, 1)).toBe('存档 7');
+    expect(textsOf(menu, 1)).toContain('空槽');
+  });
+
+  it('should clip an over-long summary with an ellipsis', () => {
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots: () => [
+        { slot: 0, label: '一'.repeat(30), timestamp: 1716900000000 },
+        { slot: 1, label: '短摘要', timestamp: 1716900000000 },
+      ],
+    });
+    menu.show('load');
+    const clipped = textsOf(menu, 0).pop();
+    expect(clipped?.endsWith('…')).toBe(true);
+    expect(clipped?.length).toBeLessThan(30);
+    expect(textsOf(menu, 1)).toContain('短摘要');
   });
 
   it('should rebuild buttons when reopened with different slots', () => {

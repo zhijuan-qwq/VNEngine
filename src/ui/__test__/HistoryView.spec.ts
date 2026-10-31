@@ -44,14 +44,25 @@ describe('HistoryView', () => {
     expect(view.rowTexts).toEqual(['（暂无对话记录）']);
   });
 
-  it('should prefix the speaker when one is present', () => {
+  it('should render the speaker on its own line when one is present', () => {
     const view = new HistoryView({
       width: 800,
       height: 600,
       getEntries: () => [entry('Hero', 'Hi'), entry('', '独白')],
     });
     view.show();
-    expect(view.rowTexts).toEqual(['Hero：Hi', '独白']);
+    expect(view.rowTexts).toEqual(['Hi', '独白']);
+    expect(view.rowSpeakers).toEqual(['Hero', null]);
+  });
+
+  it('should strip rich-text markers from the body text', () => {
+    const view = new HistoryView({
+      width: 800,
+      height: 600,
+      getEntries: () => [entry('我（心声）', '[i]那一年的复盘[/i]开到深夜')],
+    });
+    view.show();
+    expect(view.rowTexts).toEqual(['那一年的复盘开到深夜']);
   });
 
   it('should rebuild rows on every show', () => {
