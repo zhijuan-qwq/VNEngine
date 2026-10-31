@@ -80,10 +80,36 @@ describe('SaveLoadMenu', () => {
 
   it('should call onLoad with the slot in load mode', () => {
     const onLoad = vi.fn();
-    const menu = makeMenu({ onLoad });
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      onLoad,
+      getSlots: () => [
+        { slot: 0, timestamp: 1 },
+        { slot: 1, timestamp: 1 },
+        { slot: 2, label: '章节二', timestamp: 1 },
+      ],
+    });
     menu.show('load');
     tap(menu.buttons[2]);
     expect(onLoad).toHaveBeenCalledWith(2);
+  });
+
+  it('should disable empty slots in load mode', () => {
+    const onLoad = vi.fn();
+    const menu = makeMenu({ onLoad, slots: [0, 1, 2] });
+    menu.show('load');
+    expect(menu.buttons[2].alpha).toBeLessThan(1);
+    tap(menu.buttons[2]);
+    expect(onLoad).not.toHaveBeenCalled();
+  });
+
+  it('should allow saving into an empty slot in save mode', () => {
+    const onSave = vi.fn();
+    const menu = makeMenu({ onSave, slots: [0, 1, 2] });
+    menu.show('save');
+    tap(menu.buttons[2]);
+    expect(onSave).toHaveBeenCalledWith(2);
   });
 
   it('should prefer getSlots over slots', () => {
