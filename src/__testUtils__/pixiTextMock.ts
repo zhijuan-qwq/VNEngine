@@ -21,6 +21,8 @@ export function createFakeText(pixi: {
   return class FakeText extends pixi.Container {
     public text: string;
     public style: Record<string, unknown>;
+    /** 生产端 Text 有 anchor；测试端只需可调用的桩 */
+    public readonly anchor = { set: (): void => {} };
 
     constructor(options?: { text?: string; style?: unknown }) {
       super();

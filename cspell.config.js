@@ -47,6 +47,8 @@ export default {
     'pointerupoutside',
     'relayout',
     'boldmore',
+    'Noto',
+    'Hiragino',
   ],
   ignorePaths: [
     'node_modules',
