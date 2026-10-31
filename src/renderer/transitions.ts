@@ -49,6 +49,8 @@ export interface EnterSpec {
   /** 毫秒；<= 0 视为直切 */
   duration: number;
   scaleFrom?: number;
+  /** 结束时的目标缩放（立绘按逻辑分辨率适配高度时传入；缺省 1） */
+  scaleTo?: number;
   /** 结束时的 alpha，缺省 1（读档恢复半透明立绘用） */
   alphaTo?: number;
   easing?: EasingFn;
@@ -59,6 +61,8 @@ export interface LeaveSpec {
   /** 毫秒；<= 0 视为直切 */
   duration: number;
   scaleFrom?: number;
+  /** 当前目标缩放（与入场一致；缺省 1） */
+  scaleTo?: number;
   easing?: EasingFn;
   onComplete?: () => void;
 }
@@ -87,11 +91,12 @@ export function playEnter(
       break;
     case 'zoom': {
       view.position.set(spec.to.x, spec.to.y);
-      view.scale.set(spec.scaleFrom ?? DEFAULT_ZOOM_FROM);
+      const scaleTo = spec.scaleTo ?? 1;
+      view.scale.set((spec.scaleFrom ?? DEFAULT_ZOOM_FROM) * scaleTo);
       view.alpha = 0;
       tweens.add(view, 'alpha', alphaTo, { duration, easing });
-      tweens.add(view.scale, 'x', 1, { duration, easing });
-      tweens.add(view.scale, 'y', 1, { duration, easing });
+      tweens.add(view.scale, 'x', scaleTo, { duration, easing });
+      tweens.add(view.scale, 'y', scaleTo, { duration, easing });
       break;
     }
     case 'fade':
@@ -129,18 +134,30 @@ export function playLeave(
         onComplete: finish,
       });
       break;
-    case 'zoom':
+    case 'zoom': {
+      const scaleTo = spec.scaleTo ?? 1;
       tweens.add(view, 'alpha', 0, { duration, easing });
-      tweens.add(view.scale, 'x', spec.scaleFrom ?? DEFAULT_ZOOM_FROM, {
-        duration,
-        easing,
-      });
-      tweens.add(view.scale, 'y', spec.scaleFrom ?? DEFAULT_ZOOM_FROM, {
-        duration,
-        easing,
-        onComplete: finish,
-      });
+      tweens.add(
+        view.scale,
+        'x',
+        (spec.scaleFrom ?? DEFAULT_ZOOM_FROM) * scaleTo,
+        {
+          duration,
+          easing,
+        },
+      );
+      tweens.add(
+        view.scale,
+        'y',
+        (spec.scaleFrom ?? DEFAULT_ZOOM_FROM) * scaleTo,
+        {
+          duration,
+          easing,
+          onComplete: finish,
+        },
+      );
       break;
+    }
     case 'fade':
     default:
       tweens.add(view, 'alpha', 0, { duration, easing, onComplete: finish });
