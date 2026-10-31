@@ -70,4 +70,15 @@ describe('ChoicePanel', () => {
     expect(panel.buttons).toHaveLength(1);
     expect(panel.visible).toBe(true);
   });
+
+  it('should center a width-capped button block above the dialogue area', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const buttonWidth = Math.min(1000 * 0.72, 640);
+    const total = 2 * 52 + 14;
+    const startY = Math.max(600 * 0.08, (600 * 0.66 - total) / 2);
+    expect(panel.buttons[0].x).toBeCloseTo((1000 - buttonWidth) / 2);
+    expect(panel.buttons[0].y).toBeCloseTo(startY);
+    expect(panel.buttons[1].y).toBeCloseTo(startY + 52 + 14);
+  });
 });

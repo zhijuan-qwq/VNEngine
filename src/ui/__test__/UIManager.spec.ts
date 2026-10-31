@@ -121,7 +121,7 @@ describe('UIManager', () => {
       text: 'Hello world',
       speed: 100,
     });
-    ui.update(16);
+    ui.update(0.016); // update 以秒为单位：16ms
     expect(ui.dialogueBox.currentText.length).toBeGreaterThan(0);
   });
 
@@ -155,7 +155,8 @@ describe('UIManager', () => {
     const { bus, ui } = makeManager();
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
     ui.open('history');
-    expect(ui.historyView.rowTexts).toEqual(['Hero：Hi']);
+    expect(ui.historyView.rowTexts).toEqual(['Hi']);
+    expect(ui.historyView.rowSpeakers).toEqual(['Hero']);
   });
 
   it('should open a panel from a ui:open event', () => {
