@@ -2,6 +2,8 @@ import { Container, Sprite, Texture } from 'pixi.js';
 import type { Position } from '@/types/engine';
 import CharacterRegistry, {
   CHARACTER_ANCHOR,
+  CHARACTER_SCALE_RATIO,
+  CHARACTER_TOP_MARGIN_RATIO,
   CHARACTER_ZOOM_FROM,
   POSITION_RATIOS,
   SLIDE_IN_OFFSET,
@@ -11,6 +13,10 @@ import { DEFAULT_TRANSITION_DURATION } from '../transitions';
 import TweenEngine from '../tween';
 
 const SIZE = { width: 800, height: 600 };
+// 关键字位置的立绘落点 y：顶部留头位 + 显示高度（= 高 × SCALE_RATIO，下半身出画）
+const BASE_Y =
+  SIZE.height * CHARACTER_TOP_MARGIN_RATIO +
+  SIZE.height * CHARACTER_SCALE_RATIO;
 
 /** 每次调用产生一个独立 Texture 实例，便于断言纹理是否真的换了 */
 function newTexture(): Texture {
@@ -99,7 +105,7 @@ describe('CharacterRegistry', () => {
       expect(sprite.anchor.x).toBe(CHARACTER_ANCHOR.x);
       expect(sprite.anchor.y).toBe(CHARACTER_ANCHOR.y);
       expect(sprite.x).toBe(200);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(BASE_Y);
       expect(sprite.alpha).toBe(0);
 
       tweens.update(DEFAULT_TRANSITION_DURATION / 2000);
@@ -141,12 +147,12 @@ describe('CharacterRegistry', () => {
 
       const sprite = firstSprite(parent);
       expect(sprite.x).toBe(200 - SLIDE_IN_OFFSET);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(BASE_Y);
       expect(sprite.alpha).toBe(1);
 
       tweens.update(0.4);
       expect(sprite.x).toBe(200);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(BASE_Y);
     });
 
     it('should slide a center character up from below the screen', async () => {
@@ -157,10 +163,10 @@ describe('CharacterRegistry', () => {
 
       const sprite = firstSprite(parent);
       expect(sprite.x).toBe(400);
-      expect(sprite.y).toBe(600 + SLIDE_IN_OFFSET);
+      expect(sprite.y).toBe(BASE_Y + SLIDE_IN_OFFSET);
 
       tweens.update(DEFAULT_TRANSITION_DURATION / 1000);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(BASE_Y);
     });
 
     it('should honour an explicit slide direction over the position', async () => {
@@ -177,25 +183,27 @@ describe('CharacterRegistry', () => {
       // slideL = 从左侧滑入，即使目标是右侧
       const sprite = firstSprite(parent);
       expect(sprite.x).toBe(600 - SLIDE_IN_OFFSET);
-      expect(sprite.y).toBe(600);
+      expect(sprite.y).toBe(BASE_Y);
 
       tweens.update(0.4);
       expect(sprite.x).toBe(600);
     });
 
-    it('should zoom in from a smaller scale', async () => {
+    it('should zoom in from a smaller scale and land on the fitted scale', async () => {
       const { registry, parent, tweens } = makeRegistry();
 
       registry.show({ id: 'cat', position: 'right', transition: 'zoom' });
       await flush();
 
+      // 立绘按逻辑高度适配：最终缩放 = fit（WHITE 纹理高 1px），zoom 从 fit × CHARACTER_ZOOM_FROM 起步
+      const fit = SIZE.height * CHARACTER_SCALE_RATIO;
       const sprite = firstSprite(parent);
-      expect(sprite.scale.x).toBeCloseTo(CHARACTER_ZOOM_FROM);
+      expect(sprite.scale.x).toBeCloseTo(CHARACTER_ZOOM_FROM * fit);
       expect(sprite.alpha).toBe(0);
 
       tweens.update(DEFAULT_TRANSITION_DURATION / 1000);
-      expect(sprite.scale.x).toBe(1);
-      expect(sprite.scale.y).toBe(1);
+      expect(sprite.scale.x).toBeCloseTo(fit);
+      expect(sprite.scale.y).toBeCloseTo(fit);
       expect(sprite.alpha).toBe(1);
     });
 

@@ -28,6 +28,19 @@ export const POSITION_RATIOS: Record<PositionKeyword, number> = {
 };
 export const SLIDE_IN_OFFSET = 200;
 export const CHARACTER_ZOOM_FROM = 0.85;
+/**
+ * 立绘显示高度占逻辑高度的比例。立绘美术分辨率与背景（按逻辑分辨率制作）无关，
+ * 统一按高度缩放；常规 VN 演出取 >1：只露出上半身，腿部延伸到屏幕外/对话框之后。
+ * 注：素材自带约 12% 的透明上下留白，实际身体约为该值的 0.88 倍。
+ */
+export const CHARACTER_SCALE_RATIO = 1.75;
+/** 立绘纹理顶边距逻辑画面顶边的偏移比例；负值表示帽尖等顶部出画 */
+export const CHARACTER_TOP_MARGIN_RATIO = -0.04;
+
+/** 立绘的目标缩放：显示高度 = 逻辑高 × CHARACTER_SCALE_RATIO */
+export function spriteFitScale(texture: Texture, size: Size): number {
+  return (size.height * CHARACTER_SCALE_RATIO) / texture.height;
+}
 
 export function positionToPoint(position: Position, size: Size): PointData {
   if (typeof position === 'object') {
@@ -168,7 +181,7 @@ export class CharacterRegistry {
     const view = entry.view;
     // 视图还在加载：落点已记账，建立时直接摆到该点
     if (!view) return;
-    const to = positionToPoint(position, this.deps.size);
+    const to = this.placementPoint(position, view.texture);
     // 顶掉在飞的移动补间：否则旧补间会继续写 x/y，把立绘拖回旧目标
     this.deps.tweens.cancelTarget(view, 'x');
     this.deps.tweens.cancelTarget(view, 'y');
@@ -273,7 +286,9 @@ export class CharacterRegistry {
     if (!current) return;
     const view = new Sprite(texture);
     view.anchor.set(CHARACTER_ANCHOR.x, CHARACTER_ANCHOR.y);
-    const to = positionToPoint(current.position, this.deps.size);
+    const fit = spriteFitScale(texture, this.deps.size);
+    view.scale.set(fit);
+    const to = this.placementPoint(current.position, texture);
     const spec = parseTransition(transition);
     this.deps.parent.addChild(view);
     playEnter(this.deps.tweens, view, spec.kind, {
@@ -281,6 +296,7 @@ export class CharacterRegistry {
       to,
       duration: duration ?? DEFAULT_TRANSITION_DURATION,
       scaleFrom: CHARACTER_ZOOM_FROM,
+      scaleTo: fit,
       alphaTo: current.opacity,
     });
     current.view = view;
@@ -304,11 +320,11 @@ export class CharacterRegistry {
       entry.spriteName = spriteName;
       return;
     }
-    // 交叉淡入：新立绘叠一层淡入，结束后换回本体纹理
+    // 交叉淡入：新立绘叠一层淡入，结束后换回本体纹理（缩放按各自纹理适配）
     const overlay = new Sprite(texture);
     overlay.anchor.set(CHARACTER_ANCHOR.x, CHARACTER_ANCHOR.y);
     overlay.position.set(view.x, view.y);
-    overlay.scale.set(view.scale.x, view.scale.y);
+    overlay.scale.set(spriteFitScale(texture, this.deps.size));
     overlay.alpha = 0;
     this.deps.parent.addChild(overlay);
     this.leaving.add(overlay);
@@ -318,6 +334,7 @@ export class CharacterRegistry {
       onComplete: () => {
         if (this.tokens.get(entry.id) === token) {
           view.texture = texture;
+          view.scale.set(spriteFitScale(texture, this.deps.size));
           entry.spriteName = spriteName;
         }
         this.discard(overlay);
@@ -347,13 +364,32 @@ export class CharacterRegistry {
     playLeave(this.deps.tweens, view, spec.kind, {
       to: slideFrom(
         entry.position,
-        positionToPoint(entry.position, this.deps.size),
+        this.placementPoint(entry.position, view.texture),
         spec.direction,
       ),
       duration: ms,
       scaleFrom: CHARACTER_ZOOM_FROM,
+      scaleTo: view.scale.x,
       onComplete: () => this.leaving.delete(view),
     });
+  }
+
+  /**
+   * 立绘脚底锚点的落点：显式坐标按作者给的精确落点；关键字位置在「顶部按比例
+   * 留出头位」的基础上下移一个显示高度，使腿部探出屏幕外（常规 VN 只露出上半身）
+   */
+  private placementPoint(position: Position, texture: Texture): PointData {
+    const point = positionToPoint(position, this.deps.size);
+    if (typeof position === 'object') {
+      return point;
+    }
+    const fit = spriteFitScale(texture, this.deps.size);
+    return {
+      x: point.x,
+      y:
+        this.deps.size.height * CHARACTER_TOP_MARGIN_RATIO +
+        texture.height * fit,
+    };
   }
 
   private discard(view: Sprite): void {
