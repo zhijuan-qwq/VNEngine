@@ -3,6 +3,7 @@ import type { DialogueEntry } from '@/types/engine';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
 import { createBackdrop, createButton, createPanelBox } from './overlay';
+import { parseRichText } from './richtext';
 
 export interface HistoryViewOptions {
   width: number;
@@ -112,7 +113,8 @@ export class HistoryView extends UIComponent {
     } else {
       for (const entry of entries) {
         const prefix = entry.speaker.length > 0 ? `${entry.speaker}：` : '';
-        this.addRow(`${prefix}${entry.text}`, width);
+        // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记
+        this.addRow(`${prefix}${parseRichText(entry.text).plain}`, width);
       }
     }
 

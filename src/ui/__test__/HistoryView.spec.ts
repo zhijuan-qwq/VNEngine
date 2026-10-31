@@ -54,6 +54,16 @@ describe('HistoryView', () => {
     expect(view.rowTexts).toEqual(['Hero：Hi', '独白']);
   });
 
+  it('should strip rich-text markers from the body text', () => {
+    const view = new HistoryView({
+      width: 800,
+      height: 600,
+      getEntries: () => [entry('我（心声）', '[i]那一年的复盘[/i]开到深夜')],
+    });
+    view.show();
+    expect(view.rowTexts).toEqual(['我（心声）：那一年的复盘开到深夜']);
+  });
+
   it('should rebuild rows on every show', () => {
     const entries: DialogueEntry[] = [entry('Hero', 'Hi')];
     const view = new HistoryView({
