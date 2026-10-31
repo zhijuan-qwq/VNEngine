@@ -1,6 +1,7 @@
 import { Container, Text } from 'pixi.js';
 import { UIComponent } from './UIComponent';
 import { createBackdrop, createButton, createPanelBox } from './overlay';
+import { THEME } from './theme';
 
 export interface ConfirmDialogOptions {
   width: number;
@@ -54,14 +55,14 @@ export class ConfirmDialog extends UIComponent {
       height: options.height,
       fontSize: options.fontSize ?? 24,
       titleFontSize: options.titleFontSize ?? 28,
-      fontFamily: options.fontFamily ?? 'sans-serif',
+      fontFamily: options.fontFamily ?? THEME.fontFamily,
       boxWidth: options.boxWidth ?? Math.min(options.width * 0.6, 560),
-      boxHeight: options.boxHeight ?? 220,
-      buttonWidth: options.buttonWidth ?? 120,
-      buttonHeight: options.buttonHeight ?? 44,
-      panelColor: options.panelColor ?? 0x222222,
-      textColor: options.textColor ?? 0xffffff,
-      titleColor: options.titleColor ?? 0xffe082,
+      boxHeight: options.boxHeight ?? 230,
+      buttonWidth: options.buttonWidth ?? 132,
+      buttonHeight: options.buttonHeight ?? 46,
+      panelColor: options.panelColor ?? THEME.panel,
+      textColor: options.textColor ?? THEME.text,
+      titleColor: options.titleColor ?? THEME.accent,
     };
 
     this.addChild(createBackdrop(this.opts.width, this.opts.height));
@@ -84,6 +85,7 @@ export class ConfirmDialog extends UIComponent {
         fontSize: this.opts.titleFontSize,
         fontFamily: this.opts.fontFamily,
         fill: this.opts.titleColor,
+        fontWeight: 'bold',
       },
     });
     this.title.x = boxX + padding;
@@ -102,7 +104,7 @@ export class ConfirmDialog extends UIComponent {
       },
     });
     this.message.x = boxX + padding;
-    this.message.y = boxY + padding + this.opts.titleFontSize * 1.5;
+    this.message.y = boxY + padding;
     this.addChild(this.message);
 
     this.buttonArea = new Container();
@@ -125,6 +127,10 @@ export class ConfirmDialog extends UIComponent {
     this.title.text = request.title ?? '';
     this.title.visible = (request.title?.length ?? 0) > 0;
     this.message.text = request.message;
+    // 有标题时正文让出标题高度；无标题时不再留空档
+    this.message.y = this.title.visible
+      ? this.title.y + this.title.height + 14
+      : this.title.y;
     this.rebuildButtons(
       request.cancelText ?? '取消',
       request.confirmText ?? '确认',
@@ -149,7 +155,7 @@ export class ConfirmDialog extends UIComponent {
 
   private rebuildButtons(cancelText: string, confirmText: string): void {
     this.clearButtons();
-    const gap = 16;
+    const gap = 20;
     const total = this.opts.buttonWidth * 2 + gap;
     const startX = (this.opts.width - total) / 2;
 
@@ -157,6 +163,7 @@ export class ConfirmDialog extends UIComponent {
       width: this.opts.buttonWidth,
       height: this.opts.buttonHeight,
       label: cancelText,
+      variant: 'ghost',
       fontSize: this.opts.fontSize,
       fontFamily: this.opts.fontFamily,
       onTap: () => this.settle(false),
@@ -169,6 +176,7 @@ export class ConfirmDialog extends UIComponent {
       width: this.opts.buttonWidth,
       height: this.opts.buttonHeight,
       label: confirmText,
+      variant: 'primary',
       fontSize: this.opts.fontSize,
       fontFamily: this.opts.fontFamily,
       onTap: () => this.settle(true),

@@ -1,5 +1,6 @@
 import { Graphics, Rectangle } from 'pixi.js';
 import { UIComponent } from '../UIComponent';
+import { THEME } from '../theme';
 
 export interface ToggleOptions {
   width: number;
@@ -34,8 +35,8 @@ export class Toggle extends UIComponent {
       width: options.width,
       height: options.height ?? 32,
       disabled: options.disabled ?? false,
-      onColor: options.onColor ?? 0x66bb6a,
-      offColor: options.offColor ?? 0x777777,
+      onColor: options.onColor ?? THEME.accent,
+      offColor: options.offColor ?? THEME.panelSoft,
       knobColor: options.knobColor ?? 0xffffff,
       onChange: options.onChange,
     };
@@ -48,6 +49,7 @@ export class Toggle extends UIComponent {
     this.addChild(this.knob);
 
     this.eventMode = 'static';
+    this.cursor = 'pointer';
     this.hitArea = new Rectangle(0, 0, this.opts.width, this.opts.height);
     this.on('pointertap', (event) => {
       event.stopPropagation();

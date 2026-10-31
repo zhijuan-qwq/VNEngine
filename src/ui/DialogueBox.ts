@@ -8,6 +8,7 @@ import { TypewriterState } from './typewriter';
 import { computeTextLayout } from './textLayout';
 import type { TextLayoutItem } from './textLayout';
 import { UIComponent } from './UIComponent';
+import { THEME } from './theme';
 
 export interface DialogueBoxOptions {
   width: number;
@@ -42,16 +43,22 @@ interface ResolvedOptions {
   resolveVar?: VarResolver;
 }
 
+/** 完成指示符的浮动幅度与速度 */
+const INDICATOR_BOB_AMPLITUDE = 3;
+const INDICATOR_BOB_SPEED = 5;
+
 export class DialogueBox extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly bg: Graphics;
+  private readonly speakerPlate: Graphics;
   private readonly speakerText: Text;
-  private readonly indicator: Text;
+  private readonly indicator: Graphics;
   private readonly scratchText: Text;
   private bodyTexts: Text[] = [];
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
+  private indicatorPhase = 0;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
   private lineHeight: number;
@@ -64,12 +71,12 @@ export class DialogueBox extends UIComponent {
       height: options.height,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      fontFamily: options.fontFamily ?? 'sans-serif',
-      textColor: options.textColor ?? 0xffffff,
-      speakerColor: options.speakerColor ?? 0xffe082,
-      backgroundColor: options.backgroundColor ?? 0x000000,
-      backgroundAlpha: options.backgroundAlpha ?? 0.7,
-      padding: options.padding ?? 20,
+      fontFamily: options.fontFamily ?? THEME.fontFamily,
+      textColor: options.textColor ?? THEME.text,
+      speakerColor: options.speakerColor ?? THEME.accent,
+      backgroundColor: options.backgroundColor ?? THEME.panel,
+      backgroundAlpha: options.backgroundAlpha ?? 0.88,
+      padding: options.padding ?? 24,
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
@@ -82,9 +89,13 @@ export class DialogueBox extends UIComponent {
     this.y = this.opts.y;
 
     this.bg = new Graphics();
-    this.bg.roundRect(0, 0, this.opts.width, this.opts.height, 12);
+    this.bg.roundRect(0, 0, this.opts.width, this.opts.height, 16);
     this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+    this.bg.stroke({ color: THEME.border, width: 1.5, alpha: 0.9 });
     this.addChild(this.bg);
+
+    this.speakerPlate = new Graphics();
+    this.addChild(this.speakerPlate);
 
     this.speakerText = new Text({
       text: '',
@@ -92,25 +103,12 @@ export class DialogueBox extends UIComponent {
         fontSize: this.fontSize,
         fontFamily: this.opts.fontFamily,
         fill: this.opts.speakerColor,
+        fontWeight: 'bold',
       },
     });
-    this.speakerText.x = this.opts.padding;
-    this.speakerText.y = this.opts.padding;
     this.addChild(this.speakerText);
 
-    this.indicator = new Text({
-      text: '▼',
-      style: {
-        fontSize: Math.round(this.fontSize * 0.8),
-        fontFamily: this.opts.fontFamily,
-        fill: this.opts.textColor,
-      },
-    });
-    this.indicator.x =
-      this.opts.width - this.opts.padding - Math.round(this.fontSize * 0.8);
-    this.indicator.y =
-      this.opts.height - this.opts.padding - Math.round(this.fontSize * 0.8);
-    this.indicator.visible = false;
+    this.indicator = new Graphics();
     this.addChild(this.indicator);
 
     this.scratchText = new Text({
@@ -137,10 +135,11 @@ export class DialogueBox extends UIComponent {
     });
     this.speakerText.text = speaker;
     this.speakerText.visible = speaker.length > 0;
-    this.indicator.visible = false;
+    this.drawIndicator(false);
     this.lastRevealed = 0;
     this.clearBodyTexts();
     this.visible = true;
+    this.layoutSpeaker();
     this.relayout();
   }
 
@@ -153,8 +152,12 @@ export class DialogueBox extends UIComponent {
       this.lastRevealed = this.typewriter.revealed;
       this.relayout();
     }
-    if (this.typewriter.isComplete) {
-      this.indicator.visible = true;
+    if (this.typewriter.isComplete && this.indicator.visible) {
+      this.indicatorPhase += dt / 1000;
+      this.indicator.y =
+        this.indicatorBaseY +
+        Math.sin(this.indicatorPhase * INDICATOR_BOB_SPEED) *
+          INDICATOR_BOB_AMPLITUDE;
     }
   }
 
@@ -165,7 +168,6 @@ export class DialogueBox extends UIComponent {
     this.typewriter.revealAll();
     this.lastRevealed = this.typewriter.revealed;
     this.relayout();
-    this.indicator.visible = true;
   }
 
   public clear(): void {
@@ -185,6 +187,56 @@ export class DialogueBox extends UIComponent {
     return this.bodyTexts.map((text) => text.text).join('');
   }
 
+  private get speakerPlateHeight(): number {
+    return Math.round(this.fontSize * 1.7);
+  }
+
+  /** 名牌：盒顶左上探出的小标签，随说话人与字号重排 */
+  private layoutSpeaker(): void {
+    const plateHeight = this.speakerPlateHeight;
+    this.speakerPlate.visible = this.speakerText.visible;
+    if (!this.speakerText.visible) {
+      return;
+    }
+    const plateWidth = Math.round(this.speakerText.width) + 28;
+    this.speakerPlate.clear();
+    this.speakerPlate.roundRect(
+      this.opts.padding,
+      -Math.round(plateHeight / 2),
+      plateWidth,
+      plateHeight,
+      10,
+    );
+    this.speakerPlate.fill(THEME.veil, 0.95);
+    this.speakerPlate.stroke({ color: THEME.accent, width: 1.5, alpha: 0.9 });
+    this.speakerText.x = this.opts.padding + 14;
+    this.speakerText.y =
+      -Math.round(plateHeight / 2) +
+      (plateHeight - this.speakerText.height) / 2;
+  }
+
+  private get indicatorBaseY(): number {
+    return this.opts.height - this.opts.padding - 8;
+  }
+
+  private drawIndicator(visible: boolean): void {
+    const width = 18;
+    const height = 10;
+    this.indicator.clear();
+    this.indicator.visible = visible;
+    if (!visible) {
+      return;
+    }
+    // 下指小三角
+    this.indicator.moveTo(width / 2, height);
+    this.indicator.lineTo(0, 0);
+    this.indicator.lineTo(width, 0);
+    this.indicator.closePath();
+    this.indicator.fill(THEME.accent, 0.95);
+    this.indicator.x = this.opts.width - this.opts.padding - width;
+    this.indicator.y = this.indicatorBaseY;
+  }
+
   private bodyTextStyle(): TextStyleOptions {
     return {
       fontSize: this.fontSize,
@@ -199,7 +251,8 @@ export class DialogueBox extends UIComponent {
   }
 
   private get textTop(): number {
-    return this.opts.padding * 2 + Math.round(this.fontSize * 1.2);
+    // 名牌下半段之下留 16px 起正文（无名牌时同一基准，保证行位稳定）
+    return Math.round(this.speakerPlateHeight / 2) + 16;
   }
 
   private measureText(text: string, style: TextStyle): number {
@@ -232,19 +285,13 @@ export class DialogueBox extends UIComponent {
       fontSize: this.fontSize,
       fontFamily: this.opts.fontFamily,
       fill: this.opts.speakerColor,
+      fontWeight: 'bold',
     };
-    const indicatorSize = Math.round(this.fontSize * 0.8);
-    this.indicator.style = {
-      fontSize: indicatorSize,
-      fontFamily: this.opts.fontFamily,
-      fill: this.opts.textColor,
-    };
-    this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
-    this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
     this.scratchText.style = this.bodyTextStyle();
     for (const text of this.bodyTexts) {
       text.style = this.bodyTextStyle();
     }
+    this.layoutSpeaker();
     this.relayout();
   }
 
@@ -259,6 +306,9 @@ export class DialogueBox extends UIComponent {
       (text, style) => this.measureText(text, style),
     );
     this.renderItems(items);
+    if (this.typewriter.isComplete && !this.indicator.visible) {
+      this.drawIndicator(true);
+    }
   }
 
   private renderItems(items: TextLayoutItem[]): void {
