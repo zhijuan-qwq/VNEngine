@@ -33,6 +33,23 @@ describe('UIManager', () => {
     expect(ui.choicePanel).toBeDefined();
   });
 
+  it('should place the dialogue box at the bottom by default', () => {
+    const { ui } = makeManager();
+    expect(ui.dialogueBox.x).toBe(0);
+    expect(ui.dialogueBox.y).toBe(420);
+  });
+
+  it('should honour an explicit dialogue box height', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+    expect(ui.dialogueBox.y).toBe(400);
+  });
+
   it('should route script:say to the dialogue box', () => {
     const { bus, ui } = makeManager();
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
