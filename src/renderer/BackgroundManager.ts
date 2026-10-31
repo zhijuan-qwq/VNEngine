@@ -79,18 +79,22 @@ export class BackgroundManager {
     const ms = duration ?? DEFAULT_TRANSITION_DURATION;
     const spec = parseTransition(transition);
     const view = new Sprite(texture);
+    const layout = this.layout(texture);
+    view.scale.set(layout.scale);
     const previous = this.current;
     this.deps.parent.addChild(view);
     playEnter(this.deps.tweens, view, spec.kind, {
       // slide：slideL 从左侧滑入，slide/slideR 从右侧滑入（背景 slide 的方向约定）
       from: {
         x:
-          spec.direction === 'left'
+          layout.x +
+          (spec.direction === 'left'
             ? -this.deps.size.width
-            : this.deps.size.width,
-        y: 0,
+            : this.deps.size.width),
+        y: layout.y,
       },
-      to: { x: 0, y: 0 },
+      to: { x: layout.x, y: layout.y },
+      scaleTo: layout.scale,
       duration: ms,
     });
     this.current = { id, view };
@@ -119,6 +123,19 @@ export class BackgroundManager {
       }
       return null;
     }
+  }
+
+  /** 按画面等比铺满（cover），溢出部分居中裁切；素材是高清原画，不能用原生像素尺寸 */
+  private layout(texture: Texture): { x: number; y: number; scale: number } {
+    const scale = Math.max(
+      this.deps.size.width / texture.width,
+      this.deps.size.height / texture.height,
+    );
+    return {
+      x: (this.deps.size.width - texture.width * scale) / 2,
+      y: (this.deps.size.height - texture.height * scale) / 2,
+      scale,
+    };
   }
 
   private discard(view: Sprite): void {
