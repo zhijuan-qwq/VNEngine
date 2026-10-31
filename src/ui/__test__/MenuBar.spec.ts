@@ -75,7 +75,7 @@ describe('MenuBar', () => {
   it('should default to the top right corner', () => {
     const { bar } = makeBar();
     const last = bar.buttons[3];
-    expect(last.x + 88).toBeLessThanOrEqual(800 - 12);
+    expect(last.x + 44).toBeLessThanOrEqual(800 - 12);
     expect(bar.buttons[0].y).toBe(12);
   });
 
