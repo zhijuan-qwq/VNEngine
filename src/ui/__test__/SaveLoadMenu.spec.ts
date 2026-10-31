@@ -125,6 +125,22 @@ describe('SaveLoadMenu', () => {
     expect(labelOf(menu, 1)).toBe('存档 7  空');
   });
 
+  it('should clip an over-long summary with an ellipsis', () => {
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots: () => [
+        { slot: 0, label: '一'.repeat(30), timestamp: 1 },
+        { slot: 1, label: '短摘要', timestamp: 1 },
+      ],
+    });
+    menu.show('load');
+    const clipped = labelOf(menu, 0);
+    expect(clipped.endsWith('…')).toBe(true);
+    expect(clipped.length).toBeLessThan(`存档 1  ${'一'.repeat(30)}`.length);
+    expect(labelOf(menu, 1)).toBe('存档 2  短摘要');
+  });
+
   it('should rebuild buttons when reopened with different slots', () => {
     let slots = [0, 1];
     const menu = new SaveLoadMenu({
