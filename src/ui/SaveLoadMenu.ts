@@ -163,7 +163,11 @@ export class SaveLoadMenu extends UIComponent {
       const button = createButton({
         width: cellWidth,
         height: BUTTON_HEIGHT,
-        label: this.labelFor(info),
+        label: this.clipText(
+          this.labelFor(info),
+          cellWidth - 24,
+          this.opts.fontSize,
+        ),
         fontSize: this.opts.fontSize,
         onTap: disabled ? undefined : () => this.select(info.slot),
       });
@@ -182,6 +186,26 @@ export class SaveLoadMenu extends UIComponent {
     const slotTitle = `存档 ${info.slot + 1}`;
     const suffix = info.label ? `  ${info.label}` : '  空';
     return `${slotTitle}${suffix}`;
+  }
+
+  /** 超宽文本截断加省略号，避免摘要溢出槽位卡 */
+  private clipText(text: string, maxWidth: number, fontSize: number): string {
+    const measure = new Text({
+      text,
+      style: { fontSize, fontFamily: 'sans-serif' },
+    });
+    if (measure.width <= maxWidth) {
+      measure.destroy();
+      return text;
+    }
+    let cut = text.length - 1;
+    while (cut > 1) {
+      measure.text = `${text.slice(0, cut)}…`;
+      if (measure.width <= maxWidth) break;
+      cut -= 1;
+    }
+    measure.destroy();
+    return `${text.slice(0, cut)}…`;
   }
 
   private select(slot: number): void {
