@@ -1,6 +1,8 @@
 import { Graphics, Rectangle } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
 import { UIComponent } from '../UIComponent';
+import { resolveTheme } from '../theme';
+import type { DeepPartial, UITheme } from '../theme';
 
 export interface SliderOptions {
   width: number;
@@ -13,6 +15,7 @@ export interface SliderOptions {
   trackColor?: number;
   fillColor?: number;
   handleColor?: number;
+  theme?: DeepPartial<UITheme>;
   onChange?: (value: number) => void;
 }
 
@@ -38,15 +41,16 @@ export class Slider extends UIComponent {
 
   constructor(options: SliderOptions) {
     super({ id: 'slider' });
+    const theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
-      height: options.height ?? 8,
+      height: options.height ?? theme.sizes.sliderHeight,
       min: options.min ?? 0,
       max: options.max ?? 1,
       step: options.step ?? 0,
-      trackColor: options.trackColor ?? 0x555555,
-      fillColor: options.fillColor ?? 0xffe082,
-      handleColor: options.handleColor ?? 0xffffff,
+      trackColor: options.trackColor ?? theme.colors.surfaceSunken,
+      fillColor: options.fillColor ?? theme.colors.accent,
+      handleColor: options.handleColor ?? theme.colors.textPrimary,
       onChange: options.onChange,
     };
     this.currentValue = this.normalize(

@@ -1,7 +1,11 @@
 import { Container, Text } from 'pixi.js';
+import { ModalPanel } from './ModalPanel';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
-import { createBackdrop, createButton, createPanelBox } from './overlay';
+import { createButton } from './overlay';
+import type { UIButton } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export type SaveLoadMode = 'save' | 'load';
 
@@ -25,6 +29,7 @@ export interface SaveLoadMenuOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -37,16 +42,14 @@ interface ResolvedOptions {
   columns: number;
   fontSize: number;
   padding: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
 }
 
-const BUTTON_HEIGHT = 64;
-const GAP = 12;
-
 export class SaveLoadMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
-  private readonly title: Text;
+  private readonly theme: UITheme;
+  private readonly modal: ModalPanel;
   private readonly scroll: ScrollView;
   private readonly contentWidth: number;
   private slotButtons: Container[] = [];
@@ -54,6 +57,7 @@ export class SaveLoadMenu extends UIComponent {
 
   constructor(options: SaveLoadMenuOptions) {
     super({ id: 'save-load-menu' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
@@ -62,57 +66,34 @@ export class SaveLoadMenu extends UIComponent {
       onSave: options.onSave,
       onLoad: options.onLoad,
       columns: Math.max(options.columns ?? 2, 1),
-      fontSize: options.fontSize ?? 22,
-      padding: options.padding ?? 24,
-      panelColor: options.panelColor ?? 0x222222,
-      textColor: options.textColor ?? 0xffffff,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
+      padding: options.padding ?? this.theme.spacing.s24,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
     };
 
-    this.addChild(createBackdrop(this.opts.width, this.opts.height));
-
-    const boxWidth = this.opts.width * 0.8;
-    const boxHeight = this.opts.height * 0.8;
-    const boxX = (this.opts.width - boxWidth) / 2;
-    const boxY = (this.opts.height - boxHeight) / 2;
-    const box = createPanelBox(boxWidth, boxHeight, {
-      color: this.opts.panelColor,
+    this.modal = new ModalPanel({
+      width: this.opts.width,
+      height: this.opts.height,
+      boxWidthRatio: this.theme.sizes.modalWidthRatio,
+      boxHeightRatio: this.theme.sizes.modalHeightRatio,
+      title: '',
+      padding: this.opts.padding,
+      panelColor: this.opts.panelColor,
+      onClose: () => this.hide(),
+      theme: this.theme,
     });
-    box.x = boxX;
-    box.y = boxY;
-    this.addChild(box);
+    this.addChild(this.modal);
 
-    const padding = this.opts.padding;
-    this.title = new Text({
-      text: '',
-      style: { fontSize: 26, fill: this.opts.textColor },
-    });
-    this.title.x = boxX + padding;
-    this.title.y = boxY + padding;
-    this.addChild(this.title);
-
-    const closeHeight = 44;
-    const scrollTop = boxY + padding + this.title.height + padding / 2;
-    const scrollHeight =
-      boxY + boxHeight - padding - closeHeight - padding - scrollTop;
-    this.contentWidth = boxWidth - padding * 2;
+    this.contentWidth = this.modal.contentWidth;
     this.scroll = new ScrollView({
       width: this.contentWidth,
-      height: scrollHeight,
+      height: this.modal.contentHeight,
+      step: this.theme.sizes.scrollStep,
     });
-    this.scroll.x = boxX + padding;
-    this.scroll.y = scrollTop;
-    this.addChild(this.scroll);
-
-    const close = createButton({
-      width: 120,
-      height: closeHeight,
-      label: '关闭',
-      fontSize: this.opts.fontSize,
-      onTap: () => this.hide(),
-    });
-    close.x = boxX + (boxWidth - 120) / 2;
-    close.y = boxY + boxHeight - padding - closeHeight;
-    this.addChild(close);
+    this.scroll.x = 0;
+    this.scroll.y = 0;
+    this.modal.content.addChild(this.scroll);
 
     this.hide();
   }
@@ -124,7 +105,7 @@ export class SaveLoadMenu extends UIComponent {
   /** 打开菜单；未知模式按 'load' 处理 */
   public show(mode: SaveLoadMode): void {
     this.currentMode = mode === 'save' ? 'save' : 'load';
-    this.title.text = this.currentMode === 'save' ? '保存进度' : '读取进度';
+    this.modal.setTitle(this.currentMode === 'save' ? '保存进度' : '读取进度');
     this.rebuild();
     super.show();
   }
@@ -146,7 +127,11 @@ export class SaveLoadMenu extends UIComponent {
     if (slots.length === 0) {
       const empty = new Text({
         text: '（无可用存档槽）',
-        style: { fontSize: this.opts.fontSize, fill: this.opts.textColor },
+        style: {
+          fontFamily: this.theme.typography.fontFamilyBody,
+          fontSize: this.opts.fontSize,
+          fill: this.theme.colors.textMuted,
+        },
       });
       this.scroll.content.addChild(empty);
       this.scroll.setContentHeight(empty.height);
@@ -154,32 +139,37 @@ export class SaveLoadMenu extends UIComponent {
     }
 
     const columns = Math.min(this.opts.columns, slots.length);
-    const cellWidth = (this.contentWidth - GAP * (columns - 1)) / columns;
+    const gap = this.theme.sizes.slotGap;
+    const cellWidth = (this.contentWidth - gap * (columns - 1)) / columns;
+    const cellHeight = this.theme.sizes.slotHeight;
     for (let index = 0; index < slots.length; index += 1) {
       const info = slots[index];
       // 读档模式下空槽不可用：没有存档可恢复，点了只会触发一次注定失败的读取
       const disabled =
         this.currentMode === 'load' && info.timestamp === undefined;
-      const button = createButton({
+      const button: UIButton = createButton({
         width: cellWidth,
-        height: BUTTON_HEIGHT,
+        height: cellHeight,
         label: this.clipText(
           this.labelFor(info),
-          cellWidth - 24,
+          cellWidth - this.theme.spacing.s16 - this.theme.spacing.s8,
           this.opts.fontSize,
         ),
         fontSize: this.opts.fontSize,
+        variant: 'secondary',
+        align: 'left',
+        disabled,
+        theme: this.theme,
         onTap: disabled ? undefined : () => this.select(info.slot),
       });
-      if (disabled) button.alpha = 0.45;
-      button.x = (index % columns) * (cellWidth + GAP);
-      button.y = Math.floor(index / columns) * (BUTTON_HEIGHT + GAP);
+      button.x = (index % columns) * (cellWidth + gap);
+      button.y = Math.floor(index / columns) * (cellHeight + gap);
       this.slotButtons.push(button);
       this.scroll.content.addChild(button);
     }
 
     const rows = Math.ceil(slots.length / columns);
-    this.scroll.setContentHeight(rows * (BUTTON_HEIGHT + GAP));
+    this.scroll.setContentHeight(rows * (cellHeight + gap));
   }
 
   private labelFor(info: SaveSlotInfo): string {
@@ -192,7 +182,10 @@ export class SaveLoadMenu extends UIComponent {
   private clipText(text: string, maxWidth: number, fontSize: number): string {
     const measure = new Text({
       text,
-      style: { fontSize, fontFamily: 'sans-serif' },
+      style: {
+        fontSize,
+        fontFamily: this.theme.typography.fontFamilyBody,
+      },
     });
     if (measure.width <= maxWidth) {
       measure.destroy();

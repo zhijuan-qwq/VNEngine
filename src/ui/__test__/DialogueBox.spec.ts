@@ -1,6 +1,8 @@
+import { Sprite } from 'pixi.js';
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
 import { DialogueBox } from '../DialogueBox';
+import { DEFAULT_UI_THEME } from '../theme';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -60,6 +62,85 @@ describe('DialogueBox', () => {
       (child) => 'text' in child && child.visible === true,
     ) as { text: string } | undefined;
     expect(speaker?.text).toBe('Hero');
+  });
+
+  it('should fade the backdrop in from transparent at the top', () => {
+    const box = makeBox();
+    const bg = box.children[0];
+    expect(bg).toBeInstanceOf(Sprite);
+
+    const sprite = bg as unknown as Sprite;
+    expect(sprite.width).toBe(600);
+    expect(sprite.height).toBe(180);
+
+    const resource = sprite.texture.source.resource as Uint8Array;
+    const rows = Math.max(2, Math.round(sprite.height));
+    expect(sprite.texture.source.height).toBe(rows);
+    expect(resource).toHaveLength(rows * 4);
+    // 纹理首行为完全透明，末行为设置的半透明度
+    expect(resource[3]).toBe(0);
+    const last = (rows - 1) * 4;
+    expect(resource[last + 3]).toBe(
+      Math.round(DEFAULT_UI_THEME.colors.surfaceDialogueAlpha * 255),
+    );
+    const color = DEFAULT_UI_THEME.colors.surfaceDialogue;
+    expect([resource[last], resource[last + 1], resource[last + 2]]).toEqual([
+      (color >> 16) & 0xff,
+      (color >> 8) & 0xff,
+      color & 0xff,
+    ]);
+  });
+
+  it('should draw a flat background panel when a backgroundColor is given', () => {
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      backgroundColor: 0x112233,
+    });
+    const bg = box.children[0] as unknown as {
+      context: {
+        instructions: Array<{
+          action: string;
+          data: { style: { color: number; alpha: number } };
+        }>;
+      };
+    };
+    const fills = bg.context.instructions.filter(
+      (instruction) => instruction.action === 'fill',
+    );
+    expect(fills).toHaveLength(1);
+    expect(fills[0].data.style.color).toBe(0x112233);
+    expect(fills[0].data.style.alpha).toBe(1);
+  });
+
+  it('should skip the backdrop when backgroundAlpha is zero', () => {
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      backgroundAlpha: 0,
+    });
+    expect(box.children.some((child) => child instanceof Sprite)).toBe(false);
+  });
+
+  it('should left-align subtitle text with a small margin', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+    box.complete();
+    const body = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hello world',
+    ) as unknown as { x: number };
+    expect(body.x).toBe(DEFAULT_UI_THEME.spacing.s16);
+  });
+
+  it('should left-align the speaker name above the subtitle', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hi', 100);
+    box.complete();
+    const speaker = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hero',
+    ) as unknown as { x: number; y: number };
+    expect(speaker.x).toBe(DEFAULT_UI_THEME.spacing.s16);
+    expect(speaker.y).toBeGreaterThan(0);
   });
 
   it('should clear and hide via clear()', () => {

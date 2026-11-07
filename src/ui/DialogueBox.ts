@@ -1,4 +1,4 @@
-import { Graphics, Text } from 'pixi.js';
+import { BufferImageSource, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { TextStyleOptions } from 'pixi.js';
 import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
@@ -8,6 +8,8 @@ import { TypewriterState } from './typewriter';
 import { computeTextLayout } from './textLayout';
 import type { TextLayoutItem } from './textLayout';
 import { UIComponent } from './UIComponent';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface DialogueBoxOptions {
   width: number;
@@ -15,7 +17,7 @@ export interface DialogueBoxOptions {
   x?: number;
   y?: number;
   fontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   textColor?: number;
   speakerColor?: number;
   backgroundColor?: number;
@@ -25,6 +27,7 @@ export interface DialogueBoxOptions {
   defaultSpeed?: number;
   eventBus?: EventBus<EngineEvents>;
   resolveVar?: VarResolver;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -32,11 +35,14 @@ interface ResolvedOptions {
   height: number;
   x: number;
   y: number;
-  fontFamily: string;
+  fontFamily: string | string[];
+  speakerFontFamily: string | string[];
   textColor: number;
   speakerColor: number;
   backgroundColor: number;
   backgroundAlpha: number;
+  /** 显式底色时绘制带边框的实心面板；否则绘制顶部渐隐的半透明衬底 */
+  flatBackground: boolean;
   padding: number;
   eventBus?: EventBus<EngineEvents>;
   resolveVar?: VarResolver;
@@ -44,7 +50,7 @@ interface ResolvedOptions {
 
 export class DialogueBox extends UIComponent {
   private readonly opts: ResolvedOptions;
-  private readonly bg: Graphics;
+  private readonly theme: UITheme;
   private readonly speakerText: Text;
   private readonly indicator: Text;
   private readonly scratchText: Text;
@@ -52,6 +58,8 @@ export class DialogueBox extends UIComponent {
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
+  /** 全量布局的行数，用于逐字显示时保持文本块高度稳定 */
+  private lineCount = 1;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
   private lineHeight: number;
@@ -59,39 +67,51 @@ export class DialogueBox extends UIComponent {
 
   constructor(options: DialogueBoxOptions) {
     super({ id: 'dialogue-box' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      fontFamily: options.fontFamily ?? 'sans-serif',
-      textColor: options.textColor ?? 0xffffff,
-      speakerColor: options.speakerColor ?? 0xffe082,
-      backgroundColor: options.backgroundColor ?? 0x000000,
-      backgroundAlpha: options.backgroundAlpha ?? 0.7,
-      padding: options.padding ?? 20,
+      fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
+      speakerFontFamily: this.theme.typography.fontFamilyHeading,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
+      speakerColor: options.speakerColor ?? this.theme.colors.accent,
+      backgroundColor:
+        options.backgroundColor ?? this.theme.colors.surfaceDialogue,
+      // 缺省为顶部渐隐的半透明衬底；显式底色才画实心面板
+      backgroundAlpha:
+        options.backgroundAlpha ??
+        (options.backgroundColor !== undefined
+          ? 1
+          : this.theme.colors.surfaceDialogueAlpha),
+      flatBackground: options.backgroundColor !== undefined,
+      padding: options.padding ?? this.theme.spacing.s16,
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
-    this.fontSize = options.fontSize ?? 28;
+    this.fontSize = options.fontSize ?? this.theme.typography.sizes.base;
     this.lineHeight =
-      options.lineHeight ?? Math.round((options.fontSize ?? 28) * 1.4);
+      options.lineHeight ??
+      Math.round(this.fontSize * this.theme.typography.lineHeights.relaxed);
     this.defaultSpeed = options.defaultSpeed ?? 40;
 
     this.x = this.opts.x;
     this.y = this.opts.y;
 
-    this.bg = new Graphics();
-    this.bg.roundRect(0, 0, this.opts.width, this.opts.height, 12);
-    this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
-    this.addChild(this.bg);
+    const backdrop = this.createBackdrop();
+    if (backdrop) {
+      this.addChild(backdrop);
+    }
 
     this.speakerText = new Text({
       text: '',
       style: {
         fontSize: this.fontSize,
-        fontFamily: this.opts.fontFamily,
+        fontFamily: this.opts.speakerFontFamily,
+        fontWeight: this.theme.typography.weights.semibold,
         fill: this.opts.speakerColor,
+        dropShadow: this.textShadow(),
       },
     });
     this.speakerText.x = this.opts.padding;
@@ -103,7 +123,8 @@ export class DialogueBox extends UIComponent {
       style: {
         fontSize: Math.round(this.fontSize * 0.8),
         fontFamily: this.opts.fontFamily,
-        fill: this.opts.textColor,
+        fill: this.theme.colors.infoLight,
+        dropShadow: this.textShadow(),
       },
     });
     this.indicator.x =
@@ -141,6 +162,7 @@ export class DialogueBox extends UIComponent {
     this.lastRevealed = 0;
     this.clearBodyTexts();
     this.visible = true;
+    this.recomputeLineCount();
     this.relayout();
   }
 
@@ -189,8 +211,20 @@ export class DialogueBox extends UIComponent {
     return {
       fontSize: this.fontSize,
       fontFamily: this.opts.fontFamily,
+      fontWeight: this.theme.typography.weights.regular,
       fill: this.opts.textColor,
       wordWrap: false,
+      dropShadow: this.textShadow(),
+    };
+  }
+
+  private textShadow(): TextStyleOptions['dropShadow'] {
+    return {
+      color: this.theme.colors.textShadow,
+      alpha: this.theme.colors.textShadowAlpha,
+      blur: 4,
+      distance: 2,
+      angle: Math.PI / 2,
     };
   }
 
@@ -198,8 +232,74 @@ export class DialogueBox extends UIComponent {
     return this.opts.width - this.opts.padding * 2;
   }
 
-  private get textTop(): number {
-    return this.opts.padding * 2 + Math.round(this.fontSize * 1.2);
+  private createBackdrop(): Graphics | Sprite | null {
+    if (this.opts.backgroundAlpha <= 0) {
+      return null;
+    }
+    if (!this.opts.flatBackground) {
+      return this.createFadeBackdrop();
+    }
+    const bg = new Graphics();
+    bg.roundRect(0, 0, this.opts.width, this.opts.height, this.theme.radius.lg);
+    bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+    bg.stroke({
+      width: this.theme.border.thin,
+      color: this.theme.colors.borderSubtle,
+      alpha: this.theme.colors.borderSubtleAlpha,
+    });
+    return bg;
+  }
+
+  /**
+   * 顶部渐隐衬底：按像素行把「透明 → 设定透明度」烘焙成窄纹理再铺满对话框。
+   * 渐隐只占顶部约 40% 高度，其余保持设定透明度——线性铺满整个高度会把
+   * 字幕区域稀释到两三成，调高透明度也看不出变化。
+   * 逐行采样避免分片叠加的接缝，也不依赖 DOM 的 FillGradient。
+   */
+  private createFadeBackdrop(): Sprite {
+    const color = this.opts.backgroundColor;
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    const rows = Math.max(2, Math.round(this.opts.height));
+    const fadeEnd = 0.4;
+    const resource = new Uint8Array(rows * 4);
+    for (let i = 0; i < rows; i += 1) {
+      const t = Math.min(i / (rows - 1) / fadeEnd, 1);
+      // smoothstep：顶部完全透明，到 fadeEnd 平滑收敛到设定透明度
+      const ramp = t * t * (3 - 2 * t);
+      const alpha = Math.round(this.opts.backgroundAlpha * ramp * 255);
+      resource.set([r, g, b, alpha], i * 4);
+    }
+    const source = new BufferImageSource({
+      resource,
+      width: 1,
+      height: rows,
+      alphaMode: 'premultiply-alpha-on-upload',
+    });
+    const sprite = new Sprite(new Texture({ source }));
+    sprite.width = this.opts.width;
+    sprite.height = this.opts.height;
+    return sprite;
+  }
+
+  /** 用完整文本布局推算行数；逐字显示时文本块高度保持稳定 */
+  private recomputeLineCount(): void {
+    if (!this.parsed) {
+      this.lineCount = 1;
+      return;
+    }
+    const items = computeTextLayout(
+      this.parsed,
+      this.parsed.plain.length,
+      { width: this.bodyWidth, lineHeight: this.lineHeight },
+      (text, style) => this.measureText(text, style),
+    );
+    let count = 0;
+    for (const item of items) {
+      count = Math.max(count, Math.round(item.y / this.lineHeight) + 1);
+    }
+    this.lineCount = Math.max(count, 1);
   }
 
   private measureText(text: string, style: TextStyle): number {
@@ -222,7 +322,9 @@ export class DialogueBox extends UIComponent {
     if (payload.key === 'fontSize') {
       if (typeof payload.value !== 'number') return;
       this.fontSize = payload.value;
-      this.lineHeight = Math.round(payload.value * 1.4);
+      this.lineHeight = Math.round(
+        payload.value * this.theme.typography.lineHeights.relaxed,
+      );
       this.applyFontSize();
     }
   }
@@ -230,14 +332,17 @@ export class DialogueBox extends UIComponent {
   private applyFontSize(): void {
     this.speakerText.style = {
       fontSize: this.fontSize,
-      fontFamily: this.opts.fontFamily,
+      fontFamily: this.opts.speakerFontFamily,
+      fontWeight: this.theme.typography.weights.semibold,
       fill: this.opts.speakerColor,
+      dropShadow: this.textShadow(),
     };
     const indicatorSize = Math.round(this.fontSize * 0.8);
     this.indicator.style = {
       fontSize: indicatorSize,
       fontFamily: this.opts.fontFamily,
-      fill: this.opts.textColor,
+      fill: this.theme.colors.infoLight,
+      dropShadow: this.textShadow(),
     };
     this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
     this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
@@ -245,6 +350,7 @@ export class DialogueBox extends UIComponent {
     for (const text of this.bodyTexts) {
       text.style = this.bodyTextStyle();
     }
+    this.recomputeLineCount();
     this.relayout();
   }
 
@@ -267,6 +373,25 @@ export class DialogueBox extends UIComponent {
       this.addChild(text);
       this.bodyTexts.push(text);
     }
+
+    // 字幕：左对齐并保留小边距，文本块底对齐到画面下方（避开右下快捷栏）
+    const blockHeight = this.lineCount * this.lineHeight;
+    const bottom =
+      this.opts.height -
+      this.opts.padding -
+      this.theme.sizes.dialogueBottomReserve;
+    const speakerVisible = this.speakerText.text.length > 0;
+    const speakerGap = this.theme.spacing.s8;
+    const speakerHeight = this.speakerText.height;
+    const minTop =
+      this.opts.padding + (speakerVisible ? speakerHeight + speakerGap : 0);
+    const bodyTop = Math.max(bottom - blockHeight, minTop);
+
+    if (speakerVisible) {
+      this.speakerText.x = this.opts.padding;
+      this.speakerText.y = bodyTop - speakerGap - speakerHeight;
+    }
+
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       const text = this.bodyTexts[i];
@@ -274,9 +399,13 @@ export class DialogueBox extends UIComponent {
         text.text = item.text;
       }
       text.x = this.opts.padding + item.x;
-      text.y = this.textTop + item.y;
+      text.y = bodyTop + item.y;
       text.visible = true;
     }
+
+    const indicatorSize = Math.round(this.fontSize * 0.8);
+    this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
+    this.indicator.y = bodyTop + blockHeight - indicatorSize;
     for (let i = items.length; i < this.bodyTexts.length; i += 1) {
       const text = this.bodyTexts[i];
       if (text.text !== '') {
