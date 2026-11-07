@@ -41,6 +41,8 @@ interface ResolvedOptions {
   speakerColor: number;
   backgroundColor: number;
   backgroundAlpha: number;
+  /** 显式底色时绘制实心面板；否则绘制透明到底部的渐变 */
+  flatBackground: boolean;
   padding: number;
   eventBus?: EventBus<EngineEvents>;
   resolveVar?: VarResolver;
@@ -57,8 +59,8 @@ export class DialogueBox extends UIComponent {
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
-  /** 全量布局的每行宽度，用于逐字显示时保持行居中不抖动 */
-  private lineWidths: number[] = [];
+  /** 全量布局的行数，用于逐字显示时保持文本块高度稳定 */
+  private lineCount = 1;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
   private lineHeight: number;
@@ -78,11 +80,14 @@ export class DialogueBox extends UIComponent {
       speakerColor: options.speakerColor ?? this.theme.colors.accent,
       backgroundColor:
         options.backgroundColor ?? this.theme.colors.surfaceDialogue,
-      // 缺省无框字幕：只有显式传入背景色时才点亮面板底
+      // 缺省为字幕渐变；显式底色才画实心面板
       backgroundAlpha:
         options.backgroundAlpha ??
-        (options.backgroundColor !== undefined ? 1 : 0),
-      padding: options.padding ?? this.theme.spacing.s24,
+        (options.backgroundColor !== undefined
+          ? 1
+          : this.theme.colors.surfaceDialogueAlpha),
+      flatBackground: options.backgroundColor !== undefined,
+      padding: options.padding ?? this.theme.spacing.s16,
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
@@ -98,21 +103,7 @@ export class DialogueBox extends UIComponent {
     this.y = this.opts.y;
 
     this.bg = new Graphics();
-    if (this.opts.backgroundAlpha > 0) {
-      this.bg.roundRect(
-        0,
-        0,
-        this.opts.width,
-        this.opts.height,
-        this.theme.radius.lg,
-      );
-      this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
-      this.bg.stroke({
-        width: this.theme.border.thin,
-        color: this.theme.colors.borderSubtle,
-        alpha: this.theme.colors.borderSubtleAlpha,
-      });
-    }
+    this.drawBackdrop();
     this.addChild(this.bg);
 
     this.speakerText = new Text({
@@ -173,7 +164,7 @@ export class DialogueBox extends UIComponent {
     this.lastRevealed = 0;
     this.clearBodyTexts();
     this.visible = true;
-    this.recomputeLineWidths();
+    this.recomputeLineCount();
     this.relayout();
   }
 
@@ -243,10 +234,43 @@ export class DialogueBox extends UIComponent {
     return this.opts.width - this.opts.padding * 2;
   }
 
-  /** 用完整文本布局推算每行宽度；逐字显示时按同一行宽居中，避免文字左右跳动 */
-  private recomputeLineWidths(): void {
+  /** 渐变分片数；足够多时肉眼不可见色带，且无需依赖 DOM 的 FillGradient */
+  private static readonly BACKDROP_STEPS = 32;
+
+  private drawBackdrop(): void {
+    if (this.opts.backgroundAlpha <= 0) {
+      return;
+    }
+    if (this.opts.flatBackground) {
+      this.bg.roundRect(
+        0,
+        0,
+        this.opts.width,
+        this.opts.height,
+        this.theme.radius.lg,
+      );
+      this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+      this.bg.stroke({
+        width: this.theme.border.thin,
+        color: this.theme.colors.borderSubtle,
+        alpha: this.theme.colors.borderSubtleAlpha,
+      });
+      return;
+    }
+    // 顶部全透明，向下过渡到半透明深色，保证字幕在明亮背景上可读
+    const steps = DialogueBox.BACKDROP_STEPS;
+    const sliceHeight = this.opts.height / steps;
+    for (let i = 0; i < steps; i += 1) {
+      const alpha = (this.opts.backgroundAlpha * (i + 1)) / steps;
+      this.bg.rect(0, i * sliceHeight, this.opts.width, sliceHeight + 0.5);
+      this.bg.fill({ color: this.opts.backgroundColor, alpha });
+    }
+  }
+
+  /** 用完整文本布局推算行数；逐字显示时文本块高度保持稳定 */
+  private recomputeLineCount(): void {
     if (!this.parsed) {
-      this.lineWidths = [];
+      this.lineCount = 1;
       return;
     }
     const items = computeTextLayout(
@@ -255,14 +279,11 @@ export class DialogueBox extends UIComponent {
       { width: this.bodyWidth, lineHeight: this.lineHeight },
       (text, style) => this.measureText(text, style),
     );
-    const widths: number[] = [];
+    let count = 0;
     for (const item of items) {
-      const line = Math.round(item.y / this.lineHeight);
-      const segment = this.parsed.segments[item.segmentIndex];
-      const width = item.x + this.measureText(item.text, segment.style);
-      widths[line] = Math.max(widths[line] ?? 0, width);
+      count = Math.max(count, Math.round(item.y / this.lineHeight) + 1);
     }
-    this.lineWidths = widths;
+    this.lineCount = Math.max(count, 1);
   }
 
   private measureText(text: string, style: TextStyle): number {
@@ -313,7 +334,7 @@ export class DialogueBox extends UIComponent {
     for (const text of this.bodyTexts) {
       text.style = this.bodyTextStyle();
     }
-    this.recomputeLineWidths();
+    this.recomputeLineCount();
     this.relayout();
   }
 
@@ -337,9 +358,8 @@ export class DialogueBox extends UIComponent {
       this.bodyTexts.push(text);
     }
 
-    // 无框字幕：文本块底对齐到画面下方（避开右下快捷栏），逐行水平居中
-    const lineCount = Math.max(this.lineWidths.length, 1);
-    const blockHeight = lineCount * this.lineHeight;
+    // 字幕：左对齐并保留小边距，文本块底对齐到画面下方（避开右下快捷栏）
+    const blockHeight = this.lineCount * this.lineHeight;
     const bottom =
       this.opts.height -
       this.opts.padding -
@@ -352,7 +372,7 @@ export class DialogueBox extends UIComponent {
     const bodyTop = Math.max(bottom - blockHeight, minTop);
 
     if (speakerVisible) {
-      this.speakerText.x = (this.opts.width - this.speakerText.width) / 2;
+      this.speakerText.x = this.opts.padding;
       this.speakerText.y = bodyTop - speakerGap - speakerHeight;
     }
 
@@ -362,12 +382,7 @@ export class DialogueBox extends UIComponent {
       if (text.text !== item.text) {
         text.text = item.text;
       }
-      const line = Math.round(item.y / this.lineHeight);
-      const lineWidth = this.lineWidths[line] ?? 0;
-      text.x =
-        this.opts.padding +
-        Math.max(0, (this.bodyWidth - lineWidth) / 2) +
-        item.x;
+      text.x = this.opts.padding + item.x;
       text.y = bodyTop + item.y;
       text.visible = true;
     }

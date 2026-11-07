@@ -1,6 +1,7 @@
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
 import { DialogueBox } from '../DialogueBox';
+import { DEFAULT_UI_THEME } from '../theme';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -62,15 +63,29 @@ describe('DialogueBox', () => {
     expect(speaker?.text).toBe('Hero');
   });
 
-  it('should draw no background panel by default (subtitle style)', () => {
+  it('should draw a transparent-to-dark gradient backdrop by default', () => {
     const box = makeBox();
     const bg = box.children[0] as unknown as {
-      context: { instructions: unknown[] };
+      context: {
+        instructions: Array<{
+          action: string;
+          data: { style: { color: number; alpha: number } };
+        }>;
+      };
     };
-    expect(bg.context.instructions).toHaveLength(0);
+    const fills = bg.context.instructions.filter(
+      (instruction) => instruction.action === 'fill',
+    );
+    expect(fills.length).toBeGreaterThan(1);
+    expect(fills[0].data.style.alpha).toBeLessThan(0.1);
+    const last = fills[fills.length - 1].data.style;
+    expect(last.alpha).toBeCloseTo(
+      DEFAULT_UI_THEME.colors.surfaceDialogueAlpha,
+    );
+    expect(last.color).toBe(DEFAULT_UI_THEME.colors.surfaceDialogue);
   });
 
-  it('should draw a background panel when a backgroundColor is given', () => {
+  it('should draw a flat background panel when a backgroundColor is given', () => {
     const box = new DialogueBox({
       width: 600,
       height: 180,
@@ -80,36 +95,48 @@ describe('DialogueBox', () => {
       context: {
         instructions: Array<{
           action: string;
-          data: { style: { color: number } };
+          data: { style: { color: number; alpha: number } };
         }>;
       };
     };
-    const fill = bg.context.instructions.find(
+    const fills = bg.context.instructions.filter(
       (instruction) => instruction.action === 'fill',
     );
-    expect(fill?.data.style.color).toBe(0x112233);
+    expect(fills).toHaveLength(1);
+    expect(fills[0].data.style.color).toBe(0x112233);
+    expect(fills[0].data.style.alpha).toBe(1);
   });
 
-  it('should center each subtitle line horizontally', () => {
+  it('should skip the backdrop when backgroundAlpha is zero', () => {
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      backgroundAlpha: 0,
+    });
+    const bg = box.children[0] as unknown as {
+      context: { instructions: unknown[] };
+    };
+    expect(bg.context.instructions).toHaveLength(0);
+  });
+
+  it('should left-align subtitle text with a small margin', () => {
     const box = makeBox();
     box.show('Hero', 'Hello world', 100);
     box.complete();
-    // 字号 28 → 每字 16.8px；"Hello world" 宽 184.8，正文区宽 552
     const body = box.children.find(
       (child) => (child as { text?: string }).text === 'Hello world',
     ) as unknown as { x: number };
-    expect(body.x).toBeCloseTo(24 + (552 - 184.8) / 2);
+    expect(body.x).toBe(DEFAULT_UI_THEME.spacing.s16);
   });
 
-  it('should center the speaker name above the subtitle', () => {
+  it('should left-align the speaker name above the subtitle', () => {
     const box = makeBox();
     box.show('Hero', 'Hi', 100);
     box.complete();
     const speaker = box.children.find(
       (child) => (child as { text?: string }).text === 'Hero',
     ) as unknown as { x: number; y: number };
-    // "Hero" 宽 4 × 28 × 0.6 = 67.2
-    expect(speaker.x).toBeCloseTo((600 - 67.2) / 2);
+    expect(speaker.x).toBe(DEFAULT_UI_THEME.spacing.s16);
     expect(speaker.y).toBeGreaterThan(0);
   });
 
