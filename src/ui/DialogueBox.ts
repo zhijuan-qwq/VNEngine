@@ -251,7 +251,9 @@ export class DialogueBox extends UIComponent {
   }
 
   /**
-   * 顶部渐隐衬底：按像素行把「透明 → 半透明」烘焙成窄纹理再铺满对话框。
+   * 顶部渐隐衬底：按像素行把「透明 → 设定透明度」烘焙成窄纹理再铺满对话框。
+   * 渐隐只占顶部约 40% 高度，其余保持设定透明度——线性铺满整个高度会把
+   * 字幕区域稀释到两三成，调高透明度也看不出变化。
    * 逐行采样避免分片叠加的接缝，也不依赖 DOM 的 FillGradient。
    */
   private createFadeBackdrop(): Sprite {
@@ -260,11 +262,13 @@ export class DialogueBox extends UIComponent {
     const g = (color >> 8) & 0xff;
     const b = color & 0xff;
     const rows = Math.max(2, Math.round(this.opts.height));
+    const fadeEnd = 0.4;
     const resource = new Uint8Array(rows * 4);
     for (let i = 0; i < rows; i += 1) {
-      const alpha = Math.round(
-        (this.opts.backgroundAlpha * i * 255) / (rows - 1),
-      );
+      const t = Math.min(i / (rows - 1) / fadeEnd, 1);
+      // smoothstep：顶部完全透明，到 fadeEnd 平滑收敛到设定透明度
+      const ramp = t * t * (3 - 2 * t);
+      const alpha = Math.round(this.opts.backgroundAlpha * ramp * 255);
       resource.set([r, g, b, alpha], i * 4);
     }
     const source = new BufferImageSource({

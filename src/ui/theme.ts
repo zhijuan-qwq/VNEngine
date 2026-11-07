@@ -231,7 +231,7 @@ export const DEFAULT_UI_THEME: UITheme = {
     surfacePanel: 0x262321,
     surfacePanelAlpha: 0.94,
     surfaceDialogue: 0xfff5f8,
-    surfaceDialogueAlpha: 0.5,
+    surfaceDialogueAlpha: 0.8,
     surfaceSunken: 0x1f1411,
     surfaceButton: 0x3d3a38,
     surfaceButtonHover: 0x4a4643,
