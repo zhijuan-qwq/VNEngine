@@ -20,5 +20,5 @@
 @label demo_finish
 @say "星弥" "你选择了结束。"
 @label demo_tail
-@say "星弥" "Demo 结束。右上角可以打开设置、存档、读档和历史面板。"
+@say "星弥" "Demo 结束。右下角可以打开设置、存档、读档和历史面板。"
 @end
