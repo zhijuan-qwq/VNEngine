@@ -62,6 +62,57 @@ describe('DialogueBox', () => {
     expect(speaker?.text).toBe('Hero');
   });
 
+  it('should draw no background panel by default (subtitle style)', () => {
+    const box = makeBox();
+    const bg = box.children[0] as unknown as {
+      context: { instructions: unknown[] };
+    };
+    expect(bg.context.instructions).toHaveLength(0);
+  });
+
+  it('should draw a background panel when a backgroundColor is given', () => {
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      backgroundColor: 0x112233,
+    });
+    const bg = box.children[0] as unknown as {
+      context: {
+        instructions: Array<{
+          action: string;
+          data: { style: { color: number } };
+        }>;
+      };
+    };
+    const fill = bg.context.instructions.find(
+      (instruction) => instruction.action === 'fill',
+    );
+    expect(fill?.data.style.color).toBe(0x112233);
+  });
+
+  it('should center each subtitle line horizontally', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+    box.complete();
+    // 字号 28 → 每字 16.8px；"Hello world" 宽 184.8，正文区宽 552
+    const body = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hello world',
+    ) as unknown as { x: number };
+    expect(body.x).toBeCloseTo(24 + (552 - 184.8) / 2);
+  });
+
+  it('should center the speaker name above the subtitle', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hi', 100);
+    box.complete();
+    const speaker = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hero',
+    ) as unknown as { x: number; y: number };
+    // "Hero" 宽 4 × 28 × 0.6 = 67.2
+    expect(speaker.x).toBeCloseTo((600 - 67.2) / 2);
+    expect(speaker.y).toBeGreaterThan(0);
+  });
+
   it('should clear and hide via clear()', () => {
     const box = makeBox();
     box.show('Hero', 'Hi', 100);
