@@ -49,6 +49,10 @@ export default {
     'boldmore',
     'worktree',
     'xingmi',
+    'RRGGBB',
+    'Hiragino',
+    'Noto',
+    'Songti',
   ],
   ignorePaths: [
     'node_modules',
