@@ -98,6 +98,19 @@ describe('SettingsManager', () => {
       expect(JSON.parse(raw as string).seVolume).toBe(0.3);
     });
 
+    it('should not persist fontSize', () => {
+      const { provider, store } = makeStorage();
+      const { manager } = makeManager({ storage: provider });
+
+      manager.onChange({ fontSize: 32, seVolume: 0.3 });
+
+      const stored = JSON.parse(
+        store.get(SETTINGS_STORAGE_KEY) as string,
+      ) as Record<string, unknown>;
+      expect(stored.fontSize).toBeUndefined();
+      expect(stored.seVolume).toBe(0.3);
+    });
+
     it('should ignore unknown keys', () => {
       const { emitSpy, manager } = makeManager();
 
@@ -226,6 +239,20 @@ describe('SettingsManager', () => {
       expect(manager.get().fullscreen).toBe(true);
       // 未在存档中出现的键保留缺省值
       expect(manager.get().language).toBe(DEFAULT_SETTINGS.language);
+    });
+
+    it('should ignore a persisted fontSize so the engine default wins', () => {
+      const { provider } = makeStorage({
+        [SETTINGS_STORAGE_KEY]: JSON.stringify({
+          fontSize: 28,
+          textSpeed: 75,
+        }),
+      });
+
+      const { manager } = makeManager({ storage: provider });
+
+      expect(manager.get().fontSize).toBe(DEFAULT_SETTINGS.fontSize);
+      expect(manager.get().textSpeed).toBe(75);
     });
 
     it('should clamp and drop invalid persisted values', () => {

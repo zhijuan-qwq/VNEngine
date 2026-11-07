@@ -135,7 +135,11 @@ export class SettingsManager {
       return;
     }
     if (typeof parsed !== 'object' || parsed === null) return;
-    this.apply(parsed as Record<string, unknown>);
+    const values = parsed as Record<string, unknown>;
+    // 字号没有设置面板入口，属于引擎的视觉默认值；忽略旧版本写入的
+    // 字号，避免历史存档覆盖当前默认值
+    delete values.fontSize;
+    this.apply(values);
   }
 
   /** 校验并写入内存；返回实际生效的键（未知 / 非法键被剔除） */
@@ -151,7 +155,10 @@ export class SettingsManager {
   }
 
   private persist(): void {
-    this.storage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
+    // 字号不随设置持久化，保证引擎默认值在后续版本中始终生效
+    const stored: Partial<Settings> = { ...this.settings };
+    delete stored.fontSize;
+    this.storage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
   }
 }
 
