@@ -18,6 +18,8 @@ import { DialogueHistory } from './DialogueHistory';
 import { MenuBar } from './MenuBar';
 import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface UIManagerOptions {
   width: number;
@@ -25,6 +27,8 @@ export interface UIManagerOptions {
   x?: number;
   y?: number;
   resolveVar?: VarResolver;
+  /** 全局主题覆盖；未传时使用内置暖调暗色主题 */
+  theme?: DeepPartial<UITheme>;
   dialogueBox?: Partial<DialogueBoxOptions>;
   choicePanel?: Partial<ChoicePanelOptions>;
   settingsMenu?: Partial<SettingsMenuOptions>;
@@ -58,6 +62,10 @@ export class UIManager {
 
   constructor(bus: EventBus<EngineEvents>, options: UIManagerOptions) {
     this.bus = bus;
+    const theme = resolveTheme(options.theme);
+    // 面板级主题是在全局主题之上叠加的局部覆盖，而不是另起一套默认主题
+    const themeFor = (overrides?: DeepPartial<UITheme>): UITheme =>
+      overrides ? resolveTheme(overrides, theme) : theme;
 
     this.root = new Container();
     this.root.x = options.x ?? 0;
@@ -65,13 +73,16 @@ export class UIManager {
 
     const dialogue = options.dialogueBox ?? {};
     // 缺省为底部对话框条（高度的 30%），避免整屏遮罩
-    const boxHeight = dialogue.height ?? Math.round(options.height * 0.3);
+    const boxHeight =
+      dialogue.height ??
+      Math.round(options.height * theme.sizes.dialogueHeightRatio);
     this.dialogueBox = new DialogueBox({
       ...dialogue,
       x: dialogue.x ?? 0,
       y: dialogue.y ?? options.height - boxHeight,
       width: dialogue.width ?? options.width,
       height: boxHeight,
+      theme: themeFor(dialogue.theme),
       eventBus: bus,
       resolveVar: options.resolveVar,
     });
@@ -81,6 +92,7 @@ export class UIManager {
       ...choice,
       width: choice.width ?? options.width,
       height: choice.height ?? options.height,
+      theme: themeFor(choice.theme),
       onSelect: (label) => bus.emit('script:choice:selected', { label }),
     });
 
@@ -88,20 +100,24 @@ export class UIManager {
     this.saveLoadMenu = new SaveLoadMenu({
       ...size,
       ...options.saveLoadMenu,
+      theme: themeFor(options.saveLoadMenu?.theme),
     });
     this.settingsMenu = new SettingsMenu({
       ...size,
       ...options.settingsMenu,
+      theme: themeFor(options.settingsMenu?.theme),
     });
     this.history = new DialogueHistory(bus);
     this.historyView = new HistoryView({
       ...size,
       getEntries: () => this.history.entries(),
       ...options.historyView,
+      theme: themeFor(options.historyView?.theme),
     });
     this.confirmDialog = new ConfirmDialog({
       ...size,
       ...options.confirmDialog,
+      theme: themeFor(options.confirmDialog?.theme),
     });
 
     // 层级：按钮栏夹在对话核心与四个模态面板之间。这样无面板时按钮可点
@@ -110,6 +126,7 @@ export class UIManager {
     this.menuBar = new MenuBar(bus, {
       ...size,
       ...options.menuBar,
+      theme: themeFor(options.menuBar?.theme),
     });
 
     this.root.addChild(

@@ -85,6 +85,7 @@ const defaultFactories: GameFactories = {
       width: config.width,
       height: config.height,
       autoTick: false,
+      theme: config.theme,
       resolveVar: (name) => engine.variableStore.get(name),
       // 设置菜单对契约编程：直接以 SettingsManager 作为 controller
       settingsMenu: { controller: engine.settings },

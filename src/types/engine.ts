@@ -7,6 +7,7 @@ import type { IResourceManager } from './resource';
 import type { ISaveManager } from './save';
 import type { UIManager } from '@/ui/UIManager';
 import type { SettingsManager } from '@/settings/SettingsManager';
+import type { DeepPartial, UITheme } from '@/ui/theme';
 
 /** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
 export type PositionKeyword =
@@ -27,6 +28,8 @@ export interface GameConfig {
   scripts: string[];
   assets: AssetManifest;
   plugins?: Plugin[];
+  /** 可选 UI 主题覆盖；未传时使用内置暖调暗色主题 */
+  theme?: DeepPartial<UITheme>;
 }
 
 export interface AssetManifest {
