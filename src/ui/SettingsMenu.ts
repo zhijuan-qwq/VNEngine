@@ -1,10 +1,12 @@
 import { Text } from 'pixi.js';
 import type { Settings } from '@/types/engine';
 import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
+import { ModalPanel } from './ModalPanel';
 import { Slider } from './controls/Slider';
 import { Toggle } from './controls/Toggle';
 import { UIComponent } from './UIComponent';
-import { createBackdrop, createButton, createPanelBox } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface SettingsController {
   get(): Settings;
@@ -20,6 +22,7 @@ export interface SettingsMenuOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -29,57 +32,50 @@ interface ResolvedOptions {
   title: string;
   fontSize: number;
   padding: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
 }
 
-const ROW_HEIGHT = 56;
-const LABEL_WIDTH = 130;
-
 export class SettingsMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
+  private readonly modal: ModalPanel;
   private readonly sliders: Record<string, Slider> = {};
   private readonly toggles: Record<string, Toggle> = {};
   private syncing = false;
 
   constructor(options: SettingsMenuOptions) {
     super({ id: 'settings-menu' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
       controller: options.controller,
       title: options.title ?? '设置',
-      fontSize: options.fontSize ?? 22,
-      padding: options.padding ?? 24,
-      panelColor: options.panelColor ?? 0x222222,
-      textColor: options.textColor ?? 0xffffff,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
+      padding: options.padding ?? this.theme.spacing.s24,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textSecondary,
     };
 
-    this.addChild(createBackdrop(this.opts.width, this.opts.height));
-
-    const boxWidth = this.opts.width * 0.7;
-    const boxHeight = this.opts.height * 0.8;
-    const boxX = (this.opts.width - boxWidth) / 2;
-    const boxY = (this.opts.height - boxHeight) / 2;
-    const box = createPanelBox(boxWidth, boxHeight, {
-      color: this.opts.panelColor,
+    this.modal = new ModalPanel({
+      width: this.opts.width,
+      height: this.opts.height,
+      boxWidthRatio: this.theme.sizes.settingsWidthRatio,
+      boxHeightRatio: this.theme.sizes.modalHeightRatio,
+      title: this.opts.title,
+      padding: this.opts.padding,
+      panelColor: this.opts.panelColor,
+      onClose: () => this.hide(),
+      theme: this.theme,
     });
-    box.x = boxX;
-    box.y = boxY;
-    this.addChild(box);
+    this.addChild(this.modal);
 
-    const padding = this.opts.padding;
-    const title = new Text({
-      text: this.opts.title,
-      style: { fontSize: 26, fill: this.opts.textColor },
-    });
-    title.x = boxX + padding;
-    title.y = boxY + padding;
-    this.addChild(title);
-
-    const contentWidth = boxWidth - padding * 2;
-    const sliderWidth = contentWidth - LABEL_WIDTH;
-    let y = boxY + padding + title.height + padding / 2;
+    const content = this.modal.content;
+    const labelWidth = this.theme.sizes.labelWidth;
+    const rowHeight = this.theme.sizes.rowHeight;
+    const sliderWidth = this.modal.contentWidth - labelWidth;
+    let y = 0;
 
     const addSlider = (
       key: keyof Settings,
@@ -88,32 +84,35 @@ export class SettingsMenu extends UIComponent {
       max: number,
       step: number,
     ): void => {
-      this.addLabel(label, boxX + padding, y);
+      this.addLabel(label, y);
       const slider = new Slider({
         width: sliderWidth,
         min,
         max,
         step,
+        theme: this.theme,
         onChange: (value) => this.patch({ [key]: value }),
       });
-      slider.x = boxX + padding + LABEL_WIDTH;
-      slider.y = y + 20;
+      slider.x = labelWidth;
+      // 控件在行高内垂直居中
+      slider.y = y + (rowHeight - this.theme.sizes.sliderHeight) / 2;
       this.sliders[key] = slider;
-      this.addChild(slider);
-      y += ROW_HEIGHT;
+      content.addChild(slider);
+      y += rowHeight;
     };
 
     const addToggle = (key: keyof Settings, label: string): void => {
-      this.addLabel(label, boxX + padding, y);
+      this.addLabel(label, y);
       const toggle = new Toggle({
-        width: 60,
+        width: this.theme.sizes.toggleWidth,
+        theme: this.theme,
         onChange: (value) => this.togglePatch(key, value),
       });
-      toggle.x = boxX + padding + LABEL_WIDTH;
-      toggle.y = y + 8;
+      toggle.x = labelWidth;
+      toggle.y = y + (rowHeight - this.theme.sizes.toggleHeight) / 2;
       this.toggles[key] = toggle;
-      this.addChild(toggle);
-      y += ROW_HEIGHT;
+      content.addChild(toggle);
+      y += rowHeight;
     };
 
     addSlider('masterVolume', '主音量', 0, 1, 0.01);
@@ -123,18 +122,6 @@ export class SettingsMenu extends UIComponent {
     addSlider('textSpeed', '文字速度', 5, 100, 5);
     addToggle('skipMode', '跳过已读');
     addToggle('fullscreen', '全屏');
-
-    const closeHeight = 44;
-    const close = createButton({
-      width: 120,
-      height: closeHeight,
-      label: '关闭',
-      fontSize: this.opts.fontSize,
-      onTap: () => this.hide(),
-    });
-    close.x = boxX + (boxWidth - 120) / 2;
-    close.y = boxY + boxHeight - padding - closeHeight;
-    this.addChild(close);
 
     this.hide();
   }
@@ -161,14 +148,18 @@ export class SettingsMenu extends UIComponent {
     return this.toggles[key];
   }
 
-  private addLabel(text: string, x: number, y: number): void {
+  private addLabel(text: string, y: number): void {
     const label = new Text({
       text,
-      style: { fontSize: this.opts.fontSize, fill: this.opts.textColor },
+      style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
+        fontSize: this.opts.fontSize,
+        fill: this.opts.textColor,
+      },
     });
-    label.x = x;
-    label.y = y + 12;
-    this.addChild(label);
+    label.x = 0;
+    label.y = y + this.theme.spacing.s12;
+    this.modal.content.addChild(label);
   }
 
   private togglePatch(key: keyof Settings, value: boolean): void {
