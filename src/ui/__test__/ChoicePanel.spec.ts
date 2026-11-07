@@ -1,6 +1,7 @@
 import type { FederatedPointerEvent } from 'pixi.js';
 import type { Choice } from '@/types/script';
 import { ChoicePanel } from '../ChoicePanel';
+import { DEFAULT_UI_THEME } from '../theme';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -50,7 +51,7 @@ describe('ChoicePanel', () => {
     const onSelect = vi.fn();
     const panel = makePanel(onSelect);
     panel.show([{ text: '锁定', label: 'locked', enabled: false }], 'adv');
-    expect(panel.buttons[0].alpha).toBe(0.5);
+    expect(panel.buttons[0].alpha).toBe(DEFAULT_UI_THEME.opacity.disabled);
     panel.buttons[0].emit('pointertap', tapEvent());
     expect(onSelect).not.toHaveBeenCalled();
   });

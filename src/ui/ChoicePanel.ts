@@ -1,6 +1,9 @@
-import { Container, Graphics, Rectangle, Text } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import type { Choice } from '@/types/script';
 import { UIComponent } from './UIComponent';
+import { createButton } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface ChoicePanelOptions {
   width: number;
@@ -13,11 +16,12 @@ export interface ChoicePanelOptions {
   buttonHeight?: number;
   buttonGap?: number;
   fontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   backgroundColor?: number;
   textColor?: number;
   disabledColor?: number;
   onSelect?: (label: string) => void;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -29,32 +33,39 @@ interface ResolvedOptions {
   buttonHeight: number;
   buttonGap: number;
   fontSize: number;
-  fontFamily: string;
-  backgroundColor: number;
-  textColor: number;
-  disabledColor: number;
+  fontFamily: string | string[];
+  backgroundColor?: number;
+  textColor?: number;
+  disabledColor?: number;
   onSelect?: (label: string) => void;
 }
 
 export class ChoicePanel extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
   private choiceButtons: Container[] = [];
 
   constructor(options: ChoicePanelOptions) {
     super({ id: 'choice-panel' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height ?? null,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      buttonWidth: options.buttonWidth ?? Math.min(options.width * 0.72, 640),
-      buttonHeight: options.buttonHeight ?? 48,
-      buttonGap: options.buttonGap ?? 8,
-      fontSize: options.fontSize ?? 24,
-      fontFamily: options.fontFamily ?? 'sans-serif',
-      backgroundColor: options.backgroundColor ?? 0x333333,
-      textColor: options.textColor ?? 0xffffff,
-      disabledColor: options.disabledColor ?? 0x777777,
+      buttonWidth:
+        options.buttonWidth ??
+        Math.min(
+          options.width * this.theme.sizes.choiceWidthRatio,
+          this.theme.sizes.choiceMaxWidth,
+        ),
+      buttonHeight: options.buttonHeight ?? this.theme.sizes.choiceHeight,
+      buttonGap: options.buttonGap ?? this.theme.sizes.choiceGap,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.lg,
+      fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
+      backgroundColor: options.backgroundColor,
+      textColor: options.textColor,
+      disabledColor: options.disabledColor,
       onSelect: options.onSelect,
     };
     this.x = this.opts.x;
@@ -93,44 +104,25 @@ export class ChoicePanel extends UIComponent {
   }
 
   private createButton(choice: Choice): Container {
-    const button = new Container();
-    button.eventMode = 'static';
-    button.hitArea = new Rectangle(
-      0,
-      0,
-      this.opts.buttonWidth,
-      this.opts.buttonHeight,
-    );
-
-    const bg = new Graphics();
-    bg.roundRect(0, 0, this.opts.buttonWidth, this.opts.buttonHeight, 8);
-    bg.fill(this.opts.backgroundColor, 1);
-    button.addChild(bg);
-
-    const label = new Text({
-      text: choice.text,
-      style: {
-        fontSize: this.opts.fontSize,
-        fontFamily: this.opts.fontFamily,
-        fill: this.opts.textColor,
-      },
-    });
-    label.x = 16;
-    label.y = (this.opts.buttonHeight - label.height) / 2;
-    button.addChild(label);
-
-    if (choice.enabled === false) {
-      button.alpha = 0.5;
-      bg.tint = this.opts.disabledColor;
-    } else {
-      button.on('pointertap', (event) => {
-        event.stopPropagation();
+    const disabled = choice.enabled === false;
+    return createButton({
+      width: this.opts.buttonWidth,
+      height: this.opts.buttonHeight,
+      label: choice.text,
+      fontSize: this.opts.fontSize,
+      fontFamily: this.opts.fontFamily,
+      backgroundColor: this.opts.backgroundColor,
+      textColor: this.opts.textColor,
+      disabledTextColor: this.opts.disabledColor,
+      variant: 'secondary',
+      align: 'center',
+      disabled,
+      theme: this.theme,
+      onTap: () => {
         this.opts.onSelect?.(choice.label);
         this.hide();
-      });
-    }
-
-    return button;
+      },
+    });
   }
 
   get buttons(): Container[] {
