@@ -8,6 +8,8 @@ import { TypewriterState } from './typewriter';
 import { computeTextLayout } from './textLayout';
 import type { TextLayoutItem } from './textLayout';
 import { UIComponent } from './UIComponent';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface DialogueBoxOptions {
   width: number;
@@ -15,7 +17,7 @@ export interface DialogueBoxOptions {
   x?: number;
   y?: number;
   fontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   textColor?: number;
   speakerColor?: number;
   backgroundColor?: number;
@@ -25,6 +27,7 @@ export interface DialogueBoxOptions {
   defaultSpeed?: number;
   eventBus?: EventBus<EngineEvents>;
   resolveVar?: VarResolver;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -32,7 +35,8 @@ interface ResolvedOptions {
   height: number;
   x: number;
   y: number;
-  fontFamily: string;
+  fontFamily: string | string[];
+  speakerFontFamily: string | string[];
   textColor: number;
   speakerColor: number;
   backgroundColor: number;
@@ -44,6 +48,7 @@ interface ResolvedOptions {
 
 export class DialogueBox extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
   private readonly bg: Graphics;
   private readonly speakerText: Text;
   private readonly indicator: Text;
@@ -59,38 +64,57 @@ export class DialogueBox extends UIComponent {
 
   constructor(options: DialogueBoxOptions) {
     super({ id: 'dialogue-box' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      fontFamily: options.fontFamily ?? 'sans-serif',
-      textColor: options.textColor ?? 0xffffff,
-      speakerColor: options.speakerColor ?? 0xffe082,
-      backgroundColor: options.backgroundColor ?? 0x000000,
-      backgroundAlpha: options.backgroundAlpha ?? 0.7,
-      padding: options.padding ?? 20,
+      fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
+      speakerFontFamily: this.theme.typography.fontFamilyHeading,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
+      speakerColor: options.speakerColor ?? this.theme.colors.accent,
+      backgroundColor:
+        options.backgroundColor ?? this.theme.colors.surfaceDialogue,
+      backgroundAlpha:
+        options.backgroundAlpha ?? this.theme.colors.surfaceDialogueAlpha,
+      padding: options.padding ?? this.theme.spacing.s24,
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
     this.fontSize = options.fontSize ?? 28;
     this.lineHeight =
-      options.lineHeight ?? Math.round((options.fontSize ?? 28) * 1.4);
+      options.lineHeight ??
+      Math.round(
+        (options.fontSize ?? 28) * this.theme.typography.lineHeights.relaxed,
+      );
     this.defaultSpeed = options.defaultSpeed ?? 40;
 
     this.x = this.opts.x;
     this.y = this.opts.y;
 
     this.bg = new Graphics();
-    this.bg.roundRect(0, 0, this.opts.width, this.opts.height, 12);
+    this.bg.roundRect(
+      0,
+      0,
+      this.opts.width,
+      this.opts.height,
+      this.theme.radius.lg,
+    );
     this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+    this.bg.stroke({
+      width: this.theme.border.thin,
+      color: this.theme.colors.borderSubtle,
+      alpha: this.theme.colors.borderSubtleAlpha,
+    });
     this.addChild(this.bg);
 
     this.speakerText = new Text({
       text: '',
       style: {
         fontSize: this.fontSize,
-        fontFamily: this.opts.fontFamily,
+        fontFamily: this.opts.speakerFontFamily,
+        fontWeight: this.theme.typography.weights.semibold,
         fill: this.opts.speakerColor,
       },
     });
@@ -103,7 +127,7 @@ export class DialogueBox extends UIComponent {
       style: {
         fontSize: Math.round(this.fontSize * 0.8),
         fontFamily: this.opts.fontFamily,
-        fill: this.opts.textColor,
+        fill: this.theme.colors.textSecondary,
       },
     });
     this.indicator.x =
@@ -189,6 +213,7 @@ export class DialogueBox extends UIComponent {
     return {
       fontSize: this.fontSize,
       fontFamily: this.opts.fontFamily,
+      fontWeight: this.theme.typography.weights.regular,
       fill: this.opts.textColor,
       wordWrap: false,
     };
@@ -222,7 +247,9 @@ export class DialogueBox extends UIComponent {
     if (payload.key === 'fontSize') {
       if (typeof payload.value !== 'number') return;
       this.fontSize = payload.value;
-      this.lineHeight = Math.round(payload.value * 1.4);
+      this.lineHeight = Math.round(
+        payload.value * this.theme.typography.lineHeights.relaxed,
+      );
       this.applyFontSize();
     }
   }
@@ -230,14 +257,15 @@ export class DialogueBox extends UIComponent {
   private applyFontSize(): void {
     this.speakerText.style = {
       fontSize: this.fontSize,
-      fontFamily: this.opts.fontFamily,
+      fontFamily: this.opts.speakerFontFamily,
+      fontWeight: this.theme.typography.weights.semibold,
       fill: this.opts.speakerColor,
     };
     const indicatorSize = Math.round(this.fontSize * 0.8);
     this.indicator.style = {
       fontSize: indicatorSize,
       fontFamily: this.opts.fontFamily,
-      fill: this.opts.textColor,
+      fill: this.theme.colors.textSecondary,
     };
     this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
     this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
