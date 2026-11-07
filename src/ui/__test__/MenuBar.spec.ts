@@ -16,7 +16,7 @@ function makeBar(options: Partial<MenuBarOptions> = {}): {
   bar: MenuBar;
 } {
   const bus = new EventBus<EngineEvents>();
-  const bar = new MenuBar(bus, { width: 800, ...options });
+  const bar = new MenuBar(bus, { width: 800, height: 600, ...options });
   return { bus, bar };
 }
 
@@ -72,11 +72,21 @@ describe('MenuBar', () => {
     expect(bar.buttons[1].y).toBe(bar.buttons[0].y);
   });
 
-  it('should default to the top right corner', () => {
+  it('should render an icon plus an uppercase label per button', () => {
+    const { bar } = makeBar();
+    const labels = bar.buttons.map(
+      (button) => (button.children[1] as unknown as { text: string }).text,
+    );
+    expect(labels).toEqual(['SYSTEM', 'SAVE', 'LOAD', 'HISTORY']);
+  });
+
+  it('should default to the bottom right corner', () => {
     const { bar } = makeBar();
     const last = bar.buttons[3];
-    expect(last.x + 88).toBeLessThanOrEqual(800 - 12);
-    expect(bar.buttons[0].y).toBe(12);
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(last.x + lastWidth).toBeLessThanOrEqual(800 - 16);
+    // 快捷栏高 32、贴边留白 16：600 - 32 - 16
+    expect(bar.buttons[0].y).toBe(552);
   });
 
   it('should honor an explicit position', () => {
