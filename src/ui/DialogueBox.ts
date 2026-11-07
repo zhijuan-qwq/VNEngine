@@ -91,12 +91,10 @@ export class DialogueBox extends UIComponent {
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
-    this.fontSize = options.fontSize ?? 28;
+    this.fontSize = options.fontSize ?? this.theme.typography.sizes.base;
     this.lineHeight =
       options.lineHeight ??
-      Math.round(
-        (options.fontSize ?? 28) * this.theme.typography.lineHeights.relaxed,
-      );
+      Math.round(this.fontSize * this.theme.typography.lineHeights.relaxed);
     this.defaultSpeed = options.defaultSpeed ?? 40;
 
     this.x = this.opts.x;

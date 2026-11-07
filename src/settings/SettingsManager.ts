@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   skipMode: 'read',
   fullscreen: false,
   language: 'zh-CN',
-  fontSize: 28,
+  fontSize: 14,
 };
 
 /** 单个设置键的校验器：返回校验/钳制后的值，非法则返回 undefined（保留原值） */
