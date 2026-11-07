@@ -69,6 +69,12 @@ export interface ThemeColors {
   backdropAlpha: number;
   disabledText: number;
   disabledAlpha: number;
+
+  // semantic · 覆盖在画面上的字幕与快捷栏（日系 AVG 浅色系）
+  textShadow: number;
+  textShadowAlpha: number;
+  quickBarText: number;
+  quickBarTextHover: number;
 }
 
 export interface ThemeTypography {
@@ -156,6 +162,10 @@ export interface ThemeSizes {
   toggleWidth: number;
   toggleHeight: number;
   scrollStep: number;
+  /** 无框字幕底部留白：避开右下角快捷栏 */
+  dialogueBottomReserve: number;
+  quickBarHeight: number;
+  quickBarIcon: number;
 }
 
 export interface UITheme {
@@ -233,6 +243,11 @@ export const DEFAULT_UI_THEME: UITheme = {
     backdropAlpha: 0.66,
     disabledText: 0x8a7f76,
     disabledAlpha: 0.45,
+
+    textShadow: 0x000000,
+    textShadowAlpha: 0.65,
+    quickBarText: 0xa9e6ff,
+    quickBarTextHover: 0xffffff,
   },
   typography: {
     fontFamilyBody: [
@@ -326,6 +341,9 @@ export const DEFAULT_UI_THEME: UITheme = {
     toggleWidth: 60,
     toggleHeight: 32,
     scrollStep: 40,
+    dialogueBottomReserve: 64,
+    quickBarHeight: 32,
+    quickBarIcon: 14,
   },
 };
 
