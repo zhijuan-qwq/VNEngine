@@ -3,6 +3,8 @@ import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents, UiPanel } from '@/types/events';
 import { UIComponent } from './UIComponent';
 import { createButton } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface MenuBarOptions {
   /** 屏幕逻辑宽度；用于缺省时把按钮栏贴到右上角 */
@@ -15,6 +17,7 @@ export interface MenuBarOptions {
   fontSize?: number;
   /** 贴边留白，仅在缺省位置时使用 */
   margin?: number;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -48,10 +51,11 @@ export class MenuBar extends UIComponent {
 
   constructor(bus: EventBus<EngineEvents>, options: MenuBarOptions) {
     super({ id: 'menu-bar' });
-    const buttonWidth = options.buttonWidth ?? 88;
-    const buttonHeight = options.buttonHeight ?? 40;
-    const gap = options.gap ?? 8;
-    const margin = options.margin ?? 12;
+    const theme = resolveTheme(options.theme);
+    const buttonWidth = options.buttonWidth ?? theme.sizes.menuButtonWidth;
+    const buttonHeight = options.buttonHeight ?? theme.sizes.menuButtonHeight;
+    const gap = options.gap ?? theme.sizes.menuGap;
+    const margin = options.margin ?? theme.sizes.menuMargin;
     const totalWidth =
       ENTRIES.length * buttonWidth + (ENTRIES.length - 1) * gap;
     this.opts = {
@@ -60,7 +64,7 @@ export class MenuBar extends UIComponent {
       buttonWidth,
       buttonHeight,
       gap,
-      fontSize: options.fontSize ?? 18,
+      fontSize: options.fontSize ?? theme.typography.sizes.md,
     };
 
     ENTRIES.forEach((entry, index) => {
@@ -69,6 +73,9 @@ export class MenuBar extends UIComponent {
         height: this.opts.buttonHeight,
         label: entry.label,
         fontSize: this.opts.fontSize,
+        variant: 'secondary',
+        align: 'center',
+        theme,
         onTap: () => bus.emit('ui:open', { panel: entry.panel }),
       });
       button.x = this.opts.x + index * (this.opts.buttonWidth + this.opts.gap);
