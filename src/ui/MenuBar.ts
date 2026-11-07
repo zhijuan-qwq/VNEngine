@@ -46,21 +46,32 @@ const ENTRIES: readonly MenuEntry[] = [
   { panel: 'history', label: 'HISTORY' },
 ];
 
+interface IconStroke {
+  width?: number;
+  alpha?: number;
+  /** false 时保留已绘制的线条，用于在同一 Graphics 上叠加描边垫底层 */
+  clear?: boolean;
+}
+
 /** 在 size×size 的局部坐标内绘制极简线性图标 */
 function drawIcon(
   g: Graphics,
   panel: UiPanel,
   color: number,
   size: number,
+  { width = 1.5, alpha = 1, clear = true }: IconStroke = {},
 ): void {
   const c = size / 2;
   const stroke = {
-    width: 1.5,
+    width,
     color,
+    alpha,
     cap: 'round' as const,
     join: 'round' as const,
   };
-  g.clear();
+  if (clear) {
+    g.clear();
+  }
   switch (panel) {
     case 'settings': {
       // 齿轮：外环 + 八根短齿 + 内孔
@@ -159,8 +170,17 @@ export class MenuBar extends UIComponent {
         style: {
           fontFamily: this.theme.typography.fontFamilyBody,
           fontSize: this.opts.fontSize,
+          fontWeight: this.theme.typography.weights.semibold,
           letterSpacing: 0.5,
           fill: this.theme.colors.quickBarText,
+          // 与对话框字幕一致：浅色文字加深色阴影，压在亮画面上仍可辨
+          dropShadow: {
+            color: this.theme.colors.textShadow,
+            alpha: this.theme.colors.textShadowAlpha,
+            blur: 3,
+            distance: 1.5,
+            angle: Math.PI / 2,
+          },
         },
       });
       label.x = paddingX + iconSize + iconGap;
@@ -169,7 +189,15 @@ export class MenuBar extends UIComponent {
       const icon = new Graphics();
       icon.x = paddingX;
       icon.y = (itemHeight - iconSize) / 2;
-      drawIcon(icon, entry.panel, this.theme.colors.quickBarText, iconSize);
+      /** 先描一层深色底再画线条；Graphics 无阴影，用更粗的暗色描边代替 */
+      const paintIcon = (color: number): void => {
+        drawIcon(icon, entry.panel, this.theme.colors.textShadow, iconSize, {
+          width: 3,
+          alpha: this.theme.colors.textShadowAlpha,
+        });
+        drawIcon(icon, entry.panel, color, iconSize, { clear: false });
+      };
+      paintIcon(this.theme.colors.quickBarText);
 
       const width =
         this.opts.buttonWidth ??
@@ -181,16 +209,11 @@ export class MenuBar extends UIComponent {
       container.hitArea = new Rectangle(0, 0, width, itemHeight);
       container.on('pointerover', () => {
         label.style.fill = this.theme.colors.quickBarTextHover;
-        drawIcon(
-          icon,
-          entry.panel,
-          this.theme.colors.quickBarTextHover,
-          iconSize,
-        );
+        paintIcon(this.theme.colors.quickBarTextHover);
       });
       container.on('pointerout', () => {
         label.style.fill = this.theme.colors.quickBarText;
-        drawIcon(icon, entry.panel, this.theme.colors.quickBarText, iconSize);
+        paintIcon(this.theme.colors.quickBarText);
       });
       container.on('pointerdown', () => {
         container.alpha = 0.7;
