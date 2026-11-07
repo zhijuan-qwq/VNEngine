@@ -230,8 +230,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     // 不是随手值；不要在没有设计评审的情况下继续增减表面色。
     surfacePanel: 0x262321,
     surfacePanelAlpha: 0.94,
-    surfaceDialogue: 0x262321,
-    surfaceDialogueAlpha: 0.88,
+    surfaceDialogue: 0xfff5f8,
+    surfaceDialogueAlpha: 0.65,
     surfaceSunken: 0x1f1411,
     surfaceButton: 0x3d3a38,
     surfaceButtonHover: 0x4a4643,

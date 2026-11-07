@@ -1,3 +1,4 @@
+import { Sprite } from 'pixi.js';
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
 import { DialogueBox } from '../DialogueBox';
@@ -63,26 +64,31 @@ describe('DialogueBox', () => {
     expect(speaker?.text).toBe('Hero');
   });
 
-  it('should draw a transparent-to-dark gradient backdrop by default', () => {
+  it('should fade the backdrop in from transparent at the top', () => {
     const box = makeBox();
-    const bg = box.children[0] as unknown as {
-      context: {
-        instructions: Array<{
-          action: string;
-          data: { style: { color: number; alpha: number } };
-        }>;
-      };
-    };
-    const fills = bg.context.instructions.filter(
-      (instruction) => instruction.action === 'fill',
+    const bg = box.children[0];
+    expect(bg).toBeInstanceOf(Sprite);
+
+    const sprite = bg as unknown as Sprite;
+    expect(sprite.width).toBe(600);
+    expect(sprite.height).toBe(180);
+
+    const resource = sprite.texture.source.resource as Uint8Array;
+    const rows = Math.max(2, Math.round(sprite.height));
+    expect(sprite.texture.source.height).toBe(rows);
+    expect(resource).toHaveLength(rows * 4);
+    // 纹理首行为完全透明，末行为设置的半透明度
+    expect(resource[3]).toBe(0);
+    const last = (rows - 1) * 4;
+    expect(resource[last + 3]).toBe(
+      Math.round(DEFAULT_UI_THEME.colors.surfaceDialogueAlpha * 255),
     );
-    expect(fills.length).toBeGreaterThan(1);
-    expect(fills[0].data.style.alpha).toBeLessThan(0.1);
-    const last = fills[fills.length - 1].data.style;
-    expect(last.alpha).toBeCloseTo(
-      DEFAULT_UI_THEME.colors.surfaceDialogueAlpha,
-    );
-    expect(last.color).toBe(DEFAULT_UI_THEME.colors.surfaceDialogue);
+    const color = DEFAULT_UI_THEME.colors.surfaceDialogue;
+    expect([resource[last], resource[last + 1], resource[last + 2]]).toEqual([
+      (color >> 16) & 0xff,
+      (color >> 8) & 0xff,
+      color & 0xff,
+    ]);
   });
 
   it('should draw a flat background panel when a backgroundColor is given', () => {
@@ -113,10 +119,7 @@ describe('DialogueBox', () => {
       height: 180,
       backgroundAlpha: 0,
     });
-    const bg = box.children[0] as unknown as {
-      context: { instructions: unknown[] };
-    };
-    expect(bg.context.instructions).toHaveLength(0);
+    expect(box.children.some((child) => child instanceof Sprite)).toBe(false);
   });
 
   it('should left-align subtitle text with a small margin', () => {

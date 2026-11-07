@@ -1,4 +1,4 @@
-import { Graphics, Text } from 'pixi.js';
+import { BufferImageSource, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { TextStyleOptions } from 'pixi.js';
 import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
@@ -41,7 +41,7 @@ interface ResolvedOptions {
   speakerColor: number;
   backgroundColor: number;
   backgroundAlpha: number;
-  /** 显式底色时绘制实心面板；否则绘制透明到底部的渐变 */
+  /** 显式底色时绘制带边框的实心面板；否则绘制顶部渐隐的半透明衬底 */
   flatBackground: boolean;
   padding: number;
   eventBus?: EventBus<EngineEvents>;
@@ -51,7 +51,6 @@ interface ResolvedOptions {
 export class DialogueBox extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
-  private readonly bg: Graphics;
   private readonly speakerText: Text;
   private readonly indicator: Text;
   private readonly scratchText: Text;
@@ -80,7 +79,7 @@ export class DialogueBox extends UIComponent {
       speakerColor: options.speakerColor ?? this.theme.colors.accent,
       backgroundColor:
         options.backgroundColor ?? this.theme.colors.surfaceDialogue,
-      // 缺省为字幕渐变；显式底色才画实心面板
+      // 缺省为顶部渐隐的半透明衬底；显式底色才画实心面板
       backgroundAlpha:
         options.backgroundAlpha ??
         (options.backgroundColor !== undefined
@@ -100,9 +99,10 @@ export class DialogueBox extends UIComponent {
     this.x = this.opts.x;
     this.y = this.opts.y;
 
-    this.bg = new Graphics();
-    this.drawBackdrop();
-    this.addChild(this.bg);
+    const backdrop = this.createBackdrop();
+    if (backdrop) {
+      this.addChild(backdrop);
+    }
 
     this.speakerText = new Text({
       text: '',
@@ -232,37 +232,51 @@ export class DialogueBox extends UIComponent {
     return this.opts.width - this.opts.padding * 2;
   }
 
-  /** 渐变分片数；足够多时肉眼不可见色带，且无需依赖 DOM 的 FillGradient */
-  private static readonly BACKDROP_STEPS = 32;
-
-  private drawBackdrop(): void {
+  private createBackdrop(): Graphics | Sprite | null {
     if (this.opts.backgroundAlpha <= 0) {
-      return;
+      return null;
     }
-    if (this.opts.flatBackground) {
-      this.bg.roundRect(
-        0,
-        0,
-        this.opts.width,
-        this.opts.height,
-        this.theme.radius.lg,
+    if (!this.opts.flatBackground) {
+      return this.createFadeBackdrop();
+    }
+    const bg = new Graphics();
+    bg.roundRect(0, 0, this.opts.width, this.opts.height, this.theme.radius.lg);
+    bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+    bg.stroke({
+      width: this.theme.border.thin,
+      color: this.theme.colors.borderSubtle,
+      alpha: this.theme.colors.borderSubtleAlpha,
+    });
+    return bg;
+  }
+
+  /**
+   * 顶部渐隐衬底：按像素行把「透明 → 半透明」烘焙成窄纹理再铺满对话框。
+   * 逐行采样避免分片叠加的接缝，也不依赖 DOM 的 FillGradient。
+   */
+  private createFadeBackdrop(): Sprite {
+    const color = this.opts.backgroundColor;
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    const rows = Math.max(2, Math.round(this.opts.height));
+    const resource = new Uint8Array(rows * 4);
+    for (let i = 0; i < rows; i += 1) {
+      const alpha = Math.round(
+        (this.opts.backgroundAlpha * i * 255) / (rows - 1),
       );
-      this.bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
-      this.bg.stroke({
-        width: this.theme.border.thin,
-        color: this.theme.colors.borderSubtle,
-        alpha: this.theme.colors.borderSubtleAlpha,
-      });
-      return;
+      resource.set([r, g, b, alpha], i * 4);
     }
-    // 顶部全透明，向下过渡到半透明深色，保证字幕在明亮背景上可读
-    const steps = DialogueBox.BACKDROP_STEPS;
-    const sliceHeight = this.opts.height / steps;
-    for (let i = 0; i < steps; i += 1) {
-      const alpha = (this.opts.backgroundAlpha * (i + 1)) / steps;
-      this.bg.rect(0, i * sliceHeight, this.opts.width, sliceHeight + 0.5);
-      this.bg.fill({ color: this.opts.backgroundColor, alpha });
-    }
+    const source = new BufferImageSource({
+      resource,
+      width: 1,
+      height: rows,
+      alphaMode: 'premultiply-alpha-on-upload',
+    });
+    const sprite = new Sprite(new Texture({ source }));
+    sprite.width = this.opts.width;
+    sprite.height = this.opts.height;
+    return sprite;
   }
 
   /** 用完整文本布局推算行数；逐字显示时文本块高度保持稳定 */
