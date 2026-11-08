@@ -1,9 +1,10 @@
 import { Container, Graphics, Rectangle, Text } from 'pixi.js';
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { FederatedPointerEvent, TextStyleFontWeight } from 'pixi.js';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant =
+  'primary' | 'secondary' | 'ghost' | 'danger' | 'choice';
 export type ButtonAlign = 'left' | 'center';
 export type ButtonState = 'normal' | 'hover' | 'pressed';
 
@@ -84,6 +85,15 @@ export interface ButtonOptions extends OverlayOptions {
   onTap?: () => void;
 }
 
+interface ChoiceMarkerPalette {
+  color: number;
+  alpha: number;
+  inset: number;
+  width: number;
+  hoverWidth: number;
+  height: number;
+}
+
 interface VariantPalette {
   fill: number;
   fillAlpha: number;
@@ -92,6 +102,17 @@ interface VariantPalette {
   text: number;
   border: number;
   borderAlpha: number;
+  /** 缺省用主题的 md 圆角；'pill' 取按钮高度的一半 */
+  radius?: number | 'pill';
+  fontWeight?: TextStyleFontWeight;
+  /** 缺省为 1：ghost 靠它从透明跳回可见底色，choice 用它保持玻璃透明度 */
+  hoverFillAlpha?: number;
+  pressedFillAlpha?: number;
+  shadow?: { color: number; alpha: number; offsetY: number };
+  highlight?: { color: number; alpha: number };
+  marker?: ChoiceMarkerPalette;
+  disabledAlpha?: number;
+  disabledText?: number;
 }
 
 function paletteFor(theme: UITheme, variant: ButtonVariant): VariantPalette {
@@ -128,6 +149,39 @@ function paletteFor(theme: UITheme, variant: ButtonVariant): VariantPalette {
         text: colors.textPrimary,
         border: colors.borderSubtle,
         borderAlpha: 0,
+      };
+    case 'choice':
+      return {
+        fill: colors.surfaceChoice,
+        fillAlpha: colors.surfaceChoiceAlpha,
+        hoverFill: colors.surfaceChoiceHover,
+        pressedFill: colors.surfaceChoicePressed,
+        text: colors.textChoice,
+        border: colors.borderChoice,
+        borderAlpha: colors.borderChoiceAlpha,
+        radius: 'pill',
+        fontWeight: theme.typography.weights.semibold,
+        hoverFillAlpha: colors.surfaceChoiceAlpha,
+        pressedFillAlpha: colors.surfaceChoiceAlpha,
+        shadow: {
+          color: colors.backdrop,
+          alpha: colors.choiceShadowAlpha,
+          offsetY: theme.border.thick,
+        },
+        highlight: {
+          color: colors.borderSubtle,
+          alpha: colors.choiceHighlightAlpha,
+        },
+        marker: {
+          color: colors.borderChoice,
+          alpha: colors.choiceMarkerAlpha,
+          inset: theme.spacing.s16,
+          width: theme.border.thick,
+          hoverWidth: theme.spacing.s4,
+          height: theme.spacing.s24,
+        },
+        disabledAlpha: theme.opacity.choiceDisabled,
+        disabledText: colors.textChoiceMuted,
       };
     case 'secondary':
     default:
@@ -188,7 +242,7 @@ export class UIButton extends Container {
       style: {
         fontSize: this.fontSize,
         fontFamily: this.fontFamily,
-        fontWeight: this.theme.typography.weights.regular,
+        fontWeight: palette.fontWeight ?? this.theme.typography.weights.regular,
         fill: options.textColor ?? palette.text,
       },
     });
@@ -254,7 +308,8 @@ export class UIButton extends Container {
   }
 
   private applyEnabledVisual(): void {
-    this.alpha = this.theme.opacity.disabled;
+    const palette = paletteFor(this.theme, this.variant);
+    this.alpha = palette.disabledAlpha ?? this.theme.opacity.disabled;
     this.stateValue = 'normal';
     this.redraw();
   }
@@ -266,18 +321,31 @@ export class UIButton extends Container {
   private redraw(): void {
     const palette = paletteFor(this.theme, this.variant);
     const fill = this.backgroundOverride ?? this.fillForState(palette);
-    // ghost 常态透明，但 hover / pressed 需要有可见底色才形成反馈。
-    // 禁用态的整体变淡由容器 alpha（applyEnabledVisual）负责，这里不再二次压暗。
-    const alpha = this.stateValue === 'normal' ? palette.fillAlpha : 1;
+    // ghost 常态透明，但 hover / pressed 需要有可见底色才形成反馈；
+    // choice 用独立的状态透明度保持玻璃质感。
+    const alpha =
+      this.stateValue === 'pressed'
+        ? (palette.pressedFillAlpha ?? 1)
+        : this.stateValue === 'hover'
+          ? (palette.hoverFillAlpha ?? 1)
+          : palette.fillAlpha;
+    const radius =
+      palette.radius === 'pill'
+        ? this.heightValue / 2
+        : (palette.radius ?? this.theme.radius.md);
 
     this.bg.clear();
-    this.bg.roundRect(
-      0,
-      0,
-      this.widthValue,
-      this.heightValue,
-      this.theme.radius.md,
-    );
+    if (palette.shadow) {
+      this.bg.roundRect(
+        0,
+        palette.shadow.offsetY,
+        this.widthValue,
+        this.heightValue,
+        radius,
+      );
+      this.bg.fill(palette.shadow.color, palette.shadow.alpha);
+    }
+    this.bg.roundRect(0, 0, this.widthValue, this.heightValue, radius);
     this.bg.fill(fill, alpha);
     if (palette.borderAlpha > 0) {
       this.bg.stroke({
@@ -286,14 +354,48 @@ export class UIButton extends Container {
         alpha: palette.borderAlpha,
       });
     }
+    // 光从上方来：胶囊顶部留一条高光，配合下方阴影形成抬升感
+    if (palette.highlight) {
+      this.bg.moveTo(radius, this.theme.border.thin);
+      this.bg.lineTo(this.widthValue - radius, this.theme.border.thin);
+      this.bg.stroke({
+        width: this.theme.border.thin,
+        color: palette.highlight.color,
+        alpha: palette.highlight.alpha,
+        cap: 'round',
+      });
+    }
+    // 左侧标记：常态细而淡，hover / pressed 加宽提亮，用形状补足颜色反馈
+    if (palette.marker) {
+      const markerWidth =
+        this.stateValue === 'normal'
+          ? palette.marker.width
+          : palette.marker.hoverWidth;
+      const markerAlpha = this.enabledValue
+        ? this.stateValue === 'normal'
+          ? palette.marker.alpha
+          : 1
+        : palette.marker.alpha * 0.4;
+      const markerY = (this.heightValue - palette.marker.height) / 2;
+      this.bg.roundRect(
+        palette.marker.inset,
+        markerY,
+        markerWidth,
+        palette.marker.height,
+        markerWidth / 2,
+      );
+      this.bg.fill(palette.marker.color, markerAlpha);
+    }
 
     this.labelText.style = {
       fontSize: this.fontSize,
       fontFamily: this.fontFamily,
-      fontWeight: this.theme.typography.weights.regular,
+      fontWeight: palette.fontWeight ?? this.theme.typography.weights.regular,
       fill: this.enabledValue
         ? (this.textOverride ?? palette.text)
-        : (this.disabledTextColor ?? this.theme.colors.disabledText),
+        : (this.disabledTextColor ??
+          palette.disabledText ??
+          this.theme.colors.disabledText),
     };
   }
 

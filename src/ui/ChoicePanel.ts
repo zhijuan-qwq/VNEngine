@@ -11,7 +11,7 @@ export interface ChoicePanelOptions {
   height?: number;
   x?: number;
   y?: number;
-  /** 选项按钮宽度；缺省取 72% 画面宽与 640px 的较小者 */
+  /** 选项按钮宽度；缺省取 72% 画面宽与主题最大宽（560px）的较小者 */
   buttonWidth?: number;
   buttonHeight?: number;
   buttonGap?: number;
@@ -61,7 +61,7 @@ export class ChoicePanel extends UIComponent {
         ),
       buttonHeight: options.buttonHeight ?? this.theme.sizes.choiceHeight,
       buttonGap: options.buttonGap ?? this.theme.sizes.choiceGap,
-      fontSize: options.fontSize ?? this.theme.typography.sizes.lg,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
       fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
       backgroundColor: options.backgroundColor,
       textColor: options.textColor,
@@ -78,9 +78,10 @@ export class ChoicePanel extends UIComponent {
     const total =
       choices.length * this.opts.buttonHeight +
       (choices.length - 1) * this.opts.buttonGap;
-    // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白
+    // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白。
+    // 0.8 让块中心落在画面约 40% 处，比原先的 0.66（33%）略低。
     const areaHeight = this.opts.height
-      ? this.opts.height * 0.66
+      ? this.opts.height * 0.8
       : Number.POSITIVE_INFINITY;
     const startY = this.opts.height
       ? Math.max(this.opts.height * 0.08, (areaHeight - total) / 2)
@@ -114,7 +115,7 @@ export class ChoicePanel extends UIComponent {
       backgroundColor: this.opts.backgroundColor,
       textColor: this.opts.textColor,
       disabledTextColor: this.opts.disabledColor,
-      variant: 'secondary',
+      variant: 'choice',
       align: 'center',
       disabled,
       theme: this.theme,
