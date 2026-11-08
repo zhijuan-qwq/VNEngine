@@ -20,6 +20,16 @@ function contrast(a: number, b: number): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/** 半透明前景叠在纯色背景后的实际颜色 */
+function blend(foreground: number, alpha: number, background: number): number {
+  const channel = (shift: number): number => {
+    const fg = (foreground >> shift) & 0xff;
+    const bg = (background >> shift) & 0xff;
+    return Math.round(fg * alpha + bg * (1 - alpha));
+  };
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
 describe('theme', () => {
   it('should expose every token group in the default theme', () => {
     for (const group of [
@@ -92,5 +102,17 @@ describe('theme', () => {
     expect(
       contrast(colors.textOnPrimary, colors.accent),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('should keep choice labels readable on the glass over any scene', () => {
+    const { colors } = DEFAULT_UI_THEME;
+    for (const scene of [0xffffff, 0x000000]) {
+      const surface = blend(
+        colors.surfaceChoice,
+        colors.surfaceChoiceAlpha,
+        scene,
+      );
+      expect(contrast(colors.textChoice, surface)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });

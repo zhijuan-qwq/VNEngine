@@ -75,6 +75,19 @@ export interface ThemeColors {
   textShadowAlpha: number;
   quickBarText: number;
   quickBarTextHover: number;
+
+  // semantic · choice（深色暖玻璃选项）
+  surfaceChoice: number;
+  surfaceChoiceHover: number;
+  surfaceChoicePressed: number;
+  surfaceChoiceAlpha: number;
+  textChoice: number;
+  textChoiceMuted: number;
+  borderChoice: number;
+  borderChoiceAlpha: number;
+  choiceMarkerAlpha: number;
+  choiceShadowAlpha: number;
+  choiceHighlightAlpha: number;
 }
 
 export interface ThemeTypography {
@@ -129,6 +142,8 @@ export interface ThemeBorder {
 
 export interface ThemeOpacity {
   disabled: number;
+  /** 选项禁用态：比通用禁用更克制，仍保留文字可读性 */
+  choiceDisabled: number;
   backdrop: number;
   pressed: number;
 }
@@ -248,6 +263,21 @@ export const DEFAULT_UI_THEME: UITheme = {
     textShadowAlpha: 0.65,
     quickBarText: 0xa9e6ff,
     quickBarTextHover: 0xffffff,
+
+    // 深色暖玻璃而非浅色纸片：demo 背景是高调白色厨房，近白填充会丢掉
+    // 按钮轮廓；0.82 透明度的暖深色在亮/暗场景上都能保持清晰边缘。
+    // 需要换成浅色风格时只重映射这一组语义令牌，组件无需改动。
+    surfaceChoice: 0x2b221e,
+    surfaceChoiceHover: 0x3d322c,
+    surfaceChoicePressed: 0x241c18,
+    surfaceChoiceAlpha: 0.82,
+    textChoice: 0xfff8f0,
+    textChoiceMuted: 0xc4b8ae,
+    borderChoice: 0xffcf87,
+    borderChoiceAlpha: 0.22,
+    choiceMarkerAlpha: 0.55,
+    choiceShadowAlpha: 0.28,
+    choiceHighlightAlpha: 0.16,
   },
   typography: {
     fontFamilyBody: [
@@ -309,6 +339,7 @@ export const DEFAULT_UI_THEME: UITheme = {
   },
   opacity: {
     disabled: 0.45,
+    choiceDisabled: 0.8,
     backdrop: 0.66,
     pressed: 0.85,
   },
@@ -330,9 +361,9 @@ export const DEFAULT_UI_THEME: UITheme = {
     confirmHeight: 220,
     dialogueHeightRatio: 0.3,
     choiceWidthRatio: 0.72,
-    choiceMaxWidth: 640,
-    choiceHeight: 48,
-    choiceGap: 8,
+    choiceMaxWidth: 560,
+    choiceHeight: 52,
+    choiceGap: 24,
     rowHeight: 56,
     labelWidth: 130,
     slotHeight: 64,
