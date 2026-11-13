@@ -1597,7 +1597,7 @@ interface EngineEvents {
 渲染子系统相关类型：
 
 ```ts
-// 位置关键字与 doc/script-dsl.md §5.3 的 PositionSpec 对齐（占比表见 §4.3）：
+// 位置关键字与 doc/dsl/reference.md 中 @show 的位置参数对齐（占比表见 §4.3）：
 // farLeft/left/center/right/farRight 为屏内五档，offLeft/offRight 在屏幕外
 type PositionKeyword =
   'farLeft' | 'left' | 'center' | 'right' | 'farRight' | 'offLeft' | 'offRight';
@@ -1682,7 +1682,7 @@ interface Script {
 
 interface Command {
   type: string; // 指令名，不带 @
-  args: Record<string, unknown>; // 通用指令以 "0"、"1" … 为位置参数键（见 script-dsl.md §十）
+  args: Record<string, unknown>; // 通用指令以 "0"、"1" … 为位置参数键（见 doc/dsl/internals.md）
   line: number;
 }
 
@@ -1695,7 +1695,7 @@ interface ScriptContext {
 interface Choice {
   text: string;
   label: string; // 跳转标签
-  condition?: ExpressionNode; // @choice 的 if 条件表达式树（见 script-dsl.md §七）
+  condition?: ExpressionNode; // @choice 的 if 条件表达式树（见 doc/dsl/language.md 的「表达式」）
   enabled?: boolean; // 由 choice handler 求值 condition 后填入；UI 据此置灰不可点
 }
 ```
