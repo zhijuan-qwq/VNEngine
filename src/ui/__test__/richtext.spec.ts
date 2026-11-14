@@ -70,9 +70,28 @@ describe('parseRichText', () => {
     expect(result.plain).toBe('abcdef');
   });
 
-  it('should ignore invalid speed and pause values', () => {
-    const result = parseRichText('a[speed=0][pause=-1]b');
-    expect(result.hints).toEqual([]);
+  it('should reject invalid speed and pause values', () => {
+    expect(() => parseRichText('a[speed=0]b')).toThrow(
+      'Invalid [speed=0] value: expected a positive number.',
+    );
+    expect(() => parseRichText('a[pause=-1]b')).toThrow(
+      'Invalid [pause=-1] value: expected a number >= 0.',
+    );
+  });
+
+  it('should reject invalid size values', () => {
+    expect(() => parseRichText('[size=0]x[/size]')).toThrow(
+      'Invalid [size=0] value: expected a positive number.',
+    );
+    expect(() => parseRichText('[size=abc]x[/size]')).toThrow(
+      'Invalid [size=abc] value: expected a number.',
+    );
+  });
+
+  it('should reject invalid color values', () => {
+    expect(() => parseRichText('[color=red]x[/color]')).toThrow(
+      'Invalid [color=red] value: expected #rgb, #rrggbb or #rrggbbaa.',
+    );
   });
 
   it('should interpolate variables via resolver', () => {
@@ -89,10 +108,22 @@ describe('parseRichText', () => {
     expect(result.plain).toBe('ab');
   });
 
-  it('should strip ruby and shake tags but keep inner text', () => {
+  it('should treat ruby and shake as unknown tags', () => {
     const result = parseRichText('a[ruby]汉[/ruby][shake]![/shake]b');
-    expect(result.plain).toBe('a汉!b');
-    expect(result.segments).toEqual([{ text: 'a汉!b', style: {}, start: 0 }]);
+    expect(result.plain).toBe('a[ruby]汉[/ruby][shake]![/shake]b');
+    expect(result.segments).toEqual([
+      {
+        text: 'a[ruby]汉[/ruby][shake]![/shake]b',
+        style: {},
+        start: 0,
+      },
+    ]);
+  });
+
+  it('should not close a different style tag', () => {
+    const result = parseRichText('[b]a[/i]b');
+    expect(result.plain).toBe('a[/i]b');
+    expect(result.segments.every((segment) => segment.style.bold)).toBe(true);
   });
 
   it('should treat unknown tags as plain text', () => {
