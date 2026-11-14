@@ -51,6 +51,7 @@ export default {
     'worktree',
     'xingmi',
     'RRGGBB',
+    'rrggbbaa',
     'Hiragino',
     'Noto',
     'Songti',
