@@ -153,6 +153,14 @@ describe('state commands', () => {
         '@clearFlags: unexpected argument "x".',
       );
     });
+
+    it('should reject a missing flag name', () => {
+      for (const type of ['flag', 'unflag', 'toggle']) {
+        expect(() => execute(type, {})).toThrow(
+          `@${type} requires a flag name.`,
+        );
+      }
+    });
   });
 });
 

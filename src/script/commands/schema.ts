@@ -1,4 +1,4 @@
-import type { PositionKeyword } from '@/types/engine';
+import type { Position, PositionKeyword } from '@/types/engine';
 
 export interface ValueMatcher {
   /** 错误提示里描述期望值，例如 "a duration (e.g. 500ms)" */
@@ -24,7 +24,7 @@ interface DurationLiteral {
   unit: string;
 }
 
-export const POSITION_KEYWORDS: readonly PositionKeyword[] = [
+const POSITION_KEYWORDS: readonly PositionKeyword[] = [
   'farLeft',
   'left',
   'center',
@@ -34,7 +34,7 @@ export const POSITION_KEYWORDS: readonly PositionKeyword[] = [
   'offRight',
 ];
 
-export const TRANSITION_NAMES = [
+const TRANSITION_NAMES = [
   'fade',
   'slide',
   'slideL',
@@ -43,7 +43,7 @@ export const TRANSITION_NAMES = [
   'none',
 ] as const;
 
-export const EASING_NAMES = [
+const EASING_NAMES = [
   'linear',
   'ease',
   'easeIn',
@@ -71,12 +71,17 @@ function isCoord(value: unknown): value is { x: number; y: number } {
   );
 }
 
-function isPosition(value: unknown): boolean {
+function isPositionKeyword(value: unknown): boolean {
   return (
     (typeof value === 'string' &&
       POSITION_KEYWORDS.includes(value as PositionKeyword)) ||
     isCoord(value)
   );
+}
+
+/** schema 已保证位置合法；调用点不再裸写 `as Position` */
+export function asPosition(value: unknown): Position {
+  return isPositionKeyword(value) ? (value as Position) : 'center';
 }
 
 function isOneOf(names: readonly string[]): (value: unknown) => boolean {
@@ -108,7 +113,7 @@ export const DURATION: ValueMatcher = {
 
 export const POSITION: ValueMatcher = {
   label: 'a position name',
-  test: isPosition,
+  test: isPositionKeyword,
 };
 
 export const TRANSITION: ValueMatcher = {

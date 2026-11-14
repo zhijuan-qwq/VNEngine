@@ -1,5 +1,4 @@
 import type { CommandHandler } from '@/types/script';
-import type { Position } from '@/types/engine';
 import { asNumber, asString } from './utils';
 import {
   DURATION,
@@ -9,6 +8,7 @@ import {
   POSITION,
   STRING,
   TRANSITION,
+  asPosition,
   durationMs,
   matchArgs,
 } from './schema';
@@ -44,6 +44,12 @@ function durationOf(
   return positional[slot] !== undefined
     ? durationMs(positional[slot])
     : durationMs(options.duration);
+}
+
+function loopOf(positional: unknown[]): boolean | undefined {
+  if (positional[1] === 'loop') return true;
+  if (positional[1] === 'once') return false;
+  return undefined;
 }
 
 const BG_SCHEMA: CommandSchema = {
@@ -131,8 +137,7 @@ export const presentationCommands: CommandHandler[] = [
       const id = requireString(positional[0], '@show requires a character id');
       ctx.engine.eventBus.emit('character:show', {
         id,
-        position:
-          positional[1] === undefined ? 'center' : (positional[1] as Position),
+        position: asPosition(positional[1]),
         ...withoutUndefined({
           sprite: asString(options.sprite),
           transition: transitionOf(positional, options, 2),
@@ -161,8 +166,7 @@ export const presentationCommands: CommandHandler[] = [
       const id = requireString(positional[0], '@move requires a character id');
       ctx.engine.eventBus.emit('character:move', {
         id,
-        position:
-          positional[1] === undefined ? 'center' : (positional[1] as Position),
+        position: asPosition(positional[1]),
         ...withoutUndefined({
           duration: durationOf(positional, options, 2),
           easing: asString(positional[3]) ?? asString(options.easing),
@@ -201,12 +205,7 @@ export const presentationCommands: CommandHandler[] = [
         PLAY_AUDIO_SCHEMA,
       );
       const id = requireString(positional[0], '@playBgm requires an audio id');
-      const loop =
-        positional[1] === 'loop'
-          ? true
-          : positional[1] === 'once'
-            ? false
-            : undefined;
+      const loop = loopOf(positional);
       ctx.engine.eventBus.emit('audio:play', {
         id,
         type: 'bgm',
@@ -264,12 +263,7 @@ export const presentationCommands: CommandHandler[] = [
         positional[0],
         '@playAmbient requires an audio id',
       );
-      const loop =
-        positional[1] === 'loop'
-          ? true
-          : positional[1] === 'once'
-            ? false
-            : undefined;
+      const loop = loopOf(positional);
       ctx.engine.eventBus.emit('audio:play', {
         id,
         type: 'ambient',

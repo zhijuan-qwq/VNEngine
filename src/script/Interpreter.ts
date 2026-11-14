@@ -6,18 +6,20 @@ import type { EngineEvents, EventName } from '@/types/events';
 import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
 import { VNScriptError } from './errors';
 
-// 由 handleFlowCommand 直接处理的流程指令，不经过 CommandRegistry。
-export const FLOW_COMMANDS = new Set([
-  'label',
-  'jump',
-  'call',
-  'return',
-  'if',
-  'elseif',
-  'else',
-  'endif',
-  'end',
-]);
+// 由 handleFlowCommand 直接处理的流程指令及其允许的参数键，不经过 CommandRegistry。
+const FLOW_ARG_KEYS: Record<string, readonly string[]> = {
+  label: ['name'],
+  jump: ['0'],
+  call: ['0'],
+  return: [],
+  if: ['expression'],
+  elseif: ['expression'],
+  else: [],
+  endif: [],
+  end: [],
+};
+
+export const FLOW_COMMANDS = new Set(Object.keys(FLOW_ARG_KEYS));
 
 export function assertValidStartPc(
   startPc: number,
@@ -165,7 +167,7 @@ class Interpreter {
     return this.state === 'waiting';
   }
 
-  private assertFlowArgs(command: Command, allowed: string[]): void {
+  private assertFlowArgs(command: Command, allowed: readonly string[]): void {
     for (const key of Object.keys(command.args)) {
       if (!allowed.includes(key)) {
         throw new Error(`@${command.type} does not accept argument "${key}".`);
@@ -174,28 +176,28 @@ class Interpreter {
   }
 
   private handleFlowCommand(command: Command): boolean {
+    const allowed = FLOW_ARG_KEYS[command.type];
+    if (allowed) {
+      this.assertFlowArgs(command, allowed);
+    }
+
     switch (command.type) {
       case 'label':
-        this.assertFlowArgs(command, ['name']);
         this.pc++;
         return true;
       case 'jump': {
-        this.assertFlowArgs(command, ['0']);
         this.jump(command.args['0'] as string);
         return true;
       }
       case 'call': {
-        this.assertFlowArgs(command, ['0']);
         this.call(command.args['0'] as string);
         return true;
       }
       case 'return': {
-        this.assertFlowArgs(command, []);
         this.return();
         return true;
       }
       case 'if': {
-        this.assertFlowArgs(command, ['expression']);
         // Scan for the matching @endif up front so an unclosed block is
         // reported whether or not the condition is taken.
         const endifPc = this.findMatchingEndif(this.pc);
@@ -213,7 +215,6 @@ class Interpreter {
         return true;
       }
       case 'elseif': {
-        this.assertFlowArgs(command, ['expression']);
         const top = this.ifStack[this.ifStack.length - 1];
         if (!top) {
           throw new Error('@elseif without matching @if');
@@ -236,7 +237,6 @@ class Interpreter {
         return true;
       }
       case 'else': {
-        this.assertFlowArgs(command, []);
         const top = this.ifStack[this.ifStack.length - 1];
         if (!top) {
           throw new Error('@else without matching @if');
@@ -250,7 +250,6 @@ class Interpreter {
         return true;
       }
       case 'endif': {
-        this.assertFlowArgs(command, []);
         if (this.ifStack.length === 0) {
           throw new Error('@endif without matching @if');
         }
@@ -259,7 +258,6 @@ class Interpreter {
         return true;
       }
       case 'end': {
-        this.assertFlowArgs(command, []);
         this.pc = this.script.commands.length;
         this.endScript();
         return true;

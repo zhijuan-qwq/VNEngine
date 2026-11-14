@@ -7,9 +7,9 @@ import type { CommandSchema } from './schema';
 const FLAG_SCHEMA: CommandSchema = { positional: [STRING] };
 const NO_ARGS_SCHEMA: CommandSchema = { positional: [] };
 
-function flagName(arg: unknown): string {
+function flagName(directive: string, arg: unknown): string {
   if (typeof arg === 'string') return arg;
-  throw new TypeError(`Expected a flag name, got ${String(arg)}`);
+  throw new TypeError(`@${directive} requires a flag name.`);
 }
 
 function arithmetic(
@@ -88,21 +88,21 @@ export const stateCommands: CommandHandler[] = [
     type: 'flag',
     execute: (ctx, args) => {
       const { positional } = matchArgs('flag', args, FLAG_SCHEMA);
-      ctx.store.setFlag(flagName(positional[0]));
+      ctx.store.setFlag(flagName('flag', positional[0]));
     },
   },
   {
     type: 'unflag',
     execute: (ctx, args) => {
       const { positional } = matchArgs('unflag', args, FLAG_SCHEMA);
-      ctx.store.clearFlag(flagName(positional[0]));
+      ctx.store.clearFlag(flagName('unflag', positional[0]));
     },
   },
   {
     type: 'toggle',
     execute: (ctx, args) => {
       const { positional } = matchArgs('toggle', args, FLAG_SCHEMA);
-      ctx.store.toggleFlag(flagName(positional[0]));
+      ctx.store.toggleFlag(flagName('toggle', positional[0]));
     },
   },
   {
