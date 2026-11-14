@@ -37,6 +37,16 @@ function evalExpr(node: unknown, store: VariableStore): unknown {
       throw new Error(`Unknown unary operator: ${node.op}`);
     }
     case 'binary': {
+      if (node.op === 'and') {
+        return isTruthy(evalExpr(node.left, store))
+          ? isTruthy(evalExpr(node.right, store))
+          : false;
+      }
+      if (node.op === 'or') {
+        return isTruthy(evalExpr(node.left, store))
+          ? true
+          : isTruthy(evalExpr(node.right, store));
+      }
       const left = evalExpr(node.left, store);
       const right = evalExpr(node.right, store);
       return applyBinaryOp(node.op as string, left, right);
@@ -58,10 +68,6 @@ function applyBinaryOp(op: string, left: unknown, right: unknown): unknown {
       return (left as number) < (right as number);
     case '<=':
       return (left as number) <= (right as number);
-    case 'and':
-      return left && right;
-    case 'or':
-      return left || right;
     case '+':
       return (left as number) + (right as number);
     case '-':
