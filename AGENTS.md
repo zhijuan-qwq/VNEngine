@@ -160,7 +160,7 @@ npm run spell:check  # cSpell 拼写检查
     type 说明 是否触发版本更新  
     feat 新功能 是  
     fix 修复 Bug 是  
-    docs 仅文档更改 否  
+    doc 仅文档更改 否  
     style 代码格式（不影响运行，如空格、分号、缩进） 否  
     refactor 代码重构（不修改外部行为） 否  
     perf 性能优化 否  
@@ -196,5 +196,6 @@ npm run spell:check  # cSpell 拼写检查
   - Breaking Changes：以 BREAKING CHANGE: <描述> 开头。
   - 关闭 Issue：如 Closes #123 或 Fixes #456, #789。
 
+## 文档风格
 
-
+编写文档，写注释等，保证可读性高，不要用专业术语堆砌
