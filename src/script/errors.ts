@@ -23,15 +23,3 @@ export class VNScriptError extends Error {
     this.command = info.command;
   }
 }
-
-export function toScriptError(
-  error: unknown,
-  info: ScriptErrorInfo,
-): VNScriptError {
-  if (error instanceof VNScriptError) return error;
-  return new VNScriptError(
-    error instanceof Error ? error.message : String(error),
-    info,
-    { cause: error },
-  );
-}
