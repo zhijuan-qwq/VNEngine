@@ -37,7 +37,7 @@ interface Command {
 
 - 位置参数以 `"0"`、`"1"` …… 为键；
 - 键值参数以参数名为键；
-- 时长写成 `{ value, unit }`，例如 `500ms` 是 `{ value: 500, unit: "ms" }`；
+- 时长写成 `{ value, unit }`，例如 `500ms` 是 `{ value: 500, unit: "ms" }`；裸数字仍是数字，由指令按毫秒解释；
 - 表达式是节点树，不是字符串；
 - `@choice` 整块折叠成一条 `choice` 指令，选项放在 `args.choices`。
 
@@ -65,12 +65,13 @@ interface Command {
 
 ## 3. 解析阶段会报的错
 
-- **语法错误**：不符合语法规则，例如选项块忘了 `@endchoice`、时长没写单位、二元运算符两边没空格。
+- **语法错误**：不符合语法规则，例如选项块忘了 `@endchoice`、选项块里写了空行或整行注释、二元运算符两边没空格、以 `#` 开头的裸值。
 - **元数据重复或位置不对**：三个元数据键各自只能出现一次，且必须排在所有指令和标签之前。
-- **标签重复**：同一个标签名声明两次。
-- **空选项块**：`@choice` 和 `@endchoice` 之间一个选项都没有。
+- **标签重复**：同一个标签名声明两次。这一项由 `Parser` 扫描时检查，不在语法文件里。
 
-这些错误会带着出错行号抛出，脚本不会进入加载阶段。
+语法错误和重复标签会带行号；元数据重复或顺序错误只有消息，没有行号。这些情况下脚本都不会进入加载阶段。
+
+注意几个**不**在解析阶段报错的情况：空选项块、`@wait` 没写时长、`@if` 没闭合、`@titlefoo`。它们要么能正常解析，要么在运行阶段才暴露。
 
 ## 4. 加载阶段会报的错
 
@@ -86,22 +87,37 @@ label / jump / call / return / if / elseif / else / endif / end
 Unknown command "@swtich" in script "demo" at line 12.
 ```
 
-所以拼错指令名会在加载阶段立刻暴露，而不是运行到那一行才出问题。
+所以拼错指令名会在加载阶段立刻暴露，而不是运行到那一行才出问题。目前加载阶段**不检查参数**，多余参数、未知参数、`@if` 结构问题都不在这里报错。
 
 ## 5. 执行阶段
 
 `Interpreter` 维护：
 
 - 程序计数器 `pc`，指向下一条要执行的指令；
-- 调用栈，记录 `@call` 的返回位置；
+- 调用栈，记录 `@call` 的返回位置和调用点的条件栈深度；
 - 条件分支栈，记录 `@if` 的匹配状态；
 - 当前等待的事件，例如点击、选项选中、等待计时结束。
 
 执行一条指令前，先发 `script:command`。流程指令（标签、跳转、条件）由解释器直接处理；其余指令交给 `CommandRegistry` 里注册的处理器。
 
+条件分支在运行时按指令位置扫描：`@if` 执行时先向后找配对的 `@endif`，找不到就抛 `Unclosed @if block`；`@elseif` / `@else` 在没有活动 `@if` 时抛错。`@else` 出现在 `@elseif` 之前不会被结构检查拦下，运行时按「第一个成立的分支先执行」处理。
+
 `@jump` 跳出当前 `@if` 块时会退出这个块，但不会低于最内层 `@call` 的边界；`@return` 会把条件分支栈截断回调用发生时的深度。这样后续孤立的 `@endif` 不会被误报为错误。
 
-处理器抛出的异常不会逃到帧循环里。解释器会发 `script:error`，然后结束当前脚本，`script:end` 照常收尾。
+请求等待时，`pc` 停在阻塞指令上，`getPc()` 也返回这条指令，便于存档后重新执行；处理器抛出的异常不会逃到帧循环里，解释器会发 `script:error`，然后结束当前脚本，`script:end` 照常收尾。
+
+### 表达式求值
+
+`ExpressionEvaluator` 用普通递归求值：
+
+- 变量节点返回 `store.get(name)`，没定义时是 `undefined`；
+- 旗标节点返回 `store.hasFlag(name)`；
+- 二元节点**先求左右两边，再合并**，没有短路；
+- `and` / `or` 直接使用 JavaScript 的 `&&` / `||`，返回操作数本身而不是布尔值；
+- `==` / `!=` 使用严格相等；大小比较和算术沿用 JavaScript 的隐式转换；
+- 条件判断用 `isTruthy`：`false`、`0`、`NaN`、空字符串、`null`、`undefined` 为假，其余为真。
+
+命令处理器读取参数时使用 `commands/utils.ts` 里的辅助函数：`toMs` 把裸数字当作毫秒、把 `{ value, unit }` 换算成毫秒；`toNumber` 接受数字或能转成数字的字符串，否则抛 `TypeError`。
 
 ## 6. 错误形式
 
@@ -144,7 +160,7 @@ engine.script.commandRegistry.register({
 - `ctx.store` 是变量与旗标存储；
 - `ctx.interpreter` 提供 `wait()`、`jump()` 等执行控制接口。
 
-自定义指令也需要声明自己接受哪些参数。命令层会按声明校验，未知参数、多余参数或类型不对都会报错，不会悄悄忽略。
+命令层**不会**替自定义指令校验参数：未知参数、多余参数都会原样传进来，需要自己检查。内置指令也只是按需读取自己认识的参数，未知键大多忽略，但多余的位置参数可能被当成转场或缓动。
 
 解析前没有预处理钩子。要支持新的写法，只能修改 `grammar.pegjs` 并重新生成解析器。
 
@@ -163,20 +179,28 @@ engine.script.commandRegistry.register({
 | `script:end`             | `@end` 或脚本自然结束        | 无                                         |
 | `script:error`           | 运行时出错                   | `{ message, script, line?, command? }`     |
 
-指令产生的子系统事件：
+各指令产生的子系统事件：
 
-| 指令                                                   | 事件                                                                        |
-| ------------------------------------------------------ | --------------------------------------------------------------------------- |
-| `@bg`                                                  | `bg:change`                                                                 |
-| `@show` / `@hide` / `@move` / `@sprite`                | `character:show` / `character:hide` / `character:move` / `character:sprite` |
-| `@playBgm` / `@playSe` / `@playVoice` / `@playAmbient` | `audio:play`                                                                |
-| `@stopBgm` / `@stopAmbient`                            | `audio:stop`                                                                |
-| `@shake` / `@flash` / `@snow` / `@rain`                | `effect:play`                                                               |
-| `@stopEffect`                                          | `effect:stop`                                                               |
+| 指令                                                   | 事件                                             | 字段                                                |
+| ------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------- |
+| `@bg`                                                  | `bg:change`                                      | `{ id, transition?, duration? }`                    |
+| `@show`                                                | `character:show`                                 | `{ id, position, sprite?, transition?, duration? }` |
+| `@hide`                                                | `character:hide`                                 | `{ id, transition?, duration? }`                    |
+| `@move`                                                | `character:move`                                 | `{ id, position, duration?, easing? }`              |
+| `@sprite`                                              | `character:sprite`                               | `{ id, sprite, transition?, duration? }`            |
+| `@playBgm` / `@playSe` / `@playVoice` / `@playAmbient` | `audio:play`                                     | `{ id, type, loop?, loopCount?, fadeIn?, volume? }` |
+| `@stopBgm` / `@stopAmbient`                            | `audio:stop`                                     | `{ type, fadeOut? }`                                |
+| `@shake` / `@flash` / `@snow` / `@rain`                | `effect:play`                                    | `{ type, duration?, intensity?, color?, density? }` |
+| `@stopEffect`                                          | `effect:stop`                                    | 无                                                  |
+| `@choice`                                              | `script:choice`，选中后 `script:choice:selected` | 见上表                                              |
 
 `@pause` / `@click` 不直接发事件，而是等待 `input:click`。`@wait` 自身也不发对外事件，只在计时结束时发内部的 `script:wait:done`。
 
-## 9. 文件与构建
+## 9. 文档与测试
+
+`doc/dsl` 下的 `vns` 代码块会被 `src/script/__test__/docs.spec.ts` 逐个解析；`text` 代码块是伪代码或反例，不参与解析。同一个测试还会检查命令注册表里的每条指令在 [reference.md](reference.md) 中都有对应说明。
+
+## 10. 文件与构建
 
 | 项目       | 说明                       |
 | ---------- | -------------------------- |
