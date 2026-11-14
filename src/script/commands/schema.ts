@@ -58,7 +58,7 @@ function isDurationLiteral(value: unknown): value is DurationLiteral {
     typeof node.value === 'number' &&
     Number.isFinite(node.value) &&
     node.value >= 0 &&
-    typeof node.unit === 'string'
+    (node.unit === 'ms' || node.unit === 's')
   );
 }
 
