@@ -177,7 +177,7 @@ Hero "早上好。"
 | `fadein=` | 否   | 淡入时长                            |
 | `volume=` | 否   | 音量，通常写 0 到 1；超出范围不报错 |
 
-`loop` / `once` 写在资源 id 后面。资源 id 永远是第一个位置参数，所以 `@playBgm loop theme` 会把 `loop` 当资源 id，后面的 `theme` 成为多余参数并报错。`loop`、`once`、`loop=N` 建议只写一种。淡入键名是 `fadein=`，不是 `fade=`；`fade=` 是停止指令用的。
+`loop` / `once` 写在资源 id 后面，是紧随其后的那个位置参数；键值参数可以写在其前后，但再写其他裸词会报错。资源 id 永远是第一个位置参数，所以 `@playBgm loop theme` 会把 `loop` 当资源 id，后面的 `theme` 成为多余参数并报错。`loop`、`once`、`loop=N` 建议只写一种。淡入键名是 `fadein=`，不是 `fade=`；`fade=` 是停止指令用的。
 
 ### `@stopBgm`
 
