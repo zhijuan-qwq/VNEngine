@@ -10,9 +10,9 @@ export type EngineEvents = {
   'script:say': {
     speaker: string;
     text: string;
+    mode: 'adv' | 'nvl';
     voice?: string;
     speed?: number;
-    mode?: 'adv' | 'nvl';
   };
   'script:clear': Record<string, never>;
   'script:choice:selected': { label: string };

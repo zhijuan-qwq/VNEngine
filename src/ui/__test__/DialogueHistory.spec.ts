@@ -20,7 +20,7 @@ describe('DialogueHistory', () => {
   it('should record a script:say entry with speaker, text and timestamp', () => {
     const { bus, history } = makeHistory();
 
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
 
     expect(history.entries()).toHaveLength(1);
     expect(history.entries()[0]).toMatchObject({ speaker: 'Hero', text: 'Hi' });
@@ -30,8 +30,8 @@ describe('DialogueHistory', () => {
   it('should append entries in order', () => {
     const { bus, history } = makeHistory();
 
-    bus.emit('script:say', { speaker: 'Hero', text: 'One' });
-    bus.emit('script:say', { speaker: 'Npc', text: 'Two' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'One', mode: 'adv' });
+    bus.emit('script:say', { speaker: 'Npc', text: 'Two', mode: 'adv' });
 
     expect(history.entries().map((item) => item.text)).toEqual(['One', 'Two']);
   });
@@ -39,9 +39,9 @@ describe('DialogueHistory', () => {
   it('should drop the oldest entries past the limit', () => {
     const { bus, history } = makeHistory(2);
 
-    bus.emit('script:say', { speaker: 'A', text: '1' });
-    bus.emit('script:say', { speaker: 'B', text: '2' });
-    bus.emit('script:say', { speaker: 'C', text: '3' });
+    bus.emit('script:say', { speaker: 'A', text: '1', mode: 'adv' });
+    bus.emit('script:say', { speaker: 'B', text: '2', mode: 'adv' });
+    bus.emit('script:say', { speaker: 'C', text: '3', mode: 'adv' });
 
     expect(history.entries().map((item) => item.text)).toEqual(['2', '3']);
   });
@@ -69,7 +69,7 @@ describe('DialogueHistory', () => {
   it('should keep no entries when the limit is non-positive', () => {
     const { bus, history } = makeHistory(0);
 
-    bus.emit('script:say', { speaker: 'A', text: '1' });
+    bus.emit('script:say', { speaker: 'A', text: '1', mode: 'adv' });
     history.restore([entry('B', '2')]);
 
     expect(history.entries()).toEqual([]);
@@ -77,7 +77,7 @@ describe('DialogueHistory', () => {
 
   it('should clear the buffer', () => {
     const { bus, history } = makeHistory();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
 
     history.clear();
 
@@ -88,7 +88,7 @@ describe('DialogueHistory', () => {
     const { bus, history } = makeHistory();
     history.destroy();
 
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
 
     expect(history.entries()).toEqual([]);
   });
