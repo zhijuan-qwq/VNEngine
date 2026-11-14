@@ -2,7 +2,7 @@
 // 编译: npm run build:parser (peggy --format es src/script/grammar.pegjs -o src/script/parser.js)
 // 目标: TypeScript (Peggy 5.x)
 // 这是 VNScript DSL 的权威语法定义，替代 doc/script-dsl.md 中的 EBNF。
-// 语言规则以 language.md / reference.md 为准。本文件只管语法层：
+// 文档与解析器不一致时以解析器为准。本文件只管语法层：
 // 词法、行结构、表达式，以及解析阶段就能确定的错误（元数据顺序与重复、
 // 空选项块、同一参数写两次）。重复标签由 Parser.ts 检查，不在这里处理。
 // 各指令的参数声明也不在这里校验。
