@@ -1,40 +1,23 @@
 import type { CommandHandler } from '@/types/script';
-import type { Position, PositionKeyword } from '@/types/engine';
-import { asNumber, asString, positionalArgs, toMs } from './utils';
+import type { Position } from '@/types/engine';
+import { asNumber, asString } from './utils';
+import {
+  DURATION,
+  EASING,
+  LOOP,
+  NUMBER,
+  POSITION,
+  STRING,
+  TRANSITION,
+  durationMs,
+  matchArgs,
+} from './schema';
+import type { CommandSchema } from './schema';
 
-function requireString(pos: unknown[], index: number, message: string): string {
-  const value = asString(pos[index]);
-  if (value === undefined) throw new Error(message);
-  return value;
-}
-
-function parseTransition(
-  pos: unknown[],
-  start: number,
-  args?: Record<string, unknown>,
-): { transition: string | undefined; duration: number | undefined } {
-  let transition: string | undefined;
-  let duration: number | undefined;
-  for (const p of pos.slice(start)) {
-    const ms = toMs(p);
-    if (ms !== undefined) {
-      duration = ms;
-    } else {
-      const s = asString(p);
-      if (s !== undefined) transition = s;
-    }
-  }
-  if (args) {
-    if (transition === undefined) transition = asString(args.transition);
-    if (duration === undefined) duration = toMs(args.duration);
-  }
-  return { transition, duration };
-}
-
-function parseLoopOption(pos: unknown[]): boolean | undefined {
-  if (pos[1] === 'loop') return true;
-  if (pos[1] === 'once') return false;
-  return undefined;
+function requireString(value: unknown, message: string): string {
+  const text = asString(value);
+  if (text === undefined) throw new Error(message);
+  return text;
 }
 
 function withoutUndefined<T extends object>(obj: T): T {
@@ -45,67 +28,115 @@ function withoutUndefined<T extends object>(obj: T): T {
   return out as T;
 }
 
-// Position is narrowed rather than blindly cast: an unknown keyword or a malformed
-// coord object falls back to 'center', mirroring the renderer's own fallback
-// (CharacterRegistry: POSITION_RATIOS[position] ?? center).
-const POSITION_KEYWORDS: readonly PositionKeyword[] = [
-  'farLeft',
-  'left',
-  'center',
-  'right',
-  'farRight',
-  'offLeft',
-  'offRight',
-];
-
-function isCoord(value: unknown): value is { x: number; y: number } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).x === 'number' &&
-    typeof (value as Record<string, unknown>).y === 'number'
-  );
+function transitionOf(
+  positional: unknown[],
+  options: Record<string, unknown>,
+  slot: number,
+): string | undefined {
+  return asString(positional[slot]) ?? asString(options.transition);
 }
 
-function isPositionSpec(value: unknown): boolean {
-  return (
-    (typeof value === 'string' &&
-      POSITION_KEYWORDS.includes(value as PositionKeyword)) ||
-    isCoord(value)
-  );
+function durationOf(
+  positional: unknown[],
+  options: Record<string, unknown>,
+  slot: number,
+): number | undefined {
+  return positional[slot] !== undefined
+    ? durationMs(positional[slot])
+    : durationMs(options.duration);
 }
 
-function toPosition(value: unknown): Position {
-  return isPositionSpec(value) ? (value as Position) : 'center';
-}
+const BG_SCHEMA: CommandSchema = {
+  positional: [STRING, TRANSITION, DURATION],
+  options: { transition: TRANSITION, duration: DURATION },
+};
+
+const SHOW_SCHEMA: CommandSchema = {
+  positional: [STRING, POSITION, TRANSITION, DURATION],
+  options: { sprite: STRING, transition: TRANSITION, duration: DURATION },
+};
+
+const HIDE_SCHEMA: CommandSchema = {
+  positional: [STRING, TRANSITION, DURATION],
+  options: { transition: TRANSITION, duration: DURATION },
+};
+
+const MOVE_SCHEMA: CommandSchema = {
+  positional: [STRING, POSITION, DURATION, EASING],
+  options: { duration: DURATION, easing: EASING },
+};
+
+const SPRITE_SCHEMA: CommandSchema = {
+  positional: [STRING, STRING, TRANSITION, DURATION],
+  options: { transition: TRANSITION, duration: DURATION },
+};
+
+const PLAY_AUDIO_SCHEMA: CommandSchema = {
+  positional: [STRING, LOOP],
+  options: { loop: NUMBER, fadein: DURATION, volume: NUMBER },
+};
+
+const PLAY_SE_SCHEMA: CommandSchema = {
+  positional: [STRING],
+  options: { volume: NUMBER },
+};
+
+const PLAY_VOICE_SCHEMA: CommandSchema = {
+  positional: [STRING],
+};
+
+const STOP_AUDIO_SCHEMA: CommandSchema = {
+  positional: [],
+  options: { fade: DURATION },
+};
+
+const SHAKE_SCHEMA: CommandSchema = {
+  positional: [DURATION],
+  options: { intensity: NUMBER },
+};
+
+const FLASH_SCHEMA: CommandSchema = {
+  positional: [DURATION],
+  options: { color: STRING, duration: DURATION },
+};
+
+const PARTICLE_SCHEMA: CommandSchema = {
+  positional: [DURATION],
+  options: { density: NUMBER },
+};
+
+const NO_ARGS_SCHEMA: CommandSchema = {
+  positional: [],
+};
 
 export const presentationCommands: CommandHandler[] = [
   {
     type: 'bg',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@bg requires a background id');
-      const { transition, duration } = parseTransition(pos, 1);
+      const { positional, options } = matchArgs('bg', args, BG_SCHEMA);
+      const id = requireString(positional[0], '@bg requires a background id');
       ctx.engine.eventBus.emit('bg:change', {
         id,
-        ...withoutUndefined({ transition, duration }),
+        ...withoutUndefined({
+          transition: transitionOf(positional, options, 1),
+          duration: durationOf(positional, options, 2),
+        }),
       });
     },
   },
   {
     type: 'show',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@show requires a character id');
-      const position = toPosition(pos[1]);
-      const { transition, duration } = parseTransition(pos, 2, args);
+      const { positional, options } = matchArgs('show', args, SHOW_SCHEMA);
+      const id = requireString(positional[0], '@show requires a character id');
       ctx.engine.eventBus.emit('character:show', {
         id,
-        position,
+        position:
+          positional[1] === undefined ? 'center' : (positional[1] as Position),
         ...withoutUndefined({
-          sprite: asString(args.sprite),
-          transition,
-          duration,
+          sprite: asString(options.sprite),
+          transition: transitionOf(positional, options, 2),
+          duration: durationOf(positional, options, 3),
         }),
       });
     },
@@ -113,185 +144,218 @@ export const presentationCommands: CommandHandler[] = [
   {
     type: 'hide',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = asString(pos[0]) ?? 'all';
-      const { transition, duration } = parseTransition(pos, 1, args);
+      const { positional, options } = matchArgs('hide', args, HIDE_SCHEMA);
       ctx.engine.eventBus.emit('character:hide', {
-        id,
-        ...withoutUndefined({ transition, duration }),
+        id: asString(positional[0]) ?? 'all',
+        ...withoutUndefined({
+          transition: transitionOf(positional, options, 1),
+          duration: durationOf(positional, options, 2),
+        }),
       });
     },
   },
   {
     type: 'move',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@move requires a character id');
-      // The position is optional, so an omitted one must not shift the remaining
-      // args: only consume pos[1] as the position when it actually is one.
-      let rest = pos.slice(1);
-      let position: Position = 'center';
-      if (isPositionSpec(rest[0])) {
-        position = toPosition(rest[0]);
-        rest = rest.slice(1);
-      }
-      let duration: number | undefined;
-      let easing: string | undefined;
-      for (const arg of rest) {
-        const ms = toMs(arg);
-        if (ms !== undefined) {
-          duration = ms;
-          continue;
-        }
-        const name = asString(arg);
-        if (name !== undefined) easing = name;
-      }
-      if (duration === undefined) duration = toMs(args.duration);
-      if (easing === undefined) easing = asString(args.easing);
+      const { positional, options } = matchArgs('move', args, MOVE_SCHEMA);
+      const id = requireString(positional[0], '@move requires a character id');
       ctx.engine.eventBus.emit('character:move', {
         id,
-        position,
-        ...withoutUndefined({ duration, easing }),
+        position:
+          positional[1] === undefined ? 'center' : (positional[1] as Position),
+        ...withoutUndefined({
+          duration: durationOf(positional, options, 2),
+          easing: asString(positional[3]) ?? asString(options.easing),
+        }),
       });
     },
   },
   {
     type: 'sprite',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@sprite requires a character id');
-      const sprite = requireString(pos, 1, '@sprite requires a sprite id');
-      const { transition, duration } = parseTransition(pos, 2);
+      const { positional, options } = matchArgs('sprite', args, SPRITE_SCHEMA);
+      const id = requireString(
+        positional[0],
+        '@sprite requires a character id',
+      );
+      const sprite = requireString(
+        positional[1],
+        '@sprite requires a sprite id',
+      );
       ctx.engine.eventBus.emit('character:sprite', {
         id,
         sprite,
-        ...withoutUndefined({ transition, duration }),
+        ...withoutUndefined({
+          transition: transitionOf(positional, options, 2),
+          duration: durationOf(positional, options, 3),
+        }),
       });
     },
   },
   {
     type: 'playBgm',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@playBgm requires an audio id');
-      const loop = parseLoopOption(pos);
-      const loopCount = asNumber(args.loop);
-      const fadeIn = toMs(args.fadein);
-      const volume = asNumber(args.volume);
+      const { positional, options } = matchArgs(
+        'playBgm',
+        args,
+        PLAY_AUDIO_SCHEMA,
+      );
+      const id = requireString(positional[0], '@playBgm requires an audio id');
+      const loop =
+        positional[1] === 'loop'
+          ? true
+          : positional[1] === 'once'
+            ? false
+            : undefined;
       ctx.engine.eventBus.emit('audio:play', {
         id,
         type: 'bgm',
-        ...withoutUndefined({ loop, loopCount, fadeIn, volume }),
+        ...withoutUndefined({
+          loop,
+          loopCount: asNumber(options.loop),
+          fadeIn: durationMs(options.fadein),
+          volume: asNumber(options.volume),
+        }),
       });
     },
   },
   {
     type: 'stopBgm',
     execute: (ctx, args) => {
-      const fadeOut = toMs(args.fade);
+      const { options } = matchArgs('stopBgm', args, STOP_AUDIO_SCHEMA);
       ctx.engine.eventBus.emit('audio:stop', {
         type: 'bgm',
-        ...withoutUndefined({ fadeOut }),
+        ...withoutUndefined({ fadeOut: durationMs(options.fade) }),
       });
     },
   },
   {
     type: 'playSe',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@playSe requires an audio id');
-      const volume = asNumber(args.volume);
+      const { positional, options } = matchArgs('playSe', args, PLAY_SE_SCHEMA);
+      const id = requireString(positional[0], '@playSe requires an audio id');
       ctx.engine.eventBus.emit('audio:play', {
         id,
         type: 'se',
-        ...withoutUndefined({ volume }),
+        ...withoutUndefined({ volume: asNumber(options.volume) }),
       });
     },
   },
   {
     type: 'playVoice',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@playVoice requires an audio id');
+      const { positional } = matchArgs('playVoice', args, PLAY_VOICE_SCHEMA);
+      const id = requireString(
+        positional[0],
+        '@playVoice requires an audio id',
+      );
       ctx.engine.eventBus.emit('audio:play', { id, type: 'voice' });
     },
   },
   {
     type: 'playAmbient',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const id = requireString(pos, 0, '@playAmbient requires an audio id');
-      const loop = parseLoopOption(pos);
-      const fadeIn = toMs(args.fadein);
-      const volume = asNumber(args.volume);
+      const { positional, options } = matchArgs(
+        'playAmbient',
+        args,
+        PLAY_AUDIO_SCHEMA,
+      );
+      const id = requireString(
+        positional[0],
+        '@playAmbient requires an audio id',
+      );
+      const loop =
+        positional[1] === 'loop'
+          ? true
+          : positional[1] === 'once'
+            ? false
+            : undefined;
       ctx.engine.eventBus.emit('audio:play', {
         id,
         type: 'ambient',
-        ...withoutUndefined({ loop, fadeIn, volume }),
+        ...withoutUndefined({
+          loop,
+          loopCount: asNumber(options.loop),
+          fadeIn: durationMs(options.fadein),
+          volume: asNumber(options.volume),
+        }),
       });
     },
   },
   {
     type: 'stopAmbient',
     execute: (ctx, args) => {
-      const fadeOut = toMs(args.fade);
+      const { options } = matchArgs('stopAmbient', args, STOP_AUDIO_SCHEMA);
       ctx.engine.eventBus.emit('audio:stop', {
         type: 'ambient',
-        ...withoutUndefined({ fadeOut }),
+        ...withoutUndefined({ fadeOut: durationMs(options.fade) }),
       });
     },
   },
   {
     type: 'shake',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const duration = toMs(pos[0]);
-      const intensity = asNumber(args.intensity);
+      const { positional, options } = matchArgs('shake', args, SHAKE_SCHEMA);
       ctx.engine.eventBus.emit('effect:play', {
         type: 'shake',
-        ...withoutUndefined({ duration, intensity }),
+        ...withoutUndefined({
+          duration: durationMs(positional[0]),
+          intensity: asNumber(options.intensity),
+        }),
       });
     },
   },
   {
     type: 'flash',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const duration = toMs(pos[0]) ?? toMs(args.duration);
-      const color = asString(args.color);
+      const { positional, options } = matchArgs('flash', args, FLASH_SCHEMA);
+      if (positional[0] !== undefined && options.duration !== undefined) {
+        throw new Error(
+          '@flash: duration given both positionally and via duration=.',
+        );
+      }
       ctx.engine.eventBus.emit('effect:play', {
         type: 'flash',
-        ...withoutUndefined({ duration, color }),
+        ...withoutUndefined({
+          duration:
+            positional[0] !== undefined
+              ? durationMs(positional[0])
+              : durationMs(options.duration),
+          color: asString(options.color),
+        }),
       });
     },
   },
   {
     type: 'snow',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const duration = toMs(pos[0]);
-      const density = asNumber(args.density);
+      const { positional, options } = matchArgs('snow', args, PARTICLE_SCHEMA);
       ctx.engine.eventBus.emit('effect:play', {
         type: 'snow',
-        ...withoutUndefined({ duration, density }),
+        ...withoutUndefined({
+          duration: durationMs(positional[0]),
+          density: asNumber(options.density),
+        }),
       });
     },
   },
   {
     type: 'rain',
     execute: (ctx, args) => {
-      const pos = positionalArgs(args);
-      const duration = toMs(pos[0]);
-      const density = asNumber(args.density);
+      const { positional, options } = matchArgs('rain', args, PARTICLE_SCHEMA);
       ctx.engine.eventBus.emit('effect:play', {
         type: 'rain',
-        ...withoutUndefined({ duration, density }),
+        ...withoutUndefined({
+          duration: durationMs(positional[0]),
+          density: asNumber(options.density),
+        }),
       });
     },
   },
   {
     type: 'stopEffect',
-    execute: (ctx) => {
+    execute: (ctx, args) => {
+      matchArgs('stopEffect', args, NO_ARGS_SCHEMA);
       ctx.engine.eventBus.emit('effect:stop', {});
     },
   },

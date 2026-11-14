@@ -60,10 +60,25 @@ describe('presentation commands', () => {
       expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
     });
 
-    it('should fall back to center for an unknown position', () => {
+    it('should reject an unknown position', () => {
+      expect(() => execute('show', { '0': 'ch_hero', '1': 'middle' })).toThrow(
+        '@show: unexpected argument "middle".',
+      );
+    });
+
+    it('should recognize a transition when the position is omitted', () => {
       const spy = listen('character:show');
-      execute('show', { '0': 'ch_hero', '1': 'middle' });
-      expect(spy).toHaveBeenCalledWith({ id: 'ch_hero', position: 'center' });
+      execute('show', {
+        '0': 'ch_hero',
+        '1': 'slideL',
+        '2': { value: 500, unit: 'ms' },
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'center',
+        transition: 'slideL',
+        duration: 500,
+      });
     });
 
     it('should include the sprite option', () => {
@@ -195,6 +210,16 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should reject a word that is neither a position nor an easing', () => {
+      expect(() =>
+        execute('move', {
+          '0': 'ch_hero',
+          '1': '左边',
+          '2': { value: 1, unit: 's' },
+        }),
+      ).toThrow('@move: unexpected argument "左边".');
+    });
+
     it('should throw when id is missing', () => {
       expect(() => execute('move', {})).toThrow(
         '@move requires a character id',
@@ -302,6 +327,22 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should forward the @playAmbient loop count', () => {
+      const spy = listen('audio:play');
+      execute('playAmbient', { '0': 'rain_loop', loop: 3 });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'rain_loop',
+        type: 'ambient',
+        loopCount: 3,
+      });
+    });
+
+    it('should reject extra positional args for @playVoice', () => {
+      expect(() =>
+        execute('playVoice', { '0': 'hero_001', '1': 'extra' }),
+      ).toThrow('@playVoice: unexpected argument "extra".');
+    });
+
     it('should emit audio:stop for @stopAmbient with type ambient', () => {
       const spy = listen('audio:stop');
       execute('stopAmbient', {});
@@ -349,6 +390,21 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should reject @flash when duration is given twice', () => {
+      expect(() =>
+        execute('flash', {
+          '0': { value: 200, unit: 'ms' },
+          duration: { value: 300, unit: 'ms' },
+        }),
+      ).toThrow('@flash: duration given both positionally and via duration=.');
+    });
+
+    it('should reject a bare number duration', () => {
+      expect(() => execute('shake', { '0': 500 })).toThrow(
+        '@shake: unexpected argument 500.',
+      );
+    });
+
     it('should emit effect:play for @snow with density', () => {
       const spy = listen('effect:play');
       execute('snow', { density: 0.6 });
@@ -365,6 +421,12 @@ describe('presentation commands', () => {
       const spy = listen('effect:stop');
       execute('stopEffect', {});
       expect(spy).toHaveBeenCalledWith({});
+    });
+
+    it('should reject extra args for @stopEffect', () => {
+      expect(() => execute('stopEffect', { '0': 'x' })).toThrow(
+        '@stopEffect: unexpected argument "x".',
+      );
     });
   });
 });
