@@ -180,18 +180,3 @@ export function durationMs(value: unknown): number | undefined {
   if (!isDurationLiteral(value)) return undefined;
   return value.unit === 's' ? value.value * 1000 : value.value;
 }
-
-export function requireDurationMs(
-  directive: string,
-  value: unknown,
-  name: string,
-): number {
-  const ms = durationMs(value);
-  if (ms === undefined) {
-    throw new Error(
-      `@${directive}: ${name} must be a duration with a unit ` +
-        `(e.g. 500ms, 1.5s).`,
-    );
-  }
-  return ms;
-}
