@@ -414,6 +414,24 @@ describe('presentation commands', () => {
     });
   });
 
+  describe('argument validation', () => {
+    it('should reject unexpected positional args', () => {
+      for (const type of ['hide', 'playSe', 'playAmbient', 'snow', 'rain']) {
+        expect(() => execute(type, { '0': 'x', '1': 'extra' })).toThrow(
+          /unexpected argument/,
+        );
+      }
+    });
+
+    it('should reject unexpected positional args on no-arg commands', () => {
+      for (const type of ['stopBgm', 'stopAmbient', 'stopEffect']) {
+        expect(() => execute(type, { '0': 'x' })).toThrow(
+          `@${type}: unexpected argument "x".`,
+        );
+      }
+    });
+  });
+
   describe('screen effect commands', () => {
     it('should emit effect:play for @shake with duration and intensity', () => {
       const spy = listen('effect:play');

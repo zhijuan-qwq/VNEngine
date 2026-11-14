@@ -238,4 +238,14 @@ describe('dialogue commands', () => {
       expect(spy).toHaveBeenCalledWith({});
     });
   });
+
+  describe('no-arg commands', () => {
+    it('should reject unexpected args on @pause / @click / @clear', () => {
+      for (const type of ['pause', 'click', 'clear']) {
+        expect(() => execute(type, { '0': 'x' })).toThrow(
+          `@${type}: unexpected argument "x".`,
+        );
+      }
+    });
+  });
 });
