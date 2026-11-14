@@ -462,6 +462,18 @@ describe('ScriptEngine', () => {
       expect(() => engine.load('bad', makeScript('@nope 1\n'))).toThrow(
         'Unknown command "@nope" in script "bad" at line 1.',
       );
+
+      try {
+        engine.load('bad', makeScript('@nope 1\n'));
+        expect.unreachable();
+      } catch (error) {
+        expect(error).toMatchObject({
+          phase: 'load',
+          script: 'bad',
+          line: 1,
+          command: 'nope',
+        });
+      }
     });
 
     it('should accept registered builtins and flow commands', () => {

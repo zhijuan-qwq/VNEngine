@@ -1,5 +1,5 @@
 import Parser from '../Parser';
-import { SyntaxError } from '../parser.js';
+import { VNScriptError } from '../errors';
 
 const COMPLETE_SCRIPT = `
 @title 第一章 — 转校生
@@ -338,8 +338,26 @@ describe('Parser', () => {
     );
   });
 
-  it('should throw SyntaxError for invalid script syntax', () => {
-    expect(() => parser.parseScript('@@')).toThrow(SyntaxError);
-    expect(() => parser.parseScript('{{{')).toThrow(SyntaxError);
+  it('should throw VNScriptError for invalid script syntax', () => {
+    expect(() => parser.parseScript('@@')).toThrow(VNScriptError);
+    expect(() => parser.parseScript('{{{')).toThrow(VNScriptError);
+  });
+
+  it('should expose the parse phase and line on errors', () => {
+    try {
+      parser.parseScript('@@');
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(VNScriptError);
+      expect(error).toMatchObject({ phase: 'parse', line: 1 });
+    }
+
+    try {
+      parser.parseScript('@title a\n@title b\n');
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(VNScriptError);
+      expect(error).toMatchObject({ phase: 'parse', line: 2 });
+    }
   });
 });
