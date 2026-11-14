@@ -1,7 +1,15 @@
 // VNScript PEG Grammar — VNEngine 视觉小说脚本语言
 // 编译: npm run build:parser (peggy --format es src/script/grammar.pegjs -o src/script/parser.js)
 // 目标: TypeScript (Peggy 5.x)
-// 这是 VNScript DSL 的权威语法定义。
+// 这是 VNScript DSL 的权威语法定义，替代 doc/script-dsl.md 中的 EBNF。
+// 语言规则以 language.md / reference.md 为准。本文件只管语法层：
+// 词法、行结构、表达式，以及解析阶段就能确定的错误（元数据顺序与重复、
+// 空选项块、同一参数写两次）。重复标签由 Parser.ts 检查，不在这里处理。
+// 各指令的参数声明也不在这里校验。
+// - 名字（标识符）可以包含汉字。
+// - 有专用语法的指令（@if @elseif @say @label @choice @endchoice 和变量指令）
+//   写错时直接报语法错误，不再退回成通用指令。
+// - 富文本标签里的值（颜色、字号、速度、停顿）不在这里校验，由引擎负责。
 
 // ============================================================
 // 顶层结构
@@ -31,7 +39,7 @@ Script
         metaDone = true;
         commands.push(ln.command);
       }
-            // blank / comment 跳过
+      // blank / comment 跳过
     }
 
     return { commands, metadata };
@@ -65,18 +73,23 @@ _lineEnd "line end"
 TrailingComment "trailing comment"
   = "//" [^\r\n]*
 
+// 最后一行允许没有换行符（文件末尾不强制换行）
 EndOfLine "end of line"
-  = _ TrailingComment? _lineEnd
+  = _ TrailingComment? (_lineEnd / !.)
 
 // ============================================================
 // 标识符与字面量
 // ============================================================
 
+// 名字：以字母、下划线或汉字开头；后面可以是字母、数字、下划线、连字符或汉字。
+// 汉字范围是 \u3400-\u4DBF（扩展 A）和 \u4E00-\u9FFF（基本区）。
 Identifier "identifier"
-  = [a-zA-Z_][a-zA-Z0-9_-]* { return text(); }
+  = [a-zA-Z_\u3400-\u4DBF\u4E00-\u9FFF]
+    [a-zA-Z0-9_\u3400-\u4DBF\u4E00-\u9FFF-]*
+  { return text(); }
 
 IdentifierChar "identifier char"
-  = [a-zA-Z0-9_-]
+  = [a-zA-Z0-9_\u3400-\u4DBF\u4E00-\u9FFF-]
 
 StringLiteral "string literal"
   = '"' chars:DoubleStringChar* '"' { return chars.join(''); }
@@ -98,9 +111,9 @@ DurationLiteral "duration literal"
   = value:NumberLiteral unit:("ms" / "s")
   { return { value, unit }; }
 
+// 必须整词匹配：true_end、falsehood 是合法的普通词，不能被当成布尔值切开
 BooleanLiteral "boolean literal"
-  = "true"  { return true; }
-  / "false" { return false; }
+  = v:("true" / "false") !IdentifierChar { return v === 'true'; }
 
 VariableRef "variable reference"
   = "$" id:Identifier { return { type: 'var', name: id }; }
@@ -122,6 +135,9 @@ Literal
 //
 // 优先级 (低 → 高):
 //   or → and → == != > >= < <= → + - → * / % → ! - (一元) → primary
+//
+// 比较运算不能连写（CompExpr 只接受一个比较符）。
+// 二元运算符两侧必须有空格（__），一元运算符可以紧贴操作数。
 // ============================================================
 
 OrExpr "logical OR"
@@ -191,7 +207,9 @@ Primary "primary expression"
 
 // ============================================================
 // 元数据行
-// 必须出现在脚本最前面（语义谓词在 Script 的 action 中检查）。
+// 必须出现在脚本最前面（顺序与重复在 Script 的 action 中检查）。
+// 值可以是双引号字符串，也可以是裸文本（取到行尾或 // 之前，再去首尾空白）。
+// 键名必须整词匹配：@titlefoo 不是 @title，落到通用指令里，加载时报「不认识的指令」。
 // ============================================================
 
 MetadataKey
@@ -200,8 +218,8 @@ MetadataKey
 MetadataLine "metadata line"
   = _ "@" key:MetadataKey __ value:StringLiteral EndOfLine
   { return { type: 'meta', key, value }; }
-  / _ "@" key:MetadataKey _ rest:$((!TrailingComment [^\r\n])*) EndOfLine
-  { return { type: 'meta', key, value: rest.trim() }; }
+  / _ "@" key:MetadataKey rest:(__ @$((!TrailingComment [^\r\n])*))? EndOfLine
+  { return { type: 'meta', key, value: (rest ?? '').trim() }; }
 
 // ============================================================
 // 标签
@@ -251,52 +269,80 @@ IfLine "if/elseif line"
 
 // ============================================================
 // 对话
+// 内联式 `角色名 "文本"` 与 `@say 角色名 "文本"` 等价；
+// 角色名可以是普通名字或带引号的字符串，空名字写 ""。
 // ============================================================
 
 SayLine "say command"
   = _ "@say" __ speaker:(StringLiteral / Identifier)
-    __ text:StringLiteral options:(__ @SayOption)* EndOfLine
+    __ text:StringLiteral options:SayOptions EndOfLine
   {
-    const args = { speaker, text };
-    for (const opt of options) {
-      Object.assign(args, opt);
-    }
     return {
       type: 'command',
-      command: { type: 'say', args, line: location().start.line },
+      command: {
+        type: 'say',
+        args: Object.assign({ speaker, text }, options),
+        line: location().start.line,
+      },
     };
   }
 
 DialogLine "inline dialogue (语法糖)"
-  = _ speaker:Identifier __ text:StringLiteral
-    options:(__ @SayOption)* EndOfLine
+  = _ speaker:(StringLiteral / Identifier) __ text:StringLiteral
+    options:SayOptions EndOfLine
   {
-    const args = { speaker, text };
-    for (const opt of options) {
-      Object.assign(args, opt);
-    }
     return {
       type: 'command',
-      command: { type: 'say', args, line: location().start.line },
+      command: {
+        type: 'say',
+        args: Object.assign({ speaker, text }, options),
+        line: location().start.line,
+      },
     };
   }
 
+// voice= / speed= 各只能出现一次；adv 与 nvl 同属「对话模式」，
+// 只能出现一次（写两次或互相冲突都报错）。
+SayOptions
+  = opts:(__ @SayOption)*
+  {
+    const args = {};
+    for (const opt of opts) {
+      for (const key of Object.keys(opt)) {
+        if (Object.prototype.hasOwnProperty.call(args, key)) {
+          error(
+            key === 'mode'
+              ? 'Dialogue mode given more than once (adv / nvl)'
+              : `Duplicate dialogue option: ${key}`
+          );
+        }
+        args[key] = opt[key];
+      }
+    }
+    return args;
+  }
+
 SayOption "say option"
-  = "voice=" id:Identifier { return { voice: id }; }
+  = "voice=" id:(StringLiteral / Identifier) { return { voice: id }; }
   / "speed=" num:NumberLiteral { return { speed: num }; }
-  / "adv" { return { mode: 'adv' }; }
-  / "nvl" { return { mode: 'nvl' }; }
+  / "adv" !IdentifierChar { return { mode: 'adv' }; }
+  / "nvl" !IdentifierChar { return { mode: 'nvl' }; }
 
 // ============================================================
 // @choice … @endchoice 块
-// 多行语法，解析为单条 choice 类型的 Command
+// 多行语法，解析为单条 choice 类型的 Command。
+// 块内允许空行和整行注释；至少要有一个选项，否则解析阶段报错。
 // ============================================================
 
 ChoiceBlock "choice block"
-  = _ "@choice" _ mode:ChoiceMode? EndOfLine
-    choices:ChoiceOptionLine*
-    _ "@endchoice" _ EndOfLine
+  = _ "@choice" mode:(__ @ChoiceMode)? EndOfLine
+    items:ChoiceItem*
+    _ "@endchoice" EndOfLine
   {
+    const choices = items.filter((item) => item !== null);
+    if (choices.length === 0) {
+      error('@choice block must contain at least one option');
+    }
     return {
       type: 'command',
       command: {
@@ -311,7 +357,11 @@ ChoiceBlock "choice block"
   }
 
 ChoiceMode "choice mode"
-  = "mode=" m:("adv" / "nvl") { return m; }
+  = "mode=" m:("adv" / "nvl") !IdentifierChar { return m; }
+
+ChoiceItem
+  = ChoiceOptionLine
+  / (CommentLine / BlankLine) { return null; }
 
 ChoiceOptionLine "choice option"
   = _ "->" __ text:StringLiteral _ ":" _ label:Identifier
@@ -350,16 +400,31 @@ VariableCommandLine "variable command"
 
 // ============================================================
 // 通用指令（回退）
-// 匹配所有未特殊处理的 @command
+// 匹配所有未特殊处理的 @command。
+// 有专用规则的指令名（见 ReservedCommandName）不会落到这里：专用规则匹配
+// 失败就是语法错误，而不是悄悄生成一条形状不对的通用命令。
+// @else / @endif / @jump / @call 等没有专用规则，仍然走这里。
+// 位置参数按顺序编号为 '0'、'1'…；键值参数用名字做键。
+// 同一个键值参数写两次会报错（否则后写的会悄悄覆盖前一个，
+// 后面的参数校验就看不到了）。
 // ============================================================
 
+// 整词匹配：@setx、@ifx 不是保留名，仍按未知指令处理（加载时报错）。
+ReservedCommandName "reserved command name"
+  = ( "elseif" / "endchoice" / "choice" / "random" / "label" / "say"
+    / "if" / "set" / "add" / "sub" / "mul" / "div" / "mod" )
+    !IdentifierChar
+
 GenericCommandLine "generic @command"
-  = _ "@" name:Identifier args:(__ @Arg)* EndOfLine
+  = _ "@" !ReservedCommandName name:Identifier args:(__ @Arg)* EndOfLine
   {
     const argsObj = {};
     let posIndex = 0;
     for (const arg of args) {
       if (arg.type === 'kv') {
+        if (Object.prototype.hasOwnProperty.call(argsObj, arg.key)) {
+          error(`Duplicate argument "${arg.key}" in @${name}`);
+        }
         argsObj[arg.key] = arg.value;
       } else {
         argsObj[String(posIndex++)] = arg.value;
@@ -387,9 +452,12 @@ PositionalArg "positional arg"
 // ============================================================
 
 CommentLine "comment"
-  = _ "//" [^\r\n]* _lineEnd
+  = _ "//" [^\r\n]* (_lineEnd / !.)
   { return { type: 'comment' }; }
 
+// 末尾只有空白、没有换行符的最后一行也算空行
 BlankLine "blank line"
   = _ _lineEnd
+  { return { type: 'blank' }; }
+  / __ !.
   { return { type: 'blank' }; }
