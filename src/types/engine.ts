@@ -9,7 +9,7 @@ import type { UIManager } from '@/ui/UIManager';
 import type { SettingsManager } from '@/settings/SettingsManager';
 import type { DeepPartial, UITheme } from '@/ui/theme';
 
-/** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
+/** 立绘位置关键字（见 `doc/dsl/language.md` 的「保留值」） */
 export type PositionKeyword =
   'farLeft' | 'left' | 'center' | 'right' | 'farRight' | 'offLeft' | 'offRight';
 
