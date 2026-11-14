@@ -39,6 +39,7 @@ export default {
     'dedup',
     'fadein',
     'endchoice',
+    'titlefoo',
     'unstub',
     'updatables',
     'indegree',
