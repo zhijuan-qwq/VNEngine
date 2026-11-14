@@ -26,12 +26,18 @@ Script
     for (const ln of lines) {
       if (ln.type === 'meta') {
         if (metaDone) {
-          throw new Error(
-            `@${ln.key} must appear before all other content`
+          const error = new Error(
+            `@${ln.key} must appear before all other content (line ${ln.line})`
           );
+          error.line = ln.line;
+          throw error;
         }
         if (seen.has(ln.key)) {
-          throw new Error(`Duplicate metadata: @${ln.key}`);
+          const error = new Error(
+            `Duplicate metadata: @${ln.key} (line ${ln.line})`
+          );
+          error.line = ln.line;
+          throw error;
         }
         seen.add(ln.key);
         metadata[ln.key] = ln.value;
@@ -217,9 +223,16 @@ MetadataKey
 
 MetadataLine "metadata line"
   = _ "@" key:MetadataKey __ value:StringLiteral EndOfLine
-  { return { type: 'meta', key, value }; }
+  { return { type: 'meta', key, value, line: location().start.line }; }
   / _ "@" key:MetadataKey rest:(__ @$((!TrailingComment [^\r\n])*))? EndOfLine
-  { return { type: 'meta', key, value: (rest ?? '').trim() }; }
+  {
+    return {
+      type: 'meta',
+      key,
+      value: (rest ?? '').trim(),
+      line: location().start.line,
+    };
+  }
 
 // ============================================================
 // 标签

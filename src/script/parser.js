@@ -346,12 +346,18 @@ function peg$parse(input, options) {
     for (const ln of lines) {
       if (ln.type === 'meta') {
         if (metaDone) {
-          throw new Error(
-            `@${ln.key} must appear before all other content`
+          const error = new Error(
+            `@${ln.key} must appear before all other content (line ${ln.line})`
           );
+          error.line = ln.line;
+          throw error;
         }
         if (seen.has(ln.key)) {
-          throw new Error(`Duplicate metadata: @${ln.key}`);
+          const error = new Error(
+            `Duplicate metadata: @${ln.key} (line ${ln.line})`
+          );
+          error.line = ln.line;
+          throw error;
         }
         seen.add(ln.key);
         metadata[ln.key] = ln.value;
@@ -409,8 +415,15 @@ function peg$parse(input, options) {
   }
   function peg$f21(op, expr) {    return { type: 'unary', op, expr };  }
   function peg$f22(expr) {    return expr;  }
-  function peg$f23(key, value) {    return { type: 'meta', key, value };  }
-  function peg$f24(key, rest) {    return { type: 'meta', key, value: (rest ?? '').trim() };  }
+  function peg$f23(key, value) {    return { type: 'meta', key, value, line: location().start.line };  }
+  function peg$f24(key, rest) {
+    return {
+      type: 'meta',
+      key,
+      value: (rest ?? '').trim(),
+      line: location().start.line,
+    };
+  }
   function peg$f25(id) {
     return {
       type: 'command',

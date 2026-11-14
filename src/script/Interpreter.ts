@@ -4,6 +4,7 @@ import type { CommandRegistry } from './CommandRegistry';
 import type { VNEngine } from '@/types/engine';
 import type { EngineEvents, EventName } from '@/types/events';
 import { evaluateExpression, isTruthy } from './ExpressionEvaluator';
+import { VNScriptError } from './errors';
 
 // 由 handleFlowCommand 直接处理的流程指令，不经过 CommandRegistry。
 export const FLOW_COMMANDS = new Set([
@@ -24,9 +25,10 @@ export function assertValidStartPc(
   scriptId: string,
 ): void {
   if (!Number.isInteger(startPc) || startPc < 0 || startPc > commandCount) {
-    throw new Error(
+    throw new VNScriptError(
       `Invalid startPc ${startPc} for script "${scriptId}" ` +
         `(expected an integer in 0..${commandCount}).`,
+      { phase: 'load', script: scriptId },
     );
   }
 }
@@ -317,6 +319,7 @@ class Interpreter {
   private fail(error: unknown, command?: Command): void {
     const payload: EngineEvents['script:error'] = {
       message: error instanceof Error ? error.message : String(error),
+      phase: 'runtime',
       script: this.scriptId,
       ...(command ? { line: command.line, command: command.type } : {}),
     };
