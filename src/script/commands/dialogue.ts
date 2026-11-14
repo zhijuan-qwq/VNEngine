@@ -1,6 +1,11 @@
 import type { Choice, CommandHandler } from '@/types/script';
 import { evaluateExpression, isTruthy } from '../ExpressionEvaluator';
-import { asNumber, asString, toMs } from './utils';
+import { asNumber, asString } from './utils';
+import { DURATION, durationMs, matchArgs } from './schema';
+import type { CommandSchema } from './schema';
+
+const WAIT_SCHEMA: CommandSchema = { positional: [DURATION] };
+const NO_ARGS_SCHEMA: CommandSchema = { positional: [] };
 
 function asMode(value: unknown): 'adv' | 'nvl' {
   return value === 'nvl' ? 'nvl' : 'adv';
@@ -10,9 +15,12 @@ function asOptionalMode(value: unknown): 'adv' | 'nvl' | undefined {
   return value === 'adv' || value === 'nvl' ? value : undefined;
 }
 
-const waitForClick: CommandHandler['execute'] = (ctx) => {
-  ctx.interpreter.wait('input:click', () => {});
-};
+const waitForClick =
+  (directive: string): CommandHandler['execute'] =>
+  (ctx, args) => {
+    matchArgs(directive, args, NO_ARGS_SCHEMA);
+    ctx.interpreter.wait('input:click', () => {});
+  };
 
 export const dialogueCommands: CommandHandler[] = [
   {
@@ -62,10 +70,13 @@ export const dialogueCommands: CommandHandler[] = [
   {
     type: 'wait',
     execute: (ctx, args) => {
-      const ms = toMs(args['0']) ?? 0;
+      const { positional } = matchArgs('wait', args, WAIT_SCHEMA);
+      if (positional[0] === undefined) {
+        throw new Error('@wait requires a duration (e.g. 500ms).');
+      }
       const timer = setTimeout(() => {
         ctx.engine.eventBus.emit('script:wait:done', {});
-      }, ms);
+      }, durationMs(positional[0]));
       ctx.interpreter.wait(
         'script:wait:done',
         () => {},
@@ -73,11 +84,12 @@ export const dialogueCommands: CommandHandler[] = [
       );
     },
   },
-  { type: 'pause', execute: waitForClick },
-  { type: 'click', execute: waitForClick },
+  { type: 'pause', execute: waitForClick('pause') },
+  { type: 'click', execute: waitForClick('click') },
   {
     type: 'clear',
-    execute: (ctx) => {
+    execute: (ctx, args) => {
+      matchArgs('clear', args, NO_ARGS_SCHEMA);
       ctx.engine.eventBus.emit('script:clear', {});
     },
   },

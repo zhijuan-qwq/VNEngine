@@ -388,6 +388,13 @@ VariableCommandLine "variable command"
   = _ "@" name:VariableCommandName __ target:VariableRef
     values:(__ @OrExpr)* EndOfLine
   {
+    const expected = name === 'random' ? 2 : 1;
+    if (values.length !== expected) {
+      error(
+        `@${name} expects exactly ${expected} ` +
+          `${expected === 1 ? 'value' : 'values'}, got ${values.length}`
+      );
+    }
     const args = { '0': target };
     values.forEach((value, index) => {
       args[String(index + 1)] = value;

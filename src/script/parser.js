@@ -509,6 +509,13 @@ function peg$parse(input, options) {
     return choice;
   }
   function peg$f40(name, target, values) {
+    const expected = name === 'random' ? 2 : 1;
+    if (values.length !== expected) {
+      error(
+        `@${name} expects exactly ${expected} ` +
+          `${expected === 1 ? 'value' : 'values'}, got ${values.length}`
+      );
+    }
     const args = { '0': target };
     values.forEach((value, index) => {
       args[String(index + 1)] = value;

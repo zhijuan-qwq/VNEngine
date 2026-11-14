@@ -1,6 +1,11 @@
 import type { CommandHandler } from '@/types/script';
 import { evaluateExpression } from '../ExpressionEvaluator';
 import { getVarName, toNumber } from './utils';
+import { STRING, matchArgs } from './schema';
+import type { CommandSchema } from './schema';
+
+const FLAG_SCHEMA: CommandSchema = { positional: [STRING] };
+const NO_ARGS_SCHEMA: CommandSchema = { positional: [] };
 
 function flagName(arg: unknown): string {
   if (typeof arg === 'string') return arg;
@@ -82,24 +87,28 @@ export const stateCommands: CommandHandler[] = [
   {
     type: 'flag',
     execute: (ctx, args) => {
-      ctx.store.setFlag(flagName(args['0']));
+      const { positional } = matchArgs('flag', args, FLAG_SCHEMA);
+      ctx.store.setFlag(flagName(positional[0]));
     },
   },
   {
     type: 'unflag',
     execute: (ctx, args) => {
-      ctx.store.clearFlag(flagName(args['0']));
+      const { positional } = matchArgs('unflag', args, FLAG_SCHEMA);
+      ctx.store.clearFlag(flagName(positional[0]));
     },
   },
   {
     type: 'toggle',
     execute: (ctx, args) => {
-      ctx.store.toggleFlag(flagName(args['0']));
+      const { positional } = matchArgs('toggle', args, FLAG_SCHEMA);
+      ctx.store.toggleFlag(flagName(positional[0]));
     },
   },
   {
     type: 'clearFlags',
-    execute: (ctx) => {
+    execute: (ctx, args) => {
+      matchArgs('clearFlags', args, NO_ARGS_SCHEMA);
       ctx.store.clearAllFlags();
     },
   },

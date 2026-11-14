@@ -163,24 +163,37 @@ class Interpreter {
     return this.state === 'waiting';
   }
 
+  private assertFlowArgs(command: Command, allowed: string[]): void {
+    for (const key of Object.keys(command.args)) {
+      if (!allowed.includes(key)) {
+        throw new Error(`@${command.type} does not accept argument "${key}".`);
+      }
+    }
+  }
+
   private handleFlowCommand(command: Command): boolean {
     switch (command.type) {
       case 'label':
+        this.assertFlowArgs(command, ['name']);
         this.pc++;
         return true;
       case 'jump': {
+        this.assertFlowArgs(command, ['0']);
         this.jump(command.args['0'] as string);
         return true;
       }
       case 'call': {
+        this.assertFlowArgs(command, ['0']);
         this.call(command.args['0'] as string);
         return true;
       }
       case 'return': {
+        this.assertFlowArgs(command, []);
         this.return();
         return true;
       }
       case 'if': {
+        this.assertFlowArgs(command, ['expression']);
         // Scan for the matching @endif up front so an unclosed block is
         // reported whether or not the condition is taken.
         const endifPc = this.findMatchingEndif(this.pc);
@@ -198,6 +211,7 @@ class Interpreter {
         return true;
       }
       case 'elseif': {
+        this.assertFlowArgs(command, ['expression']);
         const top = this.ifStack[this.ifStack.length - 1];
         if (!top) {
           throw new Error('@elseif without matching @if');
@@ -220,6 +234,7 @@ class Interpreter {
         return true;
       }
       case 'else': {
+        this.assertFlowArgs(command, []);
         const top = this.ifStack[this.ifStack.length - 1];
         if (!top) {
           throw new Error('@else without matching @if');
@@ -233,6 +248,7 @@ class Interpreter {
         return true;
       }
       case 'endif': {
+        this.assertFlowArgs(command, []);
         if (this.ifStack.length === 0) {
           throw new Error('@endif without matching @if');
         }
@@ -241,6 +257,7 @@ class Interpreter {
         return true;
       }
       case 'end': {
+        this.assertFlowArgs(command, []);
         this.pc = this.script.commands.length;
         this.endScript();
         return true;
