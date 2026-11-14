@@ -55,6 +55,8 @@ export class DialogueBox extends UIComponent {
   private readonly indicator: Text;
   private readonly scratchText: Text;
   private bodyTexts: Text[] = [];
+  /** 每个 bodyText 当前应用的段落样式引用，样式变化时才重建 Text.style */
+  private bodyStyles: (TextStyle | null)[] = [];
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
@@ -302,6 +304,16 @@ export class DialogueBox extends UIComponent {
     this.lineCount = Math.max(count, 1);
   }
 
+  private styleForText(style: TextStyle): TextStyleOptions {
+    return {
+      ...this.bodyTextStyle(),
+      fontSize: style.size ?? this.fontSize,
+      ...(style.bold ? { fontWeight: 'bold' as const } : {}),
+      ...(style.italic ? { fontStyle: 'italic' as const } : {}),
+      ...(style.color ? { fill: style.color } : {}),
+    };
+  }
+
   private measureText(text: string, style: TextStyle): number {
     this.scratchText.style = {
       ...this.bodyTextStyle(),
@@ -350,6 +362,7 @@ export class DialogueBox extends UIComponent {
     for (const text of this.bodyTexts) {
       text.style = this.bodyTextStyle();
     }
+    this.bodyStyles = this.bodyTexts.map(() => null);
     this.recomputeLineCount();
     this.relayout();
   }
@@ -368,10 +381,12 @@ export class DialogueBox extends UIComponent {
   }
 
   private renderItems(items: TextLayoutItem[]): void {
+    if (!this.parsed) return;
     while (this.bodyTexts.length < items.length) {
       const text = new Text({ text: '', style: this.bodyTextStyle() });
       this.addChild(text);
       this.bodyTexts.push(text);
+      this.bodyStyles.push(null);
     }
 
     // 字幕：左对齐并保留小边距，文本块底对齐到画面下方（避开右下快捷栏）
@@ -395,6 +410,11 @@ export class DialogueBox extends UIComponent {
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       const text = this.bodyTexts[i];
+      const segment = this.parsed.segments[item.segmentIndex];
+      if (segment && this.bodyStyles[i] !== segment.style) {
+        text.style = this.styleForText(segment.style);
+        this.bodyStyles[i] = segment.style;
+      }
       if (text.text !== item.text) {
         text.text = item.text;
       }
@@ -420,5 +440,6 @@ export class DialogueBox extends UIComponent {
       text.text = '';
       text.visible = false;
     }
+    this.bodyStyles = this.bodyTexts.map(() => null);
   }
 }

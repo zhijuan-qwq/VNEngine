@@ -55,6 +55,19 @@ describe('DialogueBox', () => {
     expect(box.isBusy()).toBe(false);
   });
 
+  it('should apply rich text styles to body segments', () => {
+    const box = makeBox();
+    box.show('Hero', '[b][color=#ff0000]red[/color][/b]plain', 100);
+    box.complete();
+    const bodies = box.children as unknown as Array<{
+      text?: string;
+      style?: Record<string, unknown>;
+    }>;
+    const red = bodies.find((child) => child.text === 'red');
+    expect(red?.style?.fill).toBe('#ff0000');
+    expect(red?.style?.fontWeight).toBe('bold');
+  });
+
   it('should show the speaker name', () => {
     const box = makeBox();
     box.show('Hero', 'Hi', 100);
