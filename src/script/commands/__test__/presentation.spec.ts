@@ -42,6 +42,26 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should accept transition and duration as key-value args', () => {
+      const spy = listen('bg:change');
+      execute('bg', {
+        '0': 'classroom_day',
+        transition: 'slideL',
+        duration: { value: 1, unit: 's' },
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'classroom_day',
+        transition: 'slideL',
+        duration: 1000,
+      });
+    });
+
+    it('should reject unknown parameters', () => {
+      expect(() => execute('bg', { '0': 'room', foo: 1 })).toThrow(
+        '@bg: unknown parameter "foo".',
+      );
+    });
+
     it('should throw when id is missing', () => {
       expect(() => execute('bg', {})).toThrow('@bg requires a background id');
     });
@@ -123,6 +143,16 @@ describe('presentation commands', () => {
         id: 'ch_hero',
         position: 'center',
         transition: 'fade',
+        duration: 500,
+      });
+    });
+
+    it('should accept a duration without a position', () => {
+      const spy = listen('character:show');
+      execute('show', { '0': 'ch_hero', '1': { value: 500, unit: 'ms' } });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        position: 'center',
         duration: 500,
       });
     });
@@ -244,6 +274,22 @@ describe('presentation commands', () => {
       });
     });
 
+    it('should accept transition and duration as key-value args', () => {
+      const spy = listen('character:sprite');
+      execute('sprite', {
+        '0': 'ch_hero',
+        '1': 'smile',
+        transition: 'zoom',
+        duration: { value: 500, unit: 'ms' },
+      });
+      expect(spy).toHaveBeenCalledWith({
+        id: 'ch_hero',
+        sprite: 'smile',
+        transition: 'zoom',
+        duration: 500,
+      });
+    });
+
     it('should throw when id is missing', () => {
       expect(() => execute('sprite', {})).toThrow(
         '@sprite requires a character id',
@@ -347,6 +393,18 @@ describe('presentation commands', () => {
       const spy = listen('audio:stop');
       execute('stopAmbient', {});
       expect(spy).toHaveBeenCalledWith({ type: 'ambient' });
+    });
+
+    it('should reject a string volume', () => {
+      expect(() => execute('playBgm', { '0': 'theme', volume: '0.5' })).toThrow(
+        '@playBgm: parameter "volume" expects a number, got "0.5".',
+      );
+    });
+
+    it('should reject a bare number fade-in duration', () => {
+      expect(() => execute('playBgm', { '0': 'theme', fadein: 500 })).toThrow(
+        '@playBgm: parameter "fadein" expects a duration with a unit',
+      );
     });
 
     it('should throw when the audio id is missing', () => {
