@@ -131,7 +131,11 @@ describe('SaveManager integration', () => {
 
     expect(fresh.script.getState().pc).toBe(0);
     fresh.script.update();
-    expect(saySpy).toHaveBeenCalledWith({ speaker: 'Hero', text: '你好' });
+    expect(saySpy).toHaveBeenCalledWith({
+      speaker: 'Hero',
+      text: '你好',
+      mode: 'adv',
+    });
   });
 
   it('should reject an empty slot', async () => {
