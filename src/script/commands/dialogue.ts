@@ -11,10 +11,6 @@ function asMode(value: unknown): 'adv' | 'nvl' {
   return value === 'nvl' ? 'nvl' : 'adv';
 }
 
-function asOptionalMode(value: unknown): 'adv' | 'nvl' | undefined {
-  return value === 'adv' || value === 'nvl' ? value : undefined;
-}
-
 const waitForClick =
   (directive: string): CommandHandler['execute'] =>
   (ctx, args) => {
@@ -36,7 +32,7 @@ export const dialogueCommands: CommandHandler[] = [
         text,
         voice: asString(args.voice),
         speed: asNumber(args.speed),
-        mode: asOptionalMode(args.mode),
+        mode: asMode(args.mode),
       });
       ctx.interpreter.wait('input:click', () => {});
     },

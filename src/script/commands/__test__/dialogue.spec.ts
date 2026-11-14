@@ -25,7 +25,11 @@ describe('dialogue commands', () => {
     it('should emit script:say and block on click', () => {
       const spy = listen('script:say');
       execute('say', { speaker: 'Hero', text: 'Hi' });
-      expect(spy).toHaveBeenCalledWith({ speaker: 'Hero', text: 'Hi' });
+      expect(spy).toHaveBeenCalledWith({
+        speaker: 'Hero',
+        text: 'Hi',
+        mode: 'adv',
+      });
       expect(env.wait.event).toBe('input:click');
     });
 
@@ -50,7 +54,11 @@ describe('dialogue commands', () => {
     it('should default speaker to empty string when missing', () => {
       const spy = listen('script:say');
       execute('say', { text: '......' });
-      expect(spy).toHaveBeenCalledWith({ speaker: '', text: '......' });
+      expect(spy).toHaveBeenCalledWith({
+        speaker: '',
+        text: '......',
+        mode: 'adv',
+      });
     });
 
     it('should reject @say without text', () => {
