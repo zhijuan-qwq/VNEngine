@@ -60,8 +60,8 @@ export class DialogueBox extends UIComponent {
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
-  /** 全量布局的行数，用于逐字显示时保持文本块高度稳定 */
-  private lineCount = 1;
+  /** 全量布局的总高度，用于逐字显示时保持文本块高度稳定 */
+  private blockHeight: number;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
   private lineHeight: number;
@@ -96,6 +96,7 @@ export class DialogueBox extends UIComponent {
     this.lineHeight =
       options.lineHeight ??
       Math.round(this.fontSize * this.theme.typography.lineHeights.relaxed);
+    this.blockHeight = this.lineHeight;
     this.defaultSpeed = options.defaultSpeed ?? 40;
 
     this.x = this.opts.x;
@@ -164,7 +165,7 @@ export class DialogueBox extends UIComponent {
     this.lastRevealed = 0;
     this.clearBodyTexts();
     this.visible = true;
-    this.recomputeLineCount();
+    this.recomputeBlockHeight();
     this.relayout();
   }
 
@@ -285,23 +286,23 @@ export class DialogueBox extends UIComponent {
     return sprite;
   }
 
-  /** 用完整文本布局推算行数；逐字显示时文本块高度保持稳定 */
-  private recomputeLineCount(): void {
+  /** 用完整文本布局推算文本块高度；逐字显示时高度保持稳定 */
+  private recomputeBlockHeight(): void {
     if (!this.parsed) {
-      this.lineCount = 1;
+      this.blockHeight = this.lineHeight;
       return;
     }
-    const items = computeTextLayout(
+    const { height } = computeTextLayout(
       this.parsed,
       this.parsed.plain.length,
-      { width: this.bodyWidth, lineHeight: this.lineHeight },
+      {
+        width: this.bodyWidth,
+        lineHeight: this.lineHeight,
+        fontSize: this.fontSize,
+      },
       (text, style) => this.measureText(text, style),
     );
-    let count = 0;
-    for (const item of items) {
-      count = Math.max(count, Math.round(item.y / this.lineHeight) + 1);
-    }
-    this.lineCount = Math.max(count, 1);
+    this.blockHeight = Math.max(height, this.lineHeight);
   }
 
   private styleForText(style: TextStyle): TextStyleOptions {
@@ -362,8 +363,8 @@ export class DialogueBox extends UIComponent {
     for (const text of this.bodyTexts) {
       text.style = this.bodyTextStyle();
     }
-    this.bodyStyles = this.bodyTexts.map(() => null);
-    this.recomputeLineCount();
+    this.resetBodyStyles();
+    this.recomputeBlockHeight();
     this.relayout();
   }
 
@@ -371,10 +372,14 @@ export class DialogueBox extends UIComponent {
     if (!this.parsed || !this.typewriter) {
       return;
     }
-    const items = computeTextLayout(
+    const { items } = computeTextLayout(
       this.parsed,
       this.typewriter.revealed,
-      { width: this.bodyWidth, lineHeight: this.lineHeight },
+      {
+        width: this.bodyWidth,
+        lineHeight: this.lineHeight,
+        fontSize: this.fontSize,
+      },
       (text, style) => this.measureText(text, style),
     );
     this.renderItems(items);
@@ -390,7 +395,7 @@ export class DialogueBox extends UIComponent {
     }
 
     // 字幕：左对齐并保留小边距，文本块底对齐到画面下方（避开右下快捷栏）
-    const blockHeight = this.lineCount * this.lineHeight;
+    const blockHeight = this.blockHeight;
     const bottom =
       this.opts.height -
       this.opts.padding -
@@ -435,11 +440,15 @@ export class DialogueBox extends UIComponent {
     }
   }
 
+  private resetBodyStyles(): void {
+    this.bodyStyles = this.bodyTexts.map(() => null);
+  }
+
   private clearBodyTexts(): void {
     for (const text of this.bodyTexts) {
       text.text = '';
       text.visible = false;
     }
-    this.bodyStyles = this.bodyTexts.map(() => null);
+    this.resetBodyStyles();
   }
 }
