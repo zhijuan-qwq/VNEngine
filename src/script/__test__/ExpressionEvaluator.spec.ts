@@ -211,6 +211,65 @@ describe('ExpressionEvaluator', () => {
           ),
         ).toBe(true);
       });
+
+      it('should always return a boolean', () => {
+        expect(
+          evaluateExpression(
+            { type: 'binary', op: 'and', left: 1, right: 2 },
+            store,
+          ),
+        ).toBe(true);
+        expect(
+          evaluateExpression(
+            { type: 'binary', op: 'and', left: 0, right: 5 },
+            store,
+          ),
+        ).toBe(false);
+        expect(
+          evaluateExpression(
+            { type: 'binary', op: 'or', left: 0, right: 5 },
+            store,
+          ),
+        ).toBe(true);
+        expect(
+          evaluateExpression(
+            { type: 'binary', op: 'or', left: '', right: '' },
+            store,
+          ),
+        ).toBe(false);
+      });
+
+      it('should short-circuit and when the left side is false', () => {
+        const get = vi.spyOn(store, 'get');
+        expect(
+          evaluateExpression(
+            {
+              type: 'binary',
+              op: 'and',
+              left: false,
+              right: { type: 'var', name: 'missing' },
+            },
+            store,
+          ),
+        ).toBe(false);
+        expect(get).not.toHaveBeenCalled();
+      });
+
+      it('should short-circuit or when the left side is true', () => {
+        const get = vi.spyOn(store, 'get');
+        expect(
+          evaluateExpression(
+            {
+              type: 'binary',
+              op: 'or',
+              left: true,
+              right: { type: 'var', name: 'missing' },
+            },
+            store,
+          ),
+        ).toBe(true);
+        expect(get).not.toHaveBeenCalled();
+      });
     });
 
     describe('arithmetic operators', () => {

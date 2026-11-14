@@ -2,7 +2,7 @@
 // 编译: npm run build:parser (peggy --format es src/script/grammar.pegjs -o src/script/parser.js)
 // 目标: TypeScript (Peggy 5.x)
 // 这是 VNScript DSL 的权威语法定义，替代 doc/script-dsl.md 中的 EBNF。
-// 语言规则以 language.md / reference.md 为准。本文件只管语法层：
+// 文档与解析器不一致时以解析器为准。本文件只管语法层：
 // 词法、行结构、表达式，以及解析阶段就能确定的错误（元数据顺序与重复、
 // 空选项块、同一参数写两次）。重复标签由 Parser.ts 检查，不在这里处理。
 // 各指令的参数声明也不在这里校验。
@@ -26,12 +26,18 @@ Script
     for (const ln of lines) {
       if (ln.type === 'meta') {
         if (metaDone) {
-          throw new Error(
-            `@${ln.key} must appear before all other content`
+          const error = new Error(
+            `@${ln.key} must appear before all other content (line ${ln.line})`
           );
+          error.line = ln.line;
+          throw error;
         }
         if (seen.has(ln.key)) {
-          throw new Error(`Duplicate metadata: @${ln.key}`);
+          const error = new Error(
+            `Duplicate metadata: @${ln.key} (line ${ln.line})`
+          );
+          error.line = ln.line;
+          throw error;
         }
         seen.add(ln.key);
         metadata[ln.key] = ln.value;
@@ -217,9 +223,16 @@ MetadataKey
 
 MetadataLine "metadata line"
   = _ "@" key:MetadataKey __ value:StringLiteral EndOfLine
-  { return { type: 'meta', key, value }; }
+  { return { type: 'meta', key, value, line: location().start.line }; }
   / _ "@" key:MetadataKey rest:(__ @$((!TrailingComment [^\r\n])*))? EndOfLine
-  { return { type: 'meta', key, value: (rest ?? '').trim() }; }
+  {
+    return {
+      type: 'meta',
+      key,
+      value: (rest ?? '').trim(),
+      line: location().start.line,
+    };
+  }
 
 // ============================================================
 // 标签
@@ -388,6 +401,13 @@ VariableCommandLine "variable command"
   = _ "@" name:VariableCommandName __ target:VariableRef
     values:(__ @OrExpr)* EndOfLine
   {
+    const expected = name === 'random' ? 2 : 1;
+    if (values.length !== expected) {
+      error(
+        `@${name} expects exactly ${expected} ` +
+          `${expected === 1 ? 'value' : 'values'}, got ${values.length}`
+      );
+    }
     const args = { '0': target };
     values.forEach((value, index) => {
       args[String(index + 1)] = value;

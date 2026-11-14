@@ -99,12 +99,15 @@ export class HistoryView extends UIComponent {
     } else {
       for (const entry of entries) {
         const prefix = entry.speaker.length > 0 ? `${entry.speaker}：` : '';
-        // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记
-        this.addRow(
-          `${prefix}${parseRichText(entry.text).plain}`,
-          width,
-          this.opts.textColor,
-        );
+        // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记；
+        // 非法富文本不应阻止历史面板打开，此时退回原始文本
+        let plain: string;
+        try {
+          plain = parseRichText(entry.text).plain;
+        } catch {
+          plain = entry.text;
+        }
+        this.addRow(`${prefix}${plain}`, width, this.opts.textColor);
       }
     }
 

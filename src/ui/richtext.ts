@@ -1,7 +1,13 @@
 import type { ParsedText, TextStyle, VarResolver } from '@/types/text';
 
-const PAIRED_TAGS = new Set(['b', 'i', 'color', 'size', 'ruby', 'shake']);
+const PAIRED_TAGS = new Set(['b', 'i', 'color', 'size']);
 const STYLE_FLAGS: Record<string, keyof TextStyle> = { b: 'bold', i: 'italic' };
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+interface StyleFrame {
+  tag: string | null;
+  style: TextStyle;
+}
 
 function sameStyle(a: TextStyle, b: TextStyle): boolean {
   return (
@@ -12,6 +18,25 @@ function sameStyle(a: TextStyle, b: TextStyle): boolean {
   );
 }
 
+function invalidValue(name: string, value: string, expected: string): never {
+  throw new Error(`Invalid [${name}=${value}] value: expected ${expected}.`);
+}
+
+function parseNumberTag(
+  name: 'size' | 'speed' | 'pause',
+  value: string,
+): number {
+  if (value === '') invalidValue(name, value, 'a number');
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) invalidValue(name, value, 'a number');
+  if (name === 'pause') {
+    if (parsed < 0) invalidValue(name, value, 'a number >= 0');
+  } else if (!(parsed > 0)) {
+    invalidValue(name, value, 'a positive number');
+  }
+  return parsed;
+}
+
 export function parseRichText(
   input: string,
   resolveVar?: VarResolver,
@@ -19,9 +44,9 @@ export function parseRichText(
   const segments: ParsedText['segments'] = [];
   const hints: ParsedText['hints'] = [];
   let plain = '';
-  const styleStack: TextStyle[] = [{}];
+  const styleStack: StyleFrame[] = [{ tag: null, style: {} }];
 
-  const currentStyle = (): TextStyle => styleStack[styleStack.length - 1];
+  const currentStyle = (): TextStyle => styleStack[styleStack.length - 1].style;
 
   const pushSegment = (text: string): void => {
     if (text.length === 0) {
@@ -41,12 +66,16 @@ export function parseRichText(
     const tag = raw.trim();
     const styleFlag = STYLE_FLAGS[tag];
     if (styleFlag) {
-      styleStack.push({ ...currentStyle(), [styleFlag]: true });
+      styleStack.push({
+        tag,
+        style: { ...currentStyle(), [styleFlag]: true },
+      });
       return;
     }
     if (tag.startsWith('/')) {
       const name = tag.slice(1).trim();
-      if (PAIRED_TAGS.has(name) && styleStack.length > 1) {
+      const top = styleStack[styleStack.length - 1];
+      if (PAIRED_TAGS.has(name) && styleStack.length > 1 && top.tag === name) {
         styleStack.pop();
       } else {
         pushSegment(`[${tag}]`);
@@ -58,39 +87,34 @@ export function parseRichText(
       const name = tag.slice(0, eq).trim();
       const value = tag.slice(eq + 1).trim();
       if (name === 'color') {
-        styleStack.push({ ...currentStyle(), color: value });
+        if (!HEX_COLOR.test(value)) {
+          invalidValue(name, value, '#rgb, #rrggbb or #rrggbbaa');
+        }
+        styleStack.push({
+          tag: name,
+          style: { ...currentStyle(), color: value },
+        });
         return;
       }
       if (name === 'size') {
-        const size = Number(value);
-        if (Number.isFinite(size) && size > 0) {
-          styleStack.push({ ...currentStyle(), size });
-          return;
-        }
+        const size = parseNumberTag('size', value);
+        styleStack.push({ tag: name, style: { ...currentStyle(), size } });
         return;
       }
       if (name === 'speed') {
-        const speed = Number(value);
-        if (Number.isFinite(speed) && speed > 0) {
-          hints.push({ pos: plain.length, speed });
-        }
+        hints.push({
+          pos: plain.length,
+          speed: parseNumberTag('speed', value),
+        });
         return;
       }
       if (name === 'pause') {
-        const pauseMs = Number(value);
-        if (Number.isFinite(pauseMs) && pauseMs >= 0) {
-          hints.push({ pos: plain.length, pauseMs });
-        }
+        hints.push({
+          pos: plain.length,
+          pauseMs: parseNumberTag('pause', value),
+        });
         return;
       }
-      if (name === 'ruby' || name === 'shake') {
-        styleStack.push({ ...currentStyle() });
-        return;
-      }
-    }
-    if (PAIRED_TAGS.has(tag)) {
-      styleStack.push({ ...currentStyle() });
-      return;
     }
     pushSegment(`[${tag}]`);
   };

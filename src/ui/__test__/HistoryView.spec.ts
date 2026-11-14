@@ -64,6 +64,16 @@ describe('HistoryView', () => {
     expect(view.rowTexts).toEqual(['我（心声）：那一年的复盘开到深夜']);
   });
 
+  it('should fall back to raw text when rich text is invalid', () => {
+    const view = new HistoryView({
+      width: 800,
+      height: 600,
+      getEntries: () => [entry('Hero', '[size=0]坏[/size]')],
+    });
+    view.show();
+    expect(view.rowTexts).toEqual(['Hero：[size=0]坏[/size]']);
+  });
+
   it('should rebuild rows on every show', () => {
     const entries: DialogueEntry[] = [entry('Hero', 'Hi')];
     const view = new HistoryView({

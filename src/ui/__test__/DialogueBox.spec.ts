@@ -55,6 +55,39 @@ describe('DialogueBox', () => {
     expect(box.isBusy()).toBe(false);
   });
 
+  it('should apply rich text styles to body segments', () => {
+    const box = makeBox();
+    box.show('Hero', '[b][color=#ff0000]red[/color][/b]plain', 100);
+    box.complete();
+    const bodies = box.children as unknown as Array<{
+      text?: string;
+      style?: Record<string, unknown>;
+    }>;
+    const red = bodies.find((child) => child.text === 'red');
+    expect(red?.style?.fill).toBe('#ff0000');
+    expect(red?.style?.fontWeight).toBe('bold');
+  });
+
+  it('should space wrapped lines by the largest font size', () => {
+    const box = makeBox();
+    box.show('Hero', '[size=60]bigbigbigbigbigbigbigbigbigbig[/size]', 100);
+    box.complete();
+    const bodies = box.children as unknown as Array<{
+      text?: string;
+      y: number;
+      style?: Record<string, unknown>;
+    }>;
+    const large = bodies.filter(
+      (child) =>
+        child.text && child.text.length > 0 && child.style?.fontSize === 60,
+    );
+    const ys = [...new Set(large.map((child) => child.y))].sort(
+      (a, b) => a - b,
+    );
+    expect(ys.length).toBeGreaterThan(1);
+    expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(60);
+  });
+
   it('should show the speaker name', () => {
     const box = makeBox();
     box.show('Hero', 'Hi', 100);

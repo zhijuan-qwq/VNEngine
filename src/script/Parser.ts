@@ -1,6 +1,7 @@
 import { parse, SyntaxError } from './parser.js';
 import type { ParseResult } from './parser.js';
 import type { Script } from '@/types/script';
+import { VNScriptError } from './errors';
 
 class Parser {
   public parseScript(source: string): Script {
@@ -12,11 +13,15 @@ class Parser {
     try {
       parseResult = parse(normalized);
     } catch (error: unknown) {
-      if (error instanceof SyntaxError) {
-        throw error;
-      }
-      throw new Error(
-        `Failed to parse script: ${error instanceof Error ? error.message : String(error)}`,
+      const line =
+        error instanceof SyntaxError
+          ? error.location?.start.line
+          : typeof (error as { line?: unknown }).line === 'number'
+            ? (error as { line: number }).line
+            : undefined;
+      throw new VNScriptError(
+        error instanceof Error ? error.message : String(error),
+        { phase: 'parse', line },
         { cause: error },
       );
     }
@@ -30,7 +35,10 @@ class Parser {
       if (command.type === 'label' && typeof command.args.name === 'string') {
         const name = command.args.name;
         if (script.labels.has(name)) {
-          throw new Error(`Duplicate label "${name}" at line ${command.line}.`);
+          throw new VNScriptError(
+            `Duplicate label "${name}" at line ${command.line}.`,
+            { phase: 'parse', line: command.line },
+          );
         }
         script.labels.set(name, index);
       }

@@ -1,5 +1,5 @@
 import type { Position, Settings } from './engine';
-import type { Choice } from './script';
+import type { Choice, ScriptErrorPhase } from './script';
 
 /** 可被打开/关闭的 UI 面板（§8.2 的内置组件） */
 export type UiPanel = 'settings' | 'history' | 'save' | 'load';
@@ -10,9 +10,9 @@ export type EngineEvents = {
   'script:say': {
     speaker: string;
     text: string;
+    mode: 'adv' | 'nvl';
     voice?: string;
     speed?: number;
-    mode?: 'adv' | 'nvl';
   };
   'script:clear': Record<string, never>;
   'script:choice:selected': { label: string };
@@ -20,6 +20,7 @@ export type EngineEvents = {
   'script:end': Record<string, never>;
   'script:error': {
     message: string;
+    phase: ScriptErrorPhase;
     script: string;
     line?: number;
     command?: string;

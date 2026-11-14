@@ -37,7 +37,7 @@ interface Command {
 
 - 位置参数以 `"0"`、`"1"` …… 为键；
 - 键值参数以参数名为键；
-- 时长写成 `{ value, unit }`，例如 `500ms` 是 `{ value: 500, unit: "ms" }`；裸数字仍是数字，由指令按毫秒解释；
+- 时长写成 `{ value, unit }`，例如 `500ms` 是 `{ value: 500, unit: "ms" }`；时长参数必须带单位，裸数字会在命令层被拒绝；
 - 表达式是节点树，不是字符串；
 - `@choice` 整块折叠成一条 `choice` 指令，选项放在 `args.choices`。
 
@@ -65,13 +65,14 @@ interface Command {
 
 ## 3. 解析阶段会报的错
 
-- **语法错误**：不符合语法规则，例如选项块忘了 `@endchoice`、选项块里写了空行或整行注释、二元运算符两边没空格、以 `#` 开头的裸值。
+- **语法错误**：不符合语法规则，例如选项块忘了 `@endchoice`、选项块一个选项都没有、二元运算符两边没空格、以 `#` 开头的裸值、保留指令写错形状（`@if` 漏条件、`@say` 多写位置参数）。
+- **参数形状错误**：同一个键值参数写两次、变量指令的表达式数量不对。
 - **元数据重复或位置不对**：三个元数据键各自只能出现一次，且必须排在所有指令和标签之前。
 - **标签重复**：同一个标签名声明两次。这一项由 `Parser` 扫描时检查，不在语法文件里。
 
-语法错误和重复标签会带行号；元数据重复或顺序错误只有消息，没有行号。这些情况下脚本都不会进入加载阶段。
+这些错误都会抛出 `VNScriptError`，带 `phase: "parse"` 和行号。脚本不会进入加载阶段。
 
-注意几个**不**在解析阶段报错的情况：空选项块、`@wait` 没写时长、`@if` 没闭合、`@titlefoo`。它们要么能正常解析，要么在运行阶段才暴露。
+注意几个**不**在解析阶段报错的情况：`@wait` 没写时长（运行时）、`@if` 没闭合（运行时）、`@titlefoo`（加载时报告不认识的指令）。
 
 ## 4. 加载阶段会报的错
 
@@ -87,7 +88,7 @@ label / jump / call / return / if / elseif / else / endif / end
 Unknown command "@swtich" in script "demo" at line 12.
 ```
 
-所以拼错指令名会在加载阶段立刻暴露，而不是运行到那一行才出问题。目前加载阶段**不检查参数**，多余参数、未知参数、`@if` 结构问题都不在这里报错。
+所以拼错指令名会在加载阶段立刻暴露，而不是运行到那一行才出问题。加载错误同样抛出 `VNScriptError`，带 `phase: "load"`、`script`、`line` 和 `command`。加载阶段不检查参数形状；参数校验在指令执行时进行（见第 5 节末尾）。
 
 ## 5. 执行阶段
 
@@ -112,24 +113,32 @@ Unknown command "@swtich" in script "demo" at line 12.
 
 - 变量节点返回 `store.get(name)`，没定义时是 `undefined`；
 - 旗标节点返回 `store.hasFlag(name)`；
-- 二元节点**先求左右两边，再合并**，没有短路；
-- `and` / `or` 直接使用 JavaScript 的 `&&` / `||`，返回操作数本身而不是布尔值；
+- `and` / `or` 会短路：`and` 左侧为假时直接返回 `false`，`or` 左侧为真时直接返回 `true`，右侧不再求值；
+- `and` / `or` 始终返回布尔值，不再返回操作数本身；
 - `==` / `!=` 使用严格相等；大小比较和算术沿用 JavaScript 的隐式转换；
 - 条件判断用 `isTruthy`：`false`、`0`、`NaN`、空字符串、`null`、`undefined` 为假，其余为真。
 
-命令处理器读取参数时使用 `commands/utils.ts` 里的辅助函数：`toMs` 把裸数字当作毫秒、把 `{ value, unit }` 换算成毫秒；`toNumber` 接受数字或能转成数字的字符串，否则抛 `TypeError`。
+命令处理器读取参数时使用 `commands/schema.ts` 的 `matchArgs`：按值类型把位置参数匹配到槽位、校验未知/多余/类型不对的键值参数，返回 `{ positional, options }`。时长必须带单位，通过 `durationMs` 换算成毫秒。`commands/utils.ts` 还提供 `toNumber` 等辅助函数。
 
 ## 6. 错误形式
 
-三个阶段抛出的错误形状并不相同，监听方要分别处理：
+解析、加载、运行时现在共用 `VNScriptError`（`src/script/errors.ts`），字段为：
 
-- **解析错误**：
-  - 语法错误是 peggy 的 `SyntaxError`，带 `expected` / `found` / `location`（含行号、列号），没有 `message` 之外的统一字段；
-  - 重复标签、元数据重复或顺序错误是普通 `Error`；重复标签的消息里带行号，元数据错误不带。
-- **加载错误**：`ScriptEngine.load()` 直接抛普通 `Error`，消息里带指令名、脚本 id 和行号，没有结构化字段。
-- **运行时错误**：处理器抛出的异常被解释器捕获，转成 `script:error` 事件，载荷是 `{ message, script, line?, command? }`。只有这一种错误有这套结构化字段，并且会结束当前脚本。
+```ts
+{
+  message: string;
+  phase: 'parse' | 'load' | 'runtime';
+  script?: string;
+  line?: number;
+  command?: string;
+}
+```
 
-所以 `{ message, script, line?, command? }` 只适用于 `script:error`；解析和加载错误没有共享的错误类型，需要按各自抛出的类型处理。
+- **解析错误**：`Parser` 把 peggy 的 `SyntaxError` 和元数据/标签错误统一包成 `phase: "parse"` 的 `VNScriptError`，尽量带上行号。
+- **加载错误**：`ScriptEngine.load()` 抛出 `phase: "load"` 的 `VNScriptError`，带 `script`、`line`、`command`。
+- **运行时错误**：处理器抛出的异常被解释器捕获，转成 `script:error` 事件，载荷是 `{ message, phase: "runtime", script, line?, command? }`，并结束当前脚本。
+
+原始异常仍保留在 `cause` 里；`script:error` 的监听方只需要按 `phase` 区分阶段。
 
 ## 7. 自定义指令
 
@@ -159,7 +168,7 @@ engine.script.commandRegistry.register({
 - `ctx.store` 是变量与旗标存储；
 - `ctx.interpreter` 提供 `wait()`、`jump()` 等执行控制接口。
 
-命令层**不会**替自定义指令校验参数：未知参数、多余参数都会原样传进来，需要自己检查。内置指令也只是按需读取自己认识的参数，未知键大多忽略，但多余的位置参数可能被当成转场或缓动。
+命令层**不会**替自定义指令校验参数：未知参数、多余参数都会原样传进来，需要自己检查。内置指令通过 `commands/schema.ts` 声明并校验参数；自定义指令若想复用，可以调用同一个 `matchArgs`。
 
 解析前没有预处理钩子。要支持新的写法，只能修改 `grammar.pegjs` 并重新生成解析器。
 
@@ -167,16 +176,16 @@ engine.script.commandRegistry.register({
 
 脚本子系统相关的全局事件：
 
-| 事件                     | 何时发出                     | 字段                                       |
-| ------------------------ | ---------------------------- | ------------------------------------------ |
-| `script:command`         | 每条指令执行前，包括流程指令 | `{ cmd, args }`                            |
-| `script:say`             | 显示一句对话                 | `{ speaker, text, voice?, speed?, mode? }` |
-| `script:clear`           | 执行 `@clear`                | 无                                         |
-| `script:choice`          | 显示选项                     | `{ choices, mode }`                        |
-| `script:choice:selected` | 玩家选中某个选项             | `{ label }`                                |
-| `script:wait:done`       | `@wait` 计时结束             | 无                                         |
-| `script:end`             | `@end` 或脚本自然结束        | 无                                         |
-| `script:error`           | 运行时出错                   | `{ message, script, line?, command? }`     |
+| 事件                     | 何时发出                     | 字段                                          |
+| ------------------------ | ---------------------------- | --------------------------------------------- |
+| `script:command`         | 每条指令执行前，包括流程指令 | `{ cmd, args }`                               |
+| `script:say`             | 显示一句对话                 | `{ speaker, text, mode, voice?, speed? }`     |
+| `script:clear`           | 执行 `@clear`                | 无                                            |
+| `script:choice`          | 显示选项                     | `{ choices, mode }`                           |
+| `script:choice:selected` | 玩家选中某个选项             | `{ label }`                                   |
+| `script:wait:done`       | `@wait` 计时结束             | 无                                            |
+| `script:end`             | `@end` 或脚本自然结束        | 无                                            |
+| `script:error`           | 运行时出错                   | `{ message, phase, script, line?, command? }` |
 
 各指令产生的子系统事件：
 

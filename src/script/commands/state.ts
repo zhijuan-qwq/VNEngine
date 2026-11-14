@@ -1,10 +1,15 @@
 import type { CommandHandler } from '@/types/script';
 import { evaluateExpression } from '../ExpressionEvaluator';
 import { getVarName, toNumber } from './utils';
+import { STRING, matchArgs } from './schema';
+import type { CommandSchema } from './schema';
 
-function flagName(arg: unknown): string {
+const FLAG_SCHEMA: CommandSchema = { positional: [STRING] };
+const NO_ARGS_SCHEMA: CommandSchema = { positional: [] };
+
+function flagName(directive: string, arg: unknown): string {
   if (typeof arg === 'string') return arg;
-  throw new TypeError(`Expected a flag name, got ${String(arg)}`);
+  throw new TypeError(`@${directive} requires a flag name.`);
 }
 
 function arithmetic(
@@ -82,24 +87,28 @@ export const stateCommands: CommandHandler[] = [
   {
     type: 'flag',
     execute: (ctx, args) => {
-      ctx.store.setFlag(flagName(args['0']));
+      const { positional } = matchArgs('flag', args, FLAG_SCHEMA);
+      ctx.store.setFlag(flagName('flag', positional[0]));
     },
   },
   {
     type: 'unflag',
     execute: (ctx, args) => {
-      ctx.store.clearFlag(flagName(args['0']));
+      const { positional } = matchArgs('unflag', args, FLAG_SCHEMA);
+      ctx.store.clearFlag(flagName('unflag', positional[0]));
     },
   },
   {
     type: 'toggle',
     execute: (ctx, args) => {
-      ctx.store.toggleFlag(flagName(args['0']));
+      const { positional } = matchArgs('toggle', args, FLAG_SCHEMA);
+      ctx.store.toggleFlag(flagName('toggle', positional[0]));
     },
   },
   {
     type: 'clearFlags',
-    execute: (ctx) => {
+    execute: (ctx, args) => {
+      matchArgs('clearFlags', args, NO_ARGS_SCHEMA);
       ctx.store.clearAllFlags();
     },
   },

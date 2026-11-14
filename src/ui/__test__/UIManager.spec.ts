@@ -52,14 +52,14 @@ describe('UIManager', () => {
 
   it('should route script:say to the dialogue box', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.dialogueBox.visible).toBe(true);
     expect(ui.dialogueBox.isBusy()).toBe(true);
   });
 
   it('should route script:clear to clear the dialogue box', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     bus.emit('script:clear', {});
     expect(ui.dialogueBox.isBusy()).toBe(false);
     expect(ui.dialogueBox.visible).toBe(false);
@@ -67,7 +67,7 @@ describe('UIManager', () => {
 
   it('should clear dialogue and choices on game:load', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     bus.emit('script:choice', {
       choices: [{ text: '回应他', label: 'respond' }],
     });
@@ -104,13 +104,17 @@ describe('UIManager', () => {
 
   it('should report busy while the typewriter is running', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'A long message' });
+    bus.emit('script:say', {
+      speaker: 'Hero',
+      text: 'A long message',
+      mode: 'adv',
+    });
     expect(ui.isBusy()).toBe(true);
   });
 
   it('should report idle once the typewriter finishes', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     ui.update(100);
     expect(ui.isBusy()).toBe(false);
   });
@@ -136,6 +140,7 @@ describe('UIManager', () => {
     bus.emit('script:say', {
       speaker: 'Hero',
       text: 'Hello world',
+      mode: 'adv',
       speed: 100,
     });
     ui.update(0.016); // update 以秒为单位：16ms
@@ -145,7 +150,7 @@ describe('UIManager', () => {
   it('should stop listening to script events after destroy', () => {
     const { bus, ui } = makeManager();
     ui.destroy();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.dialogueBox.visible).toBe(false);
   });
 
@@ -160,7 +165,7 @@ describe('UIManager', () => {
 
   it('should record dialogue into the history buffer', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.history.entries()).toHaveLength(1);
     expect(ui.history.entries()[0]).toMatchObject({
       speaker: 'Hero',
@@ -170,7 +175,7 @@ describe('UIManager', () => {
 
   it('should default the history view to the history buffer', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     ui.open('history');
     expect(ui.historyView.rowTexts).toEqual(['Hero：Hi']);
   });
