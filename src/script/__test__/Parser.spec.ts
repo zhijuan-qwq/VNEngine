@@ -343,6 +343,13 @@ describe('Parser', () => {
     expect(() => parser.parseScript('{{{')).toThrow(VNScriptError);
   });
 
+  it('should reject malformed commands with dedicated syntax', () => {
+    expect(() => parser.parseScript('@say Hero "hi" junk\n')).toThrow(
+      VNScriptError,
+    );
+    expect(() => parser.parseScript('@if\n')).toThrow(VNScriptError);
+  });
+
   it('should expose the parse phase and line on errors', () => {
     try {
       parser.parseScript('@@');

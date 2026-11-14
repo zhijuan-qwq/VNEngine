@@ -476,6 +476,12 @@ describe('ScriptEngine', () => {
       }
     });
 
+    it('should reject @titlefoo as an unknown command', () => {
+      expect(() => engine.load('bad', makeScript('@titlefoo bar\n'))).toThrow(
+        'Unknown command "@titlefoo" in script "bad" at line 1.',
+      );
+    });
+
     it('should accept registered builtins and flow commands', () => {
       expect(() =>
         engine.load(
