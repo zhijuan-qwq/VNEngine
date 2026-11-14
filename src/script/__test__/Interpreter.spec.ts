@@ -635,6 +635,34 @@ describe('Interpreter', () => {
           }),
         );
       });
+
+      it('should reject extra args on @jump', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(
+          makeScript([makeCmd('jump', { '0': 'target', '1': 'extra' }, 1)]),
+        );
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@jump does not accept argument "1".',
+            command: 'jump',
+          }),
+        );
+      });
+
+      it('should reject extra args on @end', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(makeScript([makeCmd('end', { '0': 'extra' }, 1)]));
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@end does not accept argument "0".',
+            command: 'end',
+          }),
+        );
+      });
     });
 
     describe('@call', () => {

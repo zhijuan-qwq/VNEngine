@@ -175,16 +175,16 @@ describe('dialogue commands', () => {
       }
     });
 
-    it('should treat a missing duration as zero', () => {
-      vi.useFakeTimers();
-      try {
-        const spy = listen('script:wait:done');
-        execute('wait', {});
-        vi.advanceTimersByTime(0);
-        expect(spy).toHaveBeenCalledWith({});
-      } finally {
-        vi.useRealTimers();
-      }
+    it('should reject a missing duration', () => {
+      expect(() => execute('wait', {})).toThrow(
+        '@wait requires a duration (e.g. 500ms).',
+      );
+    });
+
+    it('should reject a bare number duration without a unit', () => {
+      expect(() => execute('wait', { '0': 500 })).toThrow(
+        '@wait: unexpected argument 500.',
+      );
     });
 
     it('should pass a cleanup to the interpreter wait', () => {

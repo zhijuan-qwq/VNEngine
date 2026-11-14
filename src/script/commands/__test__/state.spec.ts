@@ -144,7 +144,13 @@ describe('state commands', () => {
 
     it('should throw when the flag name is not a string', () => {
       expect(() => execute('flag', { '0': 123 })).toThrow(
-        'Expected a flag name, got 123',
+        '@flag: unexpected argument 123.',
+      );
+    });
+
+    it('should reject extra args for @clearFlags', () => {
+      expect(() => execute('clearFlags', { '0': 'x' })).toThrow(
+        '@clearFlags: unexpected argument "x".',
       );
     });
   });
