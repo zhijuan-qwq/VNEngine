@@ -1,8 +1,9 @@
-import { Text } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
 import type { DialogueEntry } from '@/types/engine';
-import { ModalPanel } from './ModalPanel';
+import { PagePanel } from './PagePanel';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
+import { createPanelBox } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 import { parseRichText } from './richtext';
@@ -17,6 +18,8 @@ export interface HistoryViewOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  /** 点击右下角返回；缺省隐藏自身 */
+  onClose?: () => void;
   theme?: DeepPartial<UITheme>;
 }
 
@@ -35,10 +38,12 @@ interface ResolvedOptions {
 export class HistoryView extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
-  private readonly modal: ModalPanel;
+  private readonly page: PagePanel;
   private readonly scroll: ScrollView;
   private readonly scrollWidth: number;
-  private readonly rows: Text[] = [];
+  private readonly cards: Container[] = [];
+  private readonly cardHeights: number[] = [];
+  private readonly cardTexts: string[] = [];
 
   constructor(options: HistoryViewOptions) {
     super({ id: 'history-view' });
@@ -58,28 +63,26 @@ export class HistoryView extends UIComponent {
       textColor: options.textColor ?? this.theme.colors.textPrimary,
     };
 
-    this.modal = new ModalPanel({
+    this.page = new PagePanel({
       width: this.opts.width,
       height: this.opts.height,
-      boxWidthRatio: this.theme.sizes.modalWidthRatio,
-      boxHeightRatio: this.theme.sizes.modalHeightRatio,
       title: this.opts.title,
       padding: this.opts.padding,
       panelColor: this.opts.panelColor,
-      onClose: () => this.hide(),
+      onBack: options.onClose ?? (() => this.hide()),
       theme: this.theme,
     });
-    this.addChild(this.modal);
+    this.addChild(this.page);
 
-    this.scrollWidth = this.modal.contentWidth;
+    this.scrollWidth = this.page.contentWidth;
     this.scroll = new ScrollView({
       width: this.scrollWidth,
-      height: this.modal.contentHeight,
+      height: this.page.contentHeight,
       step: this.theme.sizes.scrollStep,
     });
     this.scroll.x = 0;
     this.scroll.y = 0;
-    this.modal.content.addChild(this.scroll);
+    this.page.content.addChild(this.scroll);
 
     this.hide();
   }
@@ -91,14 +94,12 @@ export class HistoryView extends UIComponent {
 
   private rebuild(): void {
     const entries = this.opts.getEntries?.() ?? [];
-    this.clearRows();
+    this.clearCards();
 
-    const width = this.scrollWidth;
     if (entries.length === 0) {
-      this.addRow('（暂无对话记录）', width, this.theme.colors.textMuted);
+      this.addCard('', '（暂无对话记录）', this.theme.colors.textMuted);
     } else {
       for (const entry of entries) {
-        const prefix = entry.speaker.length > 0 ? `${entry.speaker}：` : '';
         // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记；
         // 非法富文本不应阻止历史面板打开，此时退回原始文本
         let plain: string;
@@ -107,52 +108,91 @@ export class HistoryView extends UIComponent {
         } catch {
           plain = entry.text;
         }
-        this.addRow(`${prefix}${plain}`, width, this.opts.textColor);
+        this.addCard(entry.speaker, plain, this.opts.textColor);
       }
     }
 
-    const total = this.rows.reduce(
-      (sum, row) => sum + row.height + this.theme.spacing.s8,
+    const total = this.cardHeights.reduce(
+      (sum, height) => sum + height + this.theme.spacing.s8,
       0,
     );
     this.scroll.setContentHeight(total);
     this.scroll.setScroll(this.scroll.maxScroll);
   }
 
-  private addRow(text: string, width: number, color: number): void {
-    const row = new Text({
+  private addCard(speaker: string, text: string, color: number): void {
+    const width = this.scrollWidth;
+    const pad = this.theme.spacing.s16;
+    const card = new Container();
+
+    const body = new Text({
       text,
       style: {
         fontFamily: this.theme.typography.fontFamilyBody,
         fontSize: this.opts.fontSize,
         fill: color,
         wordWrap: true,
-        wordWrapWidth: Math.max(width, 1),
+        wordWrapWidth: Math.max(width - pad * 2, 1),
         lineHeight: this.opts.lineHeight,
       },
     });
-    row.y = this.rows.reduce(
-      (sum, item) => sum + item.height + this.theme.spacing.s8,
+
+    let y = pad;
+    if (speaker.length > 0) {
+      const speakerText = new Text({
+        text: speaker,
+        style: {
+          fontFamily: this.theme.typography.fontFamilyBody,
+          fontSize: this.theme.typography.sizes.md,
+          fontWeight: this.theme.typography.weights.semibold,
+          fill: this.theme.colors.accent,
+        },
+      });
+      speakerText.x = pad;
+      speakerText.y = y;
+      card.addChild(speakerText);
+      y += speakerText.height + this.theme.spacing.s8;
+      this.cardTexts.push(`${speaker}：${text}`);
+    } else {
+      this.cardTexts.push(text);
+    }
+
+    body.x = pad;
+    body.y = y;
+    const height = y + body.height + pad;
+
+    const bg = createPanelBox(width, height, {
+      theme: this.theme,
+      alpha: 0.72,
+    });
+    card.addChildAt(bg, 0);
+    card.addChild(body);
+    card.y = this.cardHeights.reduce(
+      (sum, item) => sum + item + this.theme.spacing.s8,
       0,
     );
-    this.rows.push(row);
-    this.scroll.content.addChild(row);
+
+    this.cards.push(card);
+    this.cardHeights.push(height);
+    this.scroll.content.addChild(card);
   }
 
-  private clearRows(): void {
-    for (const row of this.rows) {
-      row.destroy();
+  private clearCards(): void {
+    for (const card of this.cards) {
+      card.destroy();
     }
-    this.rows.length = 0;
+    this.cards.length = 0;
+    this.cardHeights.length = 0;
+    this.cardTexts.length = 0;
   }
 
   get rowCount(): number {
-    return this.rows.length;
+    return this.cards.length;
   }
 
   /** 测试/调试用：当前渲染的文本行 */
   get rowTexts(): string[] {
-    return this.rows.map((row) => row.text);
+    return [...this.cardTexts];
   }
 }
 
