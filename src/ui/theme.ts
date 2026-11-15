@@ -173,7 +173,6 @@ export interface ThemeSizes {
   choiceGap: number;
   rowHeight: number;
   labelWidth: number;
-  slotHeight: number;
   slotGap: number;
   /** 存档卡片在自适应列数时的最小宽度 */
   slotMinWidth: number;
@@ -255,8 +254,9 @@ export const DEFAULT_UI_THEME: UITheme = {
     surfaceButton: 0x3d3a38,
     surfaceButtonHover: 0x4a4643,
     surfaceButtonPressed: 0x56514d,
-    // 全屏页压在游戏画面上：接近 surfaceSunken 的暖深色，留一成半透明让画面透出
-    surfacePage: 0x1f1411,
+    // 全屏页压在游戏画面上：暖深色，比 surfaceSunken 亮一档，避免整页过沉；
+    // 留一成半透明让画面隐约透出
+    surfacePage: 0x2a221e,
     surfacePageAlpha: 0.86,
 
     borderSubtle: 0xfff8f0,
@@ -371,9 +371,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     choiceGap: 24,
     rowHeight: 56,
     labelWidth: 130,
-    slotHeight: 64,
-    slotGap: 12,
-    slotMinWidth: 240,
+    slotGap: 24,
+    slotMinWidth: 220,
     sliderHeight: 8,
     toggleWidth: 60,
     toggleHeight: 32,

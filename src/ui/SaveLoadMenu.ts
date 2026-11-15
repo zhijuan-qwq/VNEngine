@@ -161,13 +161,23 @@ export class SaveLoadMenu extends UIComponent {
     const gap = this.theme.sizes.slotGap;
     const columns = this.columnCount(slots.length);
     const cellWidth = (this.contentWidth - gap * (columns - 1)) / columns;
-    const cellHeight = Math.round(cellWidth * CARD_ASPECT);
+    const imageHeight = Math.round(cellWidth * CARD_ASPECT);
+    const timeGap = this.theme.spacing.s8;
+    const timeHeight = this.measureTimeHeight();
+    const cellHeight = imageHeight + timeGap + timeHeight;
     for (let index = 0; index < slots.length; index += 1) {
       const info = slots[index];
       // 读档模式下空槽不可用：没有存档可恢复，点了只会触发一次注定失败的读取
       const disabled =
         this.currentMode === 'load' && info.timestamp === undefined;
-      const card = this.buildCard(info, cellWidth, cellHeight, disabled);
+      const card = this.buildCard(
+        info,
+        cellWidth,
+        imageHeight,
+        timeGap,
+        timeHeight,
+        disabled,
+      );
       card.x = (index % columns) * (cellWidth + gap);
       card.y = Math.floor(index / columns) * (cellHeight + gap);
       this.slotButtons.push(card);
@@ -193,21 +203,28 @@ export class SaveLoadMenu extends UIComponent {
   private buildCard(
     info: SaveSlotInfo,
     width: number,
-    height: number,
+    imageHeight: number,
+    timeGap: number,
+    timeHeight: number,
     disabled: boolean,
   ): Container {
     const card = new Container();
     card.eventMode = 'static';
-    card.hitArea = new Rectangle(0, 0, width, height);
+    card.hitArea = new Rectangle(
+      0,
+      0,
+      width,
+      imageHeight + timeGap + timeHeight,
+    );
 
     const bg = new Graphics();
-    bg.roundRect(0, 0, width, height, this.theme.radius.lg);
+    bg.roundRect(0, 0, width, imageHeight, this.theme.radius.lg);
     bg.fill(this.theme.colors.surfaceButton, 0.92);
     card.addChild(bg);
 
     const occupied = info.timestamp !== undefined;
     if (occupied && info.thumbnail) {
-      this.attachThumbnail(card, info.thumbnail, width, height);
+      this.attachThumbnail(card, info.thumbnail, width, imageHeight);
     }
 
     if (occupied) {
@@ -218,24 +235,12 @@ export class SaveLoadMenu extends UIComponent {
         style: {
           fontFamily: this.theme.typography.fontFamilyBody,
           fontSize: this.theme.typography.sizes.sm,
-          fill: this.theme.colors.textPrimary,
+          fill: this.theme.colors.textSecondary,
         },
       });
-      const pad = this.theme.spacing.s8;
-      const chipWidth = label.width + pad * 2;
-      const chipHeight = label.height + this.theme.spacing.s4 * 2;
-      const chip = new Graphics();
-      chip.roundRect(
-        width - pad - chipWidth,
-        height - pad - chipHeight,
-        chipWidth,
-        chipHeight,
-        this.theme.radius.sm,
-      );
-      chip.fill(this.theme.colors.backdrop, 0.62);
-      label.x = width - pad - chipWidth + pad;
-      label.y = height - pad - chipHeight + this.theme.spacing.s4;
-      card.addChild(chip, label);
+      label.x = (width - label.width) / 2;
+      label.y = imageHeight + timeGap;
+      card.addChild(label);
     } else {
       const empty = new Text({
         text: '空',
@@ -246,14 +251,14 @@ export class SaveLoadMenu extends UIComponent {
         },
       });
       empty.x = (width - empty.width) / 2;
-      empty.y = (height - empty.height) / 2;
+      empty.y = (imageHeight - empty.height) / 2;
       card.addChild(empty);
     }
 
     const border = new Graphics();
     const paintBorder = (hover: boolean): void => {
       border.clear();
-      border.roundRect(0, 0, width, height, this.theme.radius.lg);
+      border.roundRect(0, 0, width, imageHeight, this.theme.radius.lg);
       border.stroke({
         width: this.theme.border.thin,
         color: hover
@@ -333,6 +338,20 @@ export class SaveLoadMenu extends UIComponent {
     this.thumbnailImages.set(uri, image);
     image.addEventListener('load', () => apply(image), { once: true });
     image.src = uri;
+  }
+
+  /** 用真实 Text 量时间行高度，避免不同字体下热区比字形矮 */
+  private measureTimeHeight(): number {
+    const probe = new Text({
+      text: '00-00 00:00',
+      style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
+        fontSize: this.theme.typography.sizes.sm,
+      },
+    });
+    const height = probe.height;
+    probe.destroy();
+    return height;
   }
 
   private formatTime(timestamp: number): string {

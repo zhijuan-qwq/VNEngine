@@ -39,6 +39,25 @@ function textsOf(container: Container): string[] {
   return result;
 }
 
+function findText(
+  container: Container,
+  text: string,
+): { x: number; y: number } | null {
+  let found: { x: number; y: number } | null = null;
+  const visit = (node: Container): void => {
+    if (found) return;
+    if ((node as unknown as { text?: unknown }).text === text) {
+      found = node as unknown as { x: number; y: number };
+      return;
+    }
+    for (const child of node.children) {
+      visit(child as Container);
+    }
+  };
+  visit(container);
+  return found;
+}
+
 describe('SaveLoadMenu', () => {
   it('should start hidden in load mode', () => {
     const menu = makeMenu();
@@ -87,9 +106,9 @@ describe('SaveLoadMenu', () => {
     });
     menu.show('load');
     expect(menu.buttons).toHaveLength(12);
-    expect(menu.buttons[3].y).toBe(menu.buttons[0].y);
-    expect(menu.buttons[4].y).toBeGreaterThan(menu.buttons[0].y);
-    expect(menu.buttons[4].x).toBe(menu.buttons[0].x);
+    expect(menu.buttons[4].y).toBe(menu.buttons[0].y);
+    expect(menu.buttons[5].y).toBeGreaterThan(menu.buttons[0].y);
+    expect(menu.buttons[5].x).toBe(menu.buttons[0].x);
   });
 
   it('should render an empty placeholder for unsaved slots', () => {
@@ -108,6 +127,21 @@ describe('SaveLoadMenu', () => {
     menu.show('load');
     expect(menu.times).toEqual(['01-02 03:04']);
     expect(textsOf(menu.buttons[0])).toContain('01-02 03:04');
+  });
+
+  it('should place the time centred below the thumbnail', () => {
+    const timestamp = new Date(2026, 0, 2, 3, 4).getTime();
+    const menu = makeMenu({
+      columns: 2,
+      getSlots: () => [{ slot: 0, timestamp }],
+    });
+    menu.show('load');
+    const label = findText(menu.buttons[0], '01-02 03:04');
+    expect(label).not.toBeNull();
+    // 800 宽、页面左右各 24 内边距、两列一间隔
+    const cellWidth = (800 - 48 - 24) / 2;
+    const imageHeight = Math.round(cellWidth * (9 / 16));
+    expect(label?.y).toBeGreaterThanOrEqual(imageHeight);
   });
 
   it('should call onSave with the slot in save mode and stay open', () => {
