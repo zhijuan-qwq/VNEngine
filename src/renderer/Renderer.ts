@@ -99,6 +99,10 @@ export class Renderer implements IRenderer {
     return this.layers.getLayer('ui');
   }
 
+  public getSceneRoot(): Container {
+    return this.layers;
+  }
+
   public toLogical(point: PointData): { x: number; y: number } {
     return this.scale.toLogical(point);
   }
