@@ -9,7 +9,8 @@ import type { ChoicePanelOptions } from './ChoicePanel';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { ConfirmDialogOptions, ConfirmRequest } from './ConfirmDialog';
 import { SaveLoadMenu } from './SaveLoadMenu';
-import type { SaveLoadMenuOptions } from './SaveLoadMenu';
+import type { SaveLoadMenuOptions, SaveSlotInfo } from './SaveLoadMenu';
+import type { UIComponent } from './UIComponent';
 import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuOptions } from './SettingsMenu';
 import { HistoryView } from './HistoryView';
@@ -36,10 +37,22 @@ export interface UIManagerOptions {
   historyView?: Partial<HistoryViewOptions>;
   confirmDialog?: Partial<ConfirmDialogOptions>;
   menuBar?: Partial<MenuBarOptions>;
+  /** 打开存档页前抓取当前游戏画面（data URL）；缺省不生成缩略图 */
+  captureThumbnail?: () => string;
   autoTick?: boolean;
 }
 
 const MAX_FRAME_MS = 100;
+const PAGE_FADE_SECONDS = 0.15;
+
+interface PageFade {
+  view: UIComponent;
+  from: number;
+  to: number;
+  elapsed: number;
+  duration: number;
+  hideOnDone: boolean;
+}
 
 /**
  * UI 门面（见架构文档 §8.1）：持有对话核心（DialogueBox/ChoicePanel）与四个内置面板，
@@ -57,8 +70,12 @@ export class UIManager {
   readonly history: DialogueHistory;
 
   private readonly bus: EventBus<EngineEvents>;
+  private readonly captureThumbnail?: () => string;
+  private readonly getSlots?: () => readonly SaveSlotInfo[];
   private rafId: number | null = null;
   private lastTime = 0;
+  private pendingThumbnail = '';
+  private fades: PageFade[] = [];
 
   constructor(bus: EventBus<EngineEvents>, options: UIManagerOptions) {
     this.bus = bus;
@@ -97,14 +114,21 @@ export class UIManager {
     });
 
     const size = { width: options.width, height: options.height };
+    const saveOptions = options.saveLoadMenu;
+    this.captureThumbnail = options.captureThumbnail;
+    this.getSlots = saveOptions?.getSlots;
     this.saveLoadMenu = new SaveLoadMenu({
       ...size,
-      ...options.saveLoadMenu,
-      theme: themeFor(options.saveLoadMenu?.theme),
+      ...saveOptions,
+      onSave: (slot) => this.requestSave(slot, saveOptions?.onSave),
+      onLoad: (slot) => this.requestLoad(slot, saveOptions?.onLoad),
+      onClose: () => this.close(),
+      theme: themeFor(saveOptions?.theme),
     });
     this.settingsMenu = new SettingsMenu({
       ...size,
       ...options.settingsMenu,
+      onClose: () => this.close(),
       theme: themeFor(options.settingsMenu?.theme),
     });
     this.history = new DialogueHistory(bus);
@@ -112,6 +136,7 @@ export class UIManager {
       ...size,
       getEntries: () => this.history.entries(),
       ...options.historyView,
+      onClose: () => this.close(),
       theme: themeFor(options.historyView?.theme),
     });
     this.confirmDialog = new ConfirmDialog({
@@ -147,6 +172,7 @@ export class UIManager {
     bus.on('game:load', this.handleEnd);
     bus.on('ui:open', this.handleOpen);
     bus.on('ui:close', this.handleClose);
+    bus.on('game:save', this.handleSaved);
 
     if (options.autoTick !== false) {
       this.startTicking();
@@ -156,6 +182,7 @@ export class UIManager {
   public update(dt: number): void {
     // Updater 以秒为 dt（引擎约定）；打字机以毫秒推进
     this.dialogueBox.update(dt * 1000);
+    this.updateFades(dt);
   }
 
   /** 打字机是否正在逐字显示（供 InputManager 决定点击语义） */
@@ -163,36 +190,41 @@ export class UIManager {
     return this.dialogueBox.isBusy();
   }
 
-  /** 打开某个面板（互斥：先关闭其它面板） */
+  /** 打开某个页面（互斥：先关闭其它页面） */
   public open(panel: UiPanel): void {
-    this.close();
+    this.closeInstant();
+    // 缩略图必须趁游戏画面还在时抓；页面一旦显示就把它盖住了
+    if (panel === 'save') {
+      this.pendingThumbnail = this.captureThumbnail?.() ?? '';
+    }
     switch (panel) {
       case 'settings':
         this.settingsMenu.show();
+        this.fadeIn(this.settingsMenu);
         break;
       case 'history':
         this.historyView.show();
+        this.fadeIn(this.historyView);
         break;
       case 'save':
-        this.saveLoadMenu.show('save');
-        break;
       case 'load':
-        this.saveLoadMenu.show('load');
+        this.saveLoadMenu.show(panel);
+        this.fadeIn(this.saveLoadMenu);
         break;
     }
   }
 
-  /** 关闭所有面板 */
+  /** 关闭所有页面（淡出） */
   public close(): void {
-    this.saveLoadMenu.hide();
-    this.settingsMenu.hide();
-    this.historyView.hide();
+    this.fadeOut(this.saveLoadMenu);
+    this.fadeOut(this.settingsMenu);
+    this.fadeOut(this.historyView);
     this.confirmDialog.hide();
   }
 
-  /** 打开确认框（互斥：先关闭其它面板），返回用户是否确认 */
+  /** 打开确认框（互斥：先关闭其它页面），返回用户是否确认 */
   public confirm(request: ConfirmRequest): Promise<boolean> {
-    this.close();
+    this.closeInstant();
     return this.confirmDialog.confirm(request);
   }
 
@@ -205,6 +237,8 @@ export class UIManager {
     this.bus.off('game:load', this.handleEnd);
     this.bus.off('ui:open', this.handleOpen);
     this.bus.off('ui:close', this.handleClose);
+    this.bus.off('game:save', this.handleSaved);
+    this.fades = [];
     this.dialogueBox.destroy();
     this.choicePanel.destroy();
     this.saveLoadMenu.destroy();
@@ -242,6 +276,119 @@ export class UIManager {
   private readonly handleClose = (): void => {
     this.close();
   };
+
+  private readonly handleSaved = (): void => {
+    this.saveLoadMenu.refresh();
+  };
+
+  /**
+   * 点击槽位后先处理覆盖确认，再由回调把缓存缩略图带入存档。
+   * 确认框叠在页面上，不关闭底层页面。
+   */
+  private requestSave(
+    slot: number,
+    onSave?: (slot: number, thumbnail?: string) => void,
+  ): void {
+    const existing = this.getSlots?.().find((info) => info.slot === slot);
+    const write = (): void => onSave?.(slot, this.pendingThumbnail);
+    if (existing?.timestamp === undefined) {
+      write();
+      return;
+    }
+    void this.confirmDialog
+      .confirm({
+        title: '覆盖存档',
+        message: `覆盖存档 ${slot + 1}？原有内容将被替换。`,
+        confirmText: '覆盖',
+      })
+      .then((confirmed) => {
+        if (confirmed) write();
+      });
+  }
+
+  /** 读档确认后立即回到游戏，页面不参与淡出（读档会替换整个场景） */
+  private requestLoad(slot: number, onLoad?: (slot: number) => void): void {
+    void this.confirmDialog
+      .confirm({
+        title: '读取进度',
+        message: `读取存档 ${slot + 1}？当前未保存的进度将丢失。`,
+        confirmText: '读取',
+      })
+      .then((confirmed) => {
+        if (!confirmed) return;
+        onLoad?.(slot);
+        this.closeInstant();
+      });
+  }
+
+  private closeInstant(): void {
+    this.snapFades();
+    this.saveLoadMenu.hide();
+    this.settingsMenu.hide();
+    this.historyView.hide();
+    this.confirmDialog.hide();
+  }
+
+  private fadeIn(view: UIComponent): void {
+    this.fades = this.fades.filter((fade) => fade.view !== view);
+    view.visible = true;
+    view.alpha = 0;
+    this.fades.push({
+      view,
+      from: 0,
+      to: 1,
+      elapsed: 0,
+      duration: PAGE_FADE_SECONDS,
+      hideOnDone: false,
+    });
+  }
+
+  private fadeOut(view: UIComponent): void {
+    if (!view.visible) {
+      return;
+    }
+    this.fades = this.fades.filter((fade) => fade.view !== view);
+    this.fades.push({
+      view,
+      from: view.alpha,
+      to: 0,
+      elapsed: 0,
+      duration: PAGE_FADE_SECONDS,
+      hideOnDone: true,
+    });
+  }
+
+  /** 立刻结束进行中的淡入淡出，避免旧动画把重新打开的页面藏掉 */
+  private snapFades(): void {
+    const fades = this.fades;
+    this.fades = [];
+    for (const fade of fades) {
+      fade.view.alpha = fade.to;
+      if (fade.hideOnDone) fade.view.hide();
+    }
+  }
+
+  private updateFades(dt: number): void {
+    if (this.fades.length === 0) {
+      return;
+    }
+    const active = this.fades;
+    this.fades = [];
+    for (const fade of active) {
+      fade.elapsed += dt;
+      const t = Math.min(fade.elapsed / fade.duration, 1);
+      fade.view.alpha = fade.from + (fade.to - fade.from) * t;
+      if (t >= 1) {
+        if (fade.hideOnDone) {
+          fade.view.hide();
+        } else {
+          fade.view.alpha = 1;
+        }
+        continue;
+      }
+      this.fades.push(fade);
+    }
+  }
 
   private startTicking(): void {
     this.lastTime = now();

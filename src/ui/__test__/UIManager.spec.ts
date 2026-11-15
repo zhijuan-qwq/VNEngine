@@ -1,4 +1,4 @@
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { Container, FederatedPointerEvent } from 'pixi.js';
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
 import { UIManager } from '../UIManager';
@@ -197,6 +197,7 @@ describe('UIManager', () => {
     const { bus, ui } = makeManager();
     bus.emit('ui:open', { panel: 'history' });
     bus.emit('ui:close', {});
+    ui.update(0.2);
     expect(ui.historyView.visible).toBe(false);
   });
 
@@ -231,5 +232,106 @@ describe('UIManager', () => {
     ui.destroy();
     bus.emit('ui:open', { panel: 'settings' });
     expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should fade pages in and out over the update loop', () => {
+    const { ui } = makeManager();
+    ui.open('settings');
+    expect(ui.settingsMenu.visible).toBe(true);
+    expect(ui.settingsMenu.alpha).toBe(0);
+    ui.update(0.2);
+    expect(ui.settingsMenu.alpha).toBe(1);
+    ui.close();
+    ui.update(0.2);
+    expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  function tapNode(node: Container): void {
+    node.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+  }
+
+  it('should capture a thumbnail before opening the save page', () => {
+    const bus = new EventBus<EngineEvents>();
+    const capture = vi.fn(() => 'data:image/jpeg;base64,thumb');
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      captureThumbnail: capture,
+      saveLoadMenu: { getSlots: () => [{ slot: 0 }], onSave },
+    });
+    ui.open('save');
+    expect(capture).toHaveBeenCalledOnce();
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledWith(0, 'data:image/jpeg;base64,thumb');
+  });
+
+  it('should confirm before overwriting an existing save and keep the page open', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      captureThumbnail: () => 'data:image/jpeg;base64,thumb',
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 0, timestamp: 1 }],
+        onSave,
+      },
+    });
+    ui.open('save');
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(ui.confirmDialog.visible).toBe(true);
+    expect(ui.saveLoadMenu.visible).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+
+    tapNode(ui.confirmDialog.buttons[1]);
+    await Promise.resolve();
+    expect(onSave).toHaveBeenCalledWith(0, 'data:image/jpeg;base64,thumb');
+    expect(ui.saveLoadMenu.visible).toBe(true);
+  });
+
+  it('should confirm before loading and return to the game', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onLoad = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 2, timestamp: 1 }],
+        onLoad,
+      },
+    });
+    ui.open('load');
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(ui.confirmDialog.visible).toBe(true);
+    tapNode(ui.confirmDialog.buttons[1]);
+    await Promise.resolve();
+    expect(onLoad).toHaveBeenCalledWith(2);
+    expect(ui.saveLoadMenu.visible).toBe(false);
+  });
+
+  it('should keep the page open when load is cancelled', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onLoad = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 0, timestamp: 1 }],
+        onLoad,
+      },
+    });
+    ui.open('load');
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    tapNode(ui.confirmDialog.buttons[0]);
+    await Promise.resolve();
+    expect(onLoad).not.toHaveBeenCalled();
+    expect(ui.saveLoadMenu.visible).toBe(true);
   });
 });
