@@ -1,6 +1,7 @@
 import type { Container, FederatedPointerEvent } from 'pixi.js';
 import { SaveLoadMenu } from '../SaveLoadMenu';
-import type { SaveLoadMenuOptions, SaveSlotInfo } from '../SaveLoadMenu';
+import type { SaveLoadMenuOptions } from '../SaveLoadMenu';
+import type { SaveSlotInfo } from '@/types/save';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');

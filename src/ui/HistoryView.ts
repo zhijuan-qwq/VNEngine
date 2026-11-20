@@ -35,15 +35,20 @@ interface ResolvedOptions {
   textColor: number;
 }
 
+interface HistoryCard {
+  node: Container;
+  height: number;
+  /** 角色名与台词拼成的一行，供测试/调试读取 */
+  text: string;
+}
+
 export class HistoryView extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly page: PagePanel;
   private readonly scroll: ScrollView;
   private readonly scrollWidth: number;
-  private readonly cards: Container[] = [];
-  private readonly cardHeights: number[] = [];
-  private readonly cardTexts: string[] = [];
+  private readonly historyCards: HistoryCard[] = [];
 
   constructor(options: HistoryViewOptions) {
     super({ id: 'history-view' });
@@ -112,8 +117,8 @@ export class HistoryView extends UIComponent {
       }
     }
 
-    const total = this.cardHeights.reduce(
-      (sum, height) => sum + height + this.theme.spacing.s8,
+    const total = this.historyCards.reduce(
+      (sum, card) => sum + card.height + this.theme.spacing.s8,
       0,
     );
     this.scroll.setContentHeight(total);
@@ -138,6 +143,7 @@ export class HistoryView extends UIComponent {
     });
 
     let y = pad;
+    let rowText = text;
     if (speaker.length > 0) {
       const speakerText = new Text({
         text: speaker,
@@ -152,9 +158,7 @@ export class HistoryView extends UIComponent {
       speakerText.y = y;
       card.addChild(speakerText);
       y += speakerText.height + this.theme.spacing.s8;
-      this.cardTexts.push(`${speaker}：${text}`);
-    } else {
-      this.cardTexts.push(text);
+      rowText = `${speaker}：${text}`;
     }
 
     body.x = pad;
@@ -167,32 +171,29 @@ export class HistoryView extends UIComponent {
     });
     card.addChildAt(bg, 0);
     card.addChild(body);
-    card.y = this.cardHeights.reduce(
-      (sum, item) => sum + item + this.theme.spacing.s8,
+    card.y = this.historyCards.reduce(
+      (sum, item) => sum + item.height + this.theme.spacing.s8,
       0,
     );
 
-    this.cards.push(card);
-    this.cardHeights.push(height);
+    this.historyCards.push({ node: card, height, text: rowText });
     this.scroll.content.addChild(card);
   }
 
   private clearCards(): void {
-    for (const card of this.cards) {
-      card.destroy();
+    for (const card of this.historyCards) {
+      card.node.destroy();
     }
-    this.cards.length = 0;
-    this.cardHeights.length = 0;
-    this.cardTexts.length = 0;
+    this.historyCards.length = 0;
   }
 
   get rowCount(): number {
-    return this.cards.length;
+    return this.historyCards.length;
   }
 
   /** 测试/调试用：当前渲染的文本行 */
   get rowTexts(): string[] {
-    return [...this.cardTexts];
+    return this.historyCards.map((card) => card.text);
   }
 }
 

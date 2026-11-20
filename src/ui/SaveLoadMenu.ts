@@ -1,20 +1,13 @@
 import { Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { DestroyOptions, FederatedPointerEvent } from 'pixi.js';
 import { PagePanel } from './PagePanel';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import type { SaveSlotInfo } from '@/types/save';
 
 export type SaveLoadMode = 'save' | 'load';
-
-export interface SaveSlotInfo {
-  slot: number;
-  label?: string;
-  timestamp?: number;
-  /** data URL 缩略图；缺省时卡片只显示底色 */
-  thumbnail?: string;
-}
 
 export interface SaveLoadMenuOptions {
   width: number;
@@ -63,6 +56,7 @@ export class SaveLoadMenu extends UIComponent {
   private slotButtons: Container[] = [];
   private timeLabels: string[] = [];
   private readonly thumbnailImages = new Map<string, HTMLImageElement>();
+  private readonly thumbnailTextures = new Map<string, Texture>();
   private currentMode: SaveLoadMode = 'load';
 
   constructor(options: SaveLoadMenuOptions) {
@@ -143,6 +137,7 @@ export class SaveLoadMenu extends UIComponent {
     this.clearCards();
     const slots: readonly SaveSlotInfo[] =
       this.opts.getSlots?.() ?? this.opts.slots.map((slot) => ({ slot }));
+    this.pruneThumbnailCache(slots);
 
     if (slots.length === 0) {
       const empty = new Text({
@@ -313,7 +308,9 @@ export class SaveLoadMenu extends UIComponent {
       if (card.destroyed || image.naturalWidth === 0) {
         return;
       }
-      const sprite = new Sprite(Texture.from(image));
+      const texture = this.thumbnailTextures.get(uri) ?? Texture.from(image);
+      this.thumbnailTextures.set(uri, texture);
+      const sprite = new Sprite(texture);
       sprite.width = width;
       sprite.height = height;
       const mask = new Graphics();
@@ -338,6 +335,27 @@ export class SaveLoadMenu extends UIComponent {
     this.thumbnailImages.set(uri, image);
     image.addEventListener('load', () => apply(image), { once: true });
     image.src = uri;
+  }
+
+  /** 只保留当前槽位仍引用的缩略图与纹理，避免反复存档后缓存无限增长 */
+  private pruneThumbnailCache(slots: readonly SaveSlotInfo[]): void {
+    const keep = new Set<string>();
+    for (const info of slots) {
+      if (info.thumbnail) {
+        keep.add(info.thumbnail);
+      }
+    }
+    for (const uri of [...this.thumbnailImages.keys()]) {
+      if (!keep.has(uri)) {
+        this.thumbnailImages.delete(uri);
+      }
+    }
+    for (const [uri, texture] of [...this.thumbnailTextures]) {
+      if (!keep.has(uri)) {
+        texture.destroy(true);
+        this.thumbnailTextures.delete(uri);
+      }
+    }
   }
 
   /** 用真实 Text 量时间行高度，避免不同字体下热区比字形矮 */
@@ -375,6 +393,15 @@ export class SaveLoadMenu extends UIComponent {
     }
     this.slotButtons = [];
     this.timeLabels = [];
+  }
+
+  public override destroy(options?: DestroyOptions): void {
+    this.thumbnailImages.clear();
+    for (const texture of this.thumbnailTextures.values()) {
+      texture.destroy(true);
+    }
+    this.thumbnailTextures.clear();
+    super.destroy(options);
   }
 }
 
