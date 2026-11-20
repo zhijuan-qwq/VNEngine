@@ -246,6 +246,33 @@ describe('UIManager', () => {
     expect(ui.settingsMenu.visible).toBe(false);
   });
 
+  it('should lock page input during fades', () => {
+    const { ui } = makeManager();
+    ui.open('settings');
+    expect(ui.settingsMenu.interactiveChildren).toBe(false);
+    ui.update(0.2);
+    expect(ui.settingsMenu.interactiveChildren).toBe(true);
+    ui.close();
+    expect(ui.settingsMenu.interactiveChildren).toBe(false);
+    ui.update(0.2);
+    expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should finish fades immediately while the game is paused', () => {
+    const { bus, ui } = makeManager();
+    ui.open('settings');
+    expect(ui.settingsMenu.alpha).toBe(0);
+
+    bus.emit('game:pause', {});
+    expect(ui.settingsMenu.alpha).toBe(1);
+    expect(ui.settingsMenu.interactiveChildren).toBe(true);
+
+    ui.open('history');
+    expect(ui.historyView.alpha).toBe(1);
+    ui.close();
+    expect(ui.historyView.visible).toBe(false);
+  });
+
   function tapNode(node: Container): void {
     node.emit('pointertap', {
       stopPropagation: vi.fn(),

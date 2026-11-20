@@ -9,7 +9,8 @@ import type { ChoicePanelOptions } from './ChoicePanel';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { ConfirmDialogOptions, ConfirmRequest } from './ConfirmDialog';
 import { SaveLoadMenu } from './SaveLoadMenu';
-import type { SaveLoadMenuOptions, SaveSlotInfo } from './SaveLoadMenu';
+import type { SaveLoadMenuOptions } from './SaveLoadMenu';
+import type { SaveSlotInfo } from '@/types/save';
 import type { UIComponent } from './UIComponent';
 import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuOptions } from './SettingsMenu';
@@ -76,6 +77,8 @@ export class UIManager {
   private lastTime = 0;
   private pendingThumbnail = '';
   private fades: PageFade[] = [];
+  /** 引擎暂停时 Updater 不再调用 update，淡入淡出需要立即完成，否则页面停在 alpha=0 */
+  private paused = false;
 
   constructor(bus: EventBus<EngineEvents>, options: UIManagerOptions) {
     this.bus = bus;
@@ -173,6 +176,8 @@ export class UIManager {
     bus.on('ui:open', this.handleOpen);
     bus.on('ui:close', this.handleClose);
     bus.on('game:save', this.handleSaved);
+    bus.on('game:pause', this.handlePause);
+    bus.on('game:resume', this.handleResume);
 
     if (options.autoTick !== false) {
       this.startTicking();
@@ -238,6 +243,8 @@ export class UIManager {
     this.bus.off('ui:open', this.handleOpen);
     this.bus.off('ui:close', this.handleClose);
     this.bus.off('game:save', this.handleSaved);
+    this.bus.off('game:pause', this.handlePause);
+    this.bus.off('game:resume', this.handleResume);
     this.fades = [];
     this.dialogueBox.destroy();
     this.choicePanel.destroy();
@@ -279,6 +286,16 @@ export class UIManager {
 
   private readonly handleSaved = (): void => {
     this.saveLoadMenu.refresh();
+  };
+
+  private readonly handlePause = (): void => {
+    this.paused = true;
+    // 暂停后 update 不再被调用，把进行中的过渡直接落定，避免页面卡在半透明
+    this.snapFades();
+  };
+
+  private readonly handleResume = (): void => {
+    this.paused = false;
   };
 
   /**
@@ -332,6 +349,13 @@ export class UIManager {
   private fadeIn(view: UIComponent): void {
     this.fades = this.fades.filter((fade) => fade.view !== view);
     view.visible = true;
+    // 过渡期间锁住页面内的交互，避免半透明阶段误触卡片/按钮
+    view.interactiveChildren = false;
+    if (this.paused) {
+      view.alpha = 1;
+      view.interactiveChildren = true;
+      return;
+    }
     view.alpha = 0;
     this.fades.push({
       view,
@@ -348,6 +372,11 @@ export class UIManager {
       return;
     }
     this.fades = this.fades.filter((fade) => fade.view !== view);
+    view.interactiveChildren = false;
+    if (this.paused) {
+      view.hide();
+      return;
+    }
     this.fades.push({
       view,
       from: view.alpha,
@@ -364,7 +393,11 @@ export class UIManager {
     this.fades = [];
     for (const fade of fades) {
       fade.view.alpha = fade.to;
-      if (fade.hideOnDone) fade.view.hide();
+      if (fade.hideOnDone) {
+        fade.view.hide();
+      } else {
+        fade.view.interactiveChildren = true;
+      }
     }
   }
 
@@ -383,6 +416,7 @@ export class UIManager {
           fade.view.hide();
         } else {
           fade.view.alpha = 1;
+          fade.view.interactiveChildren = true;
         }
         continue;
       }
