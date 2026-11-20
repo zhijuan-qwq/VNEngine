@@ -129,6 +129,7 @@ export class SaveLoadMenu extends UIComponent {
     super.hide();
   }
 
+  /** 测试/调试用：当前槽位卡片；返回新数组，避免调用方改动内部记录 */
   get buttons(): Container[] {
     return this.slotCards.map((card) => card.node);
   }

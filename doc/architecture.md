@@ -1026,6 +1026,7 @@ UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Contai
 - 持有 `root: Container`（挂到 `ui` 图层的根）、`dialogueBox`、`choicePanel`、`menuBar` 与三个全屏页（§8.2）；确认弹窗 `ConfirmDialog` 独立存在；
 - 订阅脚本事件（`script:say` / `script:clear` / `script:choice` / `script:end`）驱动对话核心；
 - 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；页面互斥（打开一个先关掉其它），开关带约 150ms 淡入淡出，引擎暂停时立即完成过渡；
+- 页面过渡期间由 `transitionShield`（覆盖 UI 根的全屏命中层，位于页面之上、确认框之下）屏蔽输入，结束后关闭；
 - 打开存档页前调用注入的 `captureThumbnail()` 抓取当前画面（所见即所得，含对话框与快捷栏），存入选槽时写入存档；
 - 覆盖已有存档、读取存档前直接叠确认框（不关闭底层页面）；读档确认后关闭页面回到游戏；
 - `isBusy()` 委托 `dialogueBox.isBusy()`，供 InputManager（§8.3）判定点击语义；
@@ -1091,7 +1092,7 @@ pixi Federated Events → InputManager 路由
   → pointermove → 发射 input:hover { x, y }
 ```
 
-命中层位于 UI 根的第一个子节点：只有当指针下没有更上层的交互对象（按钮、全屏页/确认框遮罩等）时才会命中。全屏页与确认框的 backdrop 在更高层且 `stopPropagation`，因此天然屏蔽底层点击，无需额外的「页面是否开启」布尔门控。
+命中层位于 UI 根的第一个子节点：只有当指针下没有更上层的交互对象（按钮、全屏页/确认框遮罩等）时才会命中。全屏页与确认框的 backdrop 在更高层且 `stopPropagation`，因此**页面完全打开后**天然屏蔽底层点击，无需额外的「页面是否开启」布尔门控；仅在约 150ms 的过渡期间由 `transitionShield` 临时接管命中，避免半透明阶段点击穿透到下层快捷栏或对话。
 
 ```ts
 class InputManager implements IInputManager {
@@ -1172,11 +1173,11 @@ Settings **独立持久化（全局一份），不嵌入每个存档槽中**。�
 ### 9.3 存档流程（SaveManager）
 
 ```
-Game.saveSlot(slot)
-  → saveManager.capture(engine, slot)
+Game.saveSlot(slot, thumbnail?)
+  → saveManager.capture(engine, slot, thumbnail)
   → eventBus.emit('game:save', { slot })
 
-SaveManager.capture(engine, slot):
+SaveManager.capture(engine, slot, thumbnail = ''):
   1. 读取各子系统快照：script.getState() / renderer.getState() / audio.getState() /
      variableStore.dump() / ui.history.entries()
   2. 若阻塞在 @say 上（getBlockedCommandType() === 'say'）且历史非空，裁掉历史末条
@@ -1637,6 +1638,8 @@ interface IRenderer {
   resize(size: { width: number; height: number }): void;
   // UI 层容器（Renderer 预建，可能为 null），供 UIManager 挂载 root（见 §8.1）
   getUILayer(): Container | null;
+  // 场景根容器（bg/chara/effect/ui 图层的父级），供截图抓帧（见 §9.3）
+  getSceneRoot(): Container;
   // 屏幕坐标 → 逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
@@ -1673,7 +1676,7 @@ interface VNEngine {
   destroy(): void;
   pause(): void;
   resume(): void;
-  saveGame(slot: number): void;
+  saveGame(slot: number, thumbnail?: string): void;
   loadGame(slot: number): void;
 }
 ```
