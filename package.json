@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "npm run build:parser && tsc && vite build",
     "build:parser": "peggy --format es src/script/grammar.pegjs -o src/script/parser.js",
+    "build:manifest": "node --experimental-strip-types tools/buildManifest.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",

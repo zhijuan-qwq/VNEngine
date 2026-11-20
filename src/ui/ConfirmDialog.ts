@@ -1,14 +1,15 @@
 import { Container, Text } from 'pixi.js';
 import { UIComponent } from './UIComponent';
 import { createBackdrop, createButton, createPanelBox } from './overlay';
-import { THEME } from './theme';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface ConfirmDialogOptions {
   width: number;
   height: number;
   fontSize?: number;
   titleFontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   boxWidth?: number;
   boxHeight?: number;
   buttonWidth?: number;
@@ -16,6 +17,7 @@ export interface ConfirmDialogOptions {
   panelColor?: number;
   textColor?: number;
   titleColor?: number;
+  theme?: DeepPartial<UITheme>;
 }
 
 export interface ConfirmRequest {
@@ -30,18 +32,19 @@ interface ResolvedOptions {
   height: number;
   fontSize: number;
   titleFontSize: number;
-  fontFamily: string;
+  fontFamily: string | string[];
   boxWidth: number;
   boxHeight: number;
   buttonWidth: number;
   buttonHeight: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
   titleColor: number;
 }
 
 export class ConfirmDialog extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
   private readonly title: Text;
   private readonly message: Text;
   private readonly buttonArea: Container;
@@ -50,42 +53,53 @@ export class ConfirmDialog extends UIComponent {
 
   constructor(options: ConfirmDialogOptions) {
     super({ id: 'confirm-dialog' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
-      fontSize: options.fontSize ?? 24,
-      titleFontSize: options.titleFontSize ?? 28,
-      fontFamily: options.fontFamily ?? THEME.fontFamily,
-      boxWidth: options.boxWidth ?? Math.min(options.width * 0.6, 560),
-      boxHeight: options.boxHeight ?? 230,
-      buttonWidth: options.buttonWidth ?? 132,
-      buttonHeight: options.buttonHeight ?? 46,
-      panelColor: options.panelColor ?? THEME.panel,
-      textColor: options.textColor ?? THEME.text,
-      titleColor: options.titleColor ?? THEME.accent,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.lg,
+      titleFontSize: options.titleFontSize ?? this.theme.typography.sizes.xxl,
+      fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
+      boxWidth:
+        options.boxWidth ??
+        Math.min(
+          options.width * this.theme.sizes.confirmWidthRatio,
+          this.theme.sizes.confirmMaxWidth,
+        ),
+      boxHeight: options.boxHeight ?? this.theme.sizes.confirmHeight,
+      buttonWidth: options.buttonWidth ?? this.theme.sizes.closeButtonWidth,
+      buttonHeight: options.buttonHeight ?? this.theme.sizes.closeButtonHeight,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
+      titleColor: options.titleColor ?? this.theme.colors.accent,
     };
 
-    this.addChild(createBackdrop(this.opts.width, this.opts.height));
+    this.addChild(
+      createBackdrop(this.opts.width, this.opts.height, {
+        theme: this.theme,
+      }),
+    );
 
+    const padding = this.theme.spacing.s24;
     const boxX = (this.opts.width - this.opts.boxWidth) / 2;
     const boxY = (this.opts.height - this.opts.boxHeight) / 2;
     const box = createPanelBox(this.opts.boxWidth, this.opts.boxHeight, {
+      theme: this.theme,
       color: this.opts.panelColor,
     });
     box.x = boxX;
     box.y = boxY;
     this.addChild(box);
 
-    const padding = 24;
     const contentWidth = this.opts.boxWidth - padding * 2;
 
     this.title = new Text({
       text: '',
       style: {
+        fontFamily: this.theme.typography.fontFamilyHeading,
         fontSize: this.opts.titleFontSize,
-        fontFamily: this.opts.fontFamily,
+        fontWeight: this.theme.typography.weights.semibold,
         fill: this.opts.titleColor,
-        fontWeight: 'bold',
       },
     });
     this.title.x = boxX + padding;
@@ -96,15 +110,18 @@ export class ConfirmDialog extends UIComponent {
     this.message = new Text({
       text: '',
       style: {
-        fontSize: this.opts.fontSize,
         fontFamily: this.opts.fontFamily,
+        fontSize: this.opts.fontSize,
         fill: this.opts.textColor,
         wordWrap: true,
         wordWrapWidth: contentWidth,
+        lineHeight: Math.round(
+          this.opts.fontSize * this.theme.typography.lineHeights.normal,
+        ),
       },
     });
     this.message.x = boxX + padding;
-    this.message.y = boxY + padding;
+    this.message.y = boxY + padding + this.opts.titleFontSize * 1.5;
     this.addChild(this.message);
 
     this.buttonArea = new Container();
@@ -127,10 +144,6 @@ export class ConfirmDialog extends UIComponent {
     this.title.text = request.title ?? '';
     this.title.visible = (request.title?.length ?? 0) > 0;
     this.message.text = request.message;
-    // 有标题时正文让出标题高度；无标题时不再留空档
-    this.message.y = this.title.visible
-      ? this.title.y + this.title.height + 14
-      : this.title.y;
     this.rebuildButtons(
       request.cancelText ?? '取消',
       request.confirmText ?? '确认',
@@ -155,7 +168,7 @@ export class ConfirmDialog extends UIComponent {
 
   private rebuildButtons(cancelText: string, confirmText: string): void {
     this.clearButtons();
-    const gap = 20;
+    const gap = this.theme.spacing.s16;
     const total = this.opts.buttonWidth * 2 + gap;
     const startX = (this.opts.width - total) / 2;
 
@@ -163,9 +176,11 @@ export class ConfirmDialog extends UIComponent {
       width: this.opts.buttonWidth,
       height: this.opts.buttonHeight,
       label: cancelText,
-      variant: 'ghost',
       fontSize: this.opts.fontSize,
       fontFamily: this.opts.fontFamily,
+      variant: 'secondary',
+      align: 'center',
+      theme: this.theme,
       onTap: () => this.settle(false),
     });
     cancel.x = startX;
@@ -176,9 +191,11 @@ export class ConfirmDialog extends UIComponent {
       width: this.opts.buttonWidth,
       height: this.opts.buttonHeight,
       label: confirmText,
-      variant: 'primary',
       fontSize: this.opts.fontSize,
       fontFamily: this.opts.fontFamily,
+      variant: 'primary',
+      align: 'center',
+      theme: this.theme,
       onTap: () => this.settle(true),
     });
     confirm.x = startX + this.opts.buttonWidth + gap;

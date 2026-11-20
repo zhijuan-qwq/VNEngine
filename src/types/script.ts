@@ -34,3 +34,6 @@ export interface CommandHandler {
   execute(ctx: ScriptContext, args: Record<string, unknown>): void;
   undo?(ctx: ScriptContext): void;
 }
+
+/** 脚本错误发生在哪个阶段；解析、加载、运行时的错误共用这套字段 */
+export type ScriptErrorPhase = 'parse' | 'load' | 'runtime';

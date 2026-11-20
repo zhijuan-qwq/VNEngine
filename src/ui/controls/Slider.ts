@@ -1,7 +1,8 @@
 import { Graphics, Rectangle } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
 import { UIComponent } from '../UIComponent';
-import { THEME } from '../theme';
+import { resolveTheme } from '../theme';
+import type { DeepPartial, UITheme } from '../theme';
 
 export interface SliderOptions {
   width: number;
@@ -14,6 +15,7 @@ export interface SliderOptions {
   trackColor?: number;
   fillColor?: number;
   handleColor?: number;
+  theme?: DeepPartial<UITheme>;
   onChange?: (value: number) => void;
 }
 
@@ -39,15 +41,16 @@ export class Slider extends UIComponent {
 
   constructor(options: SliderOptions) {
     super({ id: 'slider' });
+    const theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
-      height: options.height ?? 8,
+      height: options.height ?? theme.sizes.sliderHeight,
       min: options.min ?? 0,
       max: options.max ?? 1,
       step: options.step ?? 0,
-      trackColor: options.trackColor ?? THEME.panelSoft,
-      fillColor: options.fillColor ?? THEME.accent,
-      handleColor: options.handleColor ?? 0xffffff,
+      trackColor: options.trackColor ?? theme.colors.surfaceSunken,
+      fillColor: options.fillColor ?? theme.colors.accent,
+      handleColor: options.handleColor ?? theme.colors.textPrimary,
       onChange: options.onChange,
     };
     this.currentValue = this.normalize(
@@ -73,14 +76,11 @@ export class Slider extends UIComponent {
     this.addChild(this.handle);
 
     this.eventMode = 'static';
-    this.cursor = 'pointer';
-    // 命中区上下扩到 44px，便于点按
-    const hitHeight = 44;
     this.hitArea = new Rectangle(
       0,
-      -(hitHeight - this.opts.height) / 2,
+      -this.opts.height,
       this.opts.width,
-      hitHeight,
+      this.opts.height * 3,
     );
     this.on('pointerdown', (event: FederatedPointerEvent) => {
       this.handlePointerDown(this.localX(event));
@@ -175,7 +175,6 @@ export class Slider extends UIComponent {
     this.handle.clear();
     this.handle.circle(filled, this.opts.height / 2, radius);
     this.handle.fill(this.opts.handleColor, 1);
-    this.handle.stroke({ color: THEME.accent, width: 2, alpha: 0.9 });
   }
 }
 

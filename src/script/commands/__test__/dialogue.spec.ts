@@ -25,7 +25,11 @@ describe('dialogue commands', () => {
     it('should emit script:say and block on click', () => {
       const spy = listen('script:say');
       execute('say', { speaker: 'Hero', text: 'Hi' });
-      expect(spy).toHaveBeenCalledWith({ speaker: 'Hero', text: 'Hi' });
+      expect(spy).toHaveBeenCalledWith({
+        speaker: 'Hero',
+        text: 'Hi',
+        mode: 'adv',
+      });
       expect(env.wait.event).toBe('input:click');
     });
 
@@ -50,7 +54,11 @@ describe('dialogue commands', () => {
     it('should default speaker to empty string when missing', () => {
       const spy = listen('script:say');
       execute('say', { text: '......' });
-      expect(spy).toHaveBeenCalledWith({ speaker: '', text: '......' });
+      expect(spy).toHaveBeenCalledWith({
+        speaker: '',
+        text: '......',
+        mode: 'adv',
+      });
     });
 
     it('should reject @say without text', () => {
@@ -175,16 +183,16 @@ describe('dialogue commands', () => {
       }
     });
 
-    it('should treat a missing duration as zero', () => {
-      vi.useFakeTimers();
-      try {
-        const spy = listen('script:wait:done');
-        execute('wait', {});
-        vi.advanceTimersByTime(0);
-        expect(spy).toHaveBeenCalledWith({});
-      } finally {
-        vi.useRealTimers();
-      }
+    it('should reject a missing duration', () => {
+      expect(() => execute('wait', {})).toThrow(
+        '@wait requires a duration (e.g. 500ms).',
+      );
+    });
+
+    it('should reject a bare number duration without a unit', () => {
+      expect(() => execute('wait', { '0': 500 })).toThrow(
+        '@wait: unexpected argument 500.',
+      );
     });
 
     it('should pass a cleanup to the interpreter wait', () => {
@@ -228,6 +236,16 @@ describe('dialogue commands', () => {
       const spy = listen('script:clear');
       execute('clear', {});
       expect(spy).toHaveBeenCalledWith({});
+    });
+  });
+
+  describe('no-arg commands', () => {
+    it('should reject unexpected args on @pause / @click / @clear', () => {
+      for (const type of ['pause', 'click', 'clear']) {
+        expect(() => execute(type, { '0': 'x' })).toThrow(
+          `@${type}: unexpected argument "x".`,
+        );
+      }
     });
   });
 });

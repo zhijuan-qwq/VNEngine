@@ -62,7 +62,11 @@ class SaveManager implements ISaveManager {
     this.now = options.now ?? Date.now;
   }
 
-  public async capture(engine: VNEngine, slot: number): Promise<SaveData> {
+  public async capture(
+    engine: VNEngine,
+    slot: number,
+    thumbnail = '',
+  ): Promise<SaveData> {
     this.assertSlot(slot);
 
     const script = engine.script.getState();
@@ -93,7 +97,7 @@ class SaveManager implements ISaveManager {
     const data: SaveData = {
       version: SAVE_VERSION,
       timestamp: this.now(),
-      thumbnail: '',
+      thumbnail,
       slotLabel: label.slice(0, LABEL_MAX_LENGTH),
       gameState,
     };
@@ -158,6 +162,10 @@ class SaveManager implements ISaveManager {
           slot,
           label: data.slotLabel || undefined,
           timestamp: data.timestamp,
+          thumbnail:
+            typeof data.thumbnail === 'string' && data.thumbnail.length > 0
+              ? data.thumbnail
+              : undefined,
         });
       } catch {
         // 跳过损坏槽，避免一个坏档拖垮整个菜单

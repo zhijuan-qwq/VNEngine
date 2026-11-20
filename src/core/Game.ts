@@ -1,5 +1,6 @@
 import { Application } from 'pixi.js';
 import Renderer, { type RendererOptions } from '@/renderer/Renderer';
+import { captureThumbnail } from '@/renderer/thumbnail';
 import AudioManager from '@/audio/AudioManager';
 import ResourceManager from '@/resource/ResourceManager';
 import ScriptEngine from '@/script/ScriptEngine';
@@ -85,15 +86,24 @@ const defaultFactories: GameFactories = {
       width: config.width,
       height: config.height,
       autoTick: false,
+      theme: config.theme,
       resolveVar: (name) => engine.variableStore.get(name),
       // 设置菜单对契约编程：直接以 SettingsManager 作为 controller
       settingsMenu: { controller: engine.settings },
       // 存读档菜单对契约编程：槽位/回调延迟求值，读取时 engine.save 必已就位
       saveLoadMenu: {
         getSlots: () => engine.save.list(),
-        onSave: (slot) => engine.saveGame(slot),
+        onSave: (slot, thumbnail) => engine.saveGame(slot, thumbnail),
         onLoad: (slot) => engine.loadGame(slot),
       },
+      // 打开存档页前由 UIManager 调用；失败时返回空串，卡片降级为无图
+      captureThumbnail: () =>
+        captureThumbnail(
+          engine.app,
+          engine.renderer.getSceneRoot(),
+          config.width,
+          config.height,
+        ),
     }),
   createSave: () => new SaveManager({ storage: new LocalStorageProvider() }),
   createSettings: (engine) =>
@@ -276,9 +286,9 @@ class Game {
     this.script.load(id, script);
   }
 
-  public async saveSlot(slot: number): Promise<void> {
+  public async saveSlot(slot: number, thumbnail?: string): Promise<void> {
     const saveManager = this.requireSaveManager();
-    await saveManager.capture(this.engine, slot);
+    await saveManager.capture(this.engine, slot, thumbnail);
     this.eventBus.emit('game:save', { slot });
   }
 
@@ -297,9 +307,9 @@ class Game {
   }
 
   /** VNEngine 门面：同步签名，内部转发到异步 saveSlot */
-  public saveGame(slot: number): void {
+  public saveGame(slot: number, thumbnail?: string): void {
     this.requireSaveManager();
-    void this.saveSlot(slot).catch((error: unknown) => {
+    void this.saveSlot(slot, thumbnail).catch((error: unknown) => {
       console.error('[VNEngine] save failed', error);
     });
   }

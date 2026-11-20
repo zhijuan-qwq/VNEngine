@@ -1,6 +1,7 @@
 import { Graphics, Rectangle } from 'pixi.js';
 import { UIComponent } from '../UIComponent';
-import { THEME } from '../theme';
+import { resolveTheme } from '../theme';
+import type { DeepPartial, UITheme } from '../theme';
 
 export interface ToggleOptions {
   width: number;
@@ -10,6 +11,7 @@ export interface ToggleOptions {
   onColor?: number;
   offColor?: number;
   knobColor?: number;
+  theme?: DeepPartial<UITheme>;
   onChange?: (value: boolean) => void;
 }
 
@@ -31,13 +33,14 @@ export class Toggle extends UIComponent {
 
   constructor(options: ToggleOptions) {
     super({ id: 'toggle' });
+    const theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
-      height: options.height ?? 32,
+      height: options.height ?? theme.sizes.toggleHeight,
       disabled: options.disabled ?? false,
-      onColor: options.onColor ?? THEME.accent,
-      offColor: options.offColor ?? THEME.panelSoft,
-      knobColor: options.knobColor ?? 0xffffff,
+      onColor: options.onColor ?? theme.colors.success,
+      offColor: options.offColor ?? theme.colors.neutral600,
+      knobColor: options.knobColor ?? theme.colors.textPrimary,
       onChange: options.onChange,
     };
     this.currentValue = options.value ?? false;
@@ -49,7 +52,6 @@ export class Toggle extends UIComponent {
     this.addChild(this.knob);
 
     this.eventMode = 'static';
-    this.cursor = 'pointer';
     this.hitArea = new Rectangle(0, 0, this.opts.width, this.opts.height);
     this.on('pointertap', (event) => {
       event.stopPropagation();

@@ -23,7 +23,7 @@ export default tseslint.config(
   },
   {
     // 构建辅助脚本运行在 Node 环境
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'tools/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node,

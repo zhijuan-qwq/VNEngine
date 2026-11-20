@@ -1,11 +1,12 @@
-import { Text } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
 import type { Settings } from '@/types/engine';
 import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
+import { PagePanel } from './PagePanel';
 import { Slider } from './controls/Slider';
 import { Toggle } from './controls/Toggle';
 import { UIComponent } from './UIComponent';
-import { createFullscreenPanel, createPanelHeader } from './overlay';
-import { THEME } from './theme';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface SettingsController {
   get(): Settings;
@@ -21,6 +22,9 @@ export interface SettingsMenuOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  /** 点击右下角返回；缺省隐藏自身 */
+  onClose?: () => void;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -30,100 +34,113 @@ interface ResolvedOptions {
   title: string;
   fontSize: number;
   padding: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
 }
 
-const ROW_HEIGHT = 66;
-const LABEL_WIDTH = 180;
-/** 整页设置项内容列的最大宽度（全屏界面下避免行被拉得过宽） */
-const COLUMN_MAX_WIDTH = 880;
-const PAGE_TOP = 28;
-
 export class SettingsMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
+  private readonly page: PagePanel;
   private readonly sliders: Record<string, Slider> = {};
   private readonly toggles: Record<string, Toggle> = {};
   private syncing = false;
 
   constructor(options: SettingsMenuOptions) {
     super({ id: 'settings-menu' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
       controller: options.controller,
       title: options.title ?? '设置',
-      fontSize: options.fontSize ?? 22,
-      padding: options.padding ?? 48,
-      panelColor: options.panelColor ?? THEME.panel,
-      textColor: options.textColor ?? THEME.text,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
+      padding: options.padding ?? this.theme.spacing.s24,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textSecondary,
     };
 
-    // 独占全屏：整页底色即界面，不透出底下画面
-    this.addChild(
-      createFullscreenPanel(this.opts.width, this.opts.height, {
-        color: this.opts.panelColor,
-      }),
-    );
-
-    const padding = this.opts.padding;
-    const pageWidth = this.opts.width - padding * 2;
-    const header = createPanelHeader({
+    this.page = new PagePanel({
+      width: this.opts.width,
+      height: this.opts.height,
       title: this.opts.title,
-      width: pageWidth,
-      onClose: () => this.hide(),
+      padding: this.opts.padding,
+      panelColor: this.opts.panelColor,
+      onBack: this.hideOnClose(options.onClose),
+      theme: this.theme,
     });
-    header.root.x = padding;
-    header.root.y = PAGE_TOP;
-    this.addChild(header.root);
+    this.addChild(this.page);
 
-    const columnWidth = Math.min(pageWidth, COLUMN_MAX_WIDTH);
-    const columnX = (this.opts.width - columnWidth) / 2;
-    const sliderWidth = columnWidth - LABEL_WIDTH - 24;
-    let y = PAGE_TOP + header.height + 28;
+    const columnGap = this.theme.spacing.s48;
+    const columnWidth = (this.page.contentWidth - columnGap) / 2;
+    const audio = new Container();
+    const display = new Container();
+    display.x = columnWidth + columnGap;
+    this.page.content.addChild(audio, display);
+
+    const audioHeading = this.addHeading('音频', audio);
+    const displayHeading = this.addHeading('文字与显示', display);
+
+    const labelWidth = this.theme.sizes.labelWidth;
+    const rowHeight = this.theme.sizes.rowHeight;
+    const sliderWidth = columnWidth - labelWidth;
+    const headingGap = this.theme.spacing.s16;
+    let audioY = audioHeading.height + headingGap;
+    let displayY = displayHeading.height + headingGap;
 
     const addSlider = (
+      parent: Container,
       key: keyof Settings,
       label: string,
       min: number,
       max: number,
       step: number,
-    ): void => {
-      this.addRowLabel(label, columnX, y);
+      y: number,
+    ): number => {
+      this.addLabel(parent, label, y);
       const slider = new Slider({
         width: sliderWidth,
         min,
         max,
         step,
+        theme: this.theme,
         onChange: (value) => this.patch({ [key]: value }),
       });
-      slider.x = columnX + LABEL_WIDTH;
-      slider.y = y + (ROW_HEIGHT - slider.height) / 2;
+      slider.x = labelWidth;
+      // 控件在行高内垂直居中
+      slider.y = y + (rowHeight - this.theme.sizes.sliderHeight) / 2;
       this.sliders[key] = slider;
-      this.addChild(slider);
-      y += ROW_HEIGHT;
+      parent.addChild(slider);
+      return y + rowHeight;
     };
 
-    const addToggle = (key: keyof Settings, label: string): void => {
-      this.addRowLabel(label, columnX, y);
+    const addToggle = (
+      parent: Container,
+      key: keyof Settings,
+      label: string,
+      y: number,
+    ): number => {
+      this.addLabel(parent, label, y);
       const toggle = new Toggle({
-        width: 60,
+        width: this.theme.sizes.toggleWidth,
+        theme: this.theme,
         onChange: (value) => this.togglePatch(key, value),
       });
-      toggle.x = columnX + LABEL_WIDTH;
-      toggle.y = y + (ROW_HEIGHT - toggle.height) / 2;
+      toggle.x = labelWidth;
+      toggle.y = y + (rowHeight - this.theme.sizes.toggleHeight) / 2;
       this.toggles[key] = toggle;
-      this.addChild(toggle);
-      y += ROW_HEIGHT;
+      parent.addChild(toggle);
+      return y + rowHeight;
     };
 
-    addSlider('masterVolume', '主音量', 0, 1, 0.01);
-    addSlider('bgmVolume', '背景音乐', 0, 1, 0.01);
-    addSlider('seVolume', '音效', 0, 1, 0.01);
-    addSlider('voiceVolume', '语音', 0, 1, 0.01);
-    addSlider('textSpeed', '文字速度', 5, 100, 5);
-    addToggle('skipMode', '跳过已读');
-    addToggle('fullscreen', '全屏');
+    audioY = addSlider(audio, 'masterVolume', '主音量', 0, 1, 0.01, audioY);
+    audioY = addSlider(audio, 'bgmVolume', '背景音乐', 0, 1, 0.01, audioY);
+    audioY = addSlider(audio, 'seVolume', '音效', 0, 1, 0.01, audioY);
+    addSlider(audio, 'voiceVolume', '语音', 0, 1, 0.01, audioY);
+
+    displayY = addSlider(display, 'textSpeed', '文字速度', 5, 100, 5, displayY);
+    displayY = addToggle(display, 'skipMode', '跳过已读', displayY);
+    addToggle(display, 'fullscreen', '全屏', displayY);
 
     this.hide();
   }
@@ -150,18 +167,32 @@ export class SettingsMenu extends UIComponent {
     return this.toggles[key];
   }
 
-  private addRowLabel(text: string, x: number, y: number): void {
+  private addHeading(text: string, parent: Container): Text {
+    const heading = new Text({
+      text,
+      style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
+        fontSize: this.theme.typography.sizes.lg,
+        fontWeight: this.theme.typography.weights.semibold,
+        fill: this.theme.colors.accent,
+      },
+    });
+    parent.addChild(heading);
+    return heading;
+  }
+
+  private addLabel(parent: Container, text: string, y: number): void {
     const label = new Text({
       text,
       style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
         fontSize: this.opts.fontSize,
-        fontFamily: THEME.fontFamily,
         fill: this.opts.textColor,
       },
     });
-    label.x = x;
-    label.y = y + (ROW_HEIGHT - label.height) / 2;
-    this.addChild(label);
+    label.x = 0;
+    label.y = y + this.theme.spacing.s12;
+    parent.addChild(label);
   }
 
   private togglePatch(key: keyof Settings, value: boolean): void {

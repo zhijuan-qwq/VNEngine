@@ -1,9 +1,11 @@
-import { Text } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
 import type { DialogueEntry } from '@/types/engine';
+import { PagePanel } from './PagePanel';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
-import { createFullscreenPanel, createPanelHeader } from './overlay';
-import { THEME } from './theme';
+import { createPanelBox } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 import { parseRichText } from './richtext';
 
 export interface HistoryViewOptions {
@@ -16,6 +18,9 @@ export interface HistoryViewOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  /** 点击右下角返回；缺省隐藏自身 */
+  onClose?: () => void;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -26,69 +31,63 @@ interface ResolvedOptions {
   fontSize: number;
   lineHeight: number;
   padding: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
 }
 
-/** 每条记录两行式：金色说话人小字 + 暖白正文 */
-interface HistoryRow {
-  speaker: Text | null;
-  body: Text;
+interface HistoryCard {
+  node: Container;
+  height: number;
+  /** 角色名与台词拼成的一行，供测试/调试读取 */
+  text: string;
 }
-
-const ENTRY_GAP = 18;
-/** 整页文本列的最大宽度（全屏界面下保证长行可读） */
-const TEXT_MAX_WIDTH = 1040;
-const PAGE_TOP = 28;
 
 export class HistoryView extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
+  private readonly page: PagePanel;
   private readonly scroll: ScrollView;
   private readonly scrollWidth: number;
-  private rows: HistoryRow[] = [];
+  private readonly historyCards: HistoryCard[] = [];
 
   constructor(options: HistoryViewOptions) {
     super({ id: 'history-view' });
+    this.theme = resolveTheme(options.theme);
+    const fontSize = options.fontSize ?? this.theme.typography.sizes.lg;
     this.opts = {
       width: options.width,
       height: options.height,
       getEntries: options.getEntries,
       title: options.title ?? '对话历史',
-      fontSize: options.fontSize ?? 22,
-      lineHeight: options.lineHeight ?? 34,
-      padding: options.padding ?? 48,
-      panelColor: options.panelColor ?? THEME.panel,
-      textColor: options.textColor ?? THEME.text,
+      fontSize,
+      lineHeight:
+        options.lineHeight ??
+        Math.round(fontSize * this.theme.typography.lineHeights.relaxed),
+      padding: options.padding ?? this.theme.spacing.s24,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
     };
 
-    // 独占全屏：整页底色即界面，不透出底下画面
-    this.addChild(
-      createFullscreenPanel(this.opts.width, this.opts.height, {
-        color: this.opts.panelColor,
-      }),
-    );
-
-    const padding = this.opts.padding;
-    const pageWidth = this.opts.width - padding * 2;
-    const header = createPanelHeader({
+    this.page = new PagePanel({
+      width: this.opts.width,
+      height: this.opts.height,
       title: this.opts.title,
-      width: pageWidth,
-      onClose: () => this.hide(),
+      padding: this.opts.padding,
+      panelColor: this.opts.panelColor,
+      onBack: this.hideOnClose(options.onClose),
+      theme: this.theme,
     });
-    header.root.x = padding;
-    header.root.y = PAGE_TOP;
-    this.addChild(header.root);
+    this.addChild(this.page);
 
-    const scrollTop = PAGE_TOP + header.height + 20;
-    const scrollHeight = this.opts.height - scrollTop - padding;
-    this.scrollWidth = Math.min(pageWidth, TEXT_MAX_WIDTH);
+    this.scrollWidth = this.page.contentWidth;
     this.scroll = new ScrollView({
-      width: pageWidth,
-      height: scrollHeight,
+      width: this.scrollWidth,
+      height: this.page.contentHeight,
+      step: this.theme.sizes.scrollStep,
     });
-    this.scroll.x = padding;
-    this.scroll.y = scrollTop;
-    this.addChild(this.scroll);
+    this.scroll.x = 0;
+    this.scroll.y = 0;
+    this.page.content.addChild(this.scroll);
 
     this.hide();
   }
@@ -100,94 +99,101 @@ export class HistoryView extends UIComponent {
 
   private rebuild(): void {
     const entries = this.opts.getEntries?.() ?? [];
-    this.clearRows();
+    this.clearCards();
 
     if (entries.length === 0) {
-      this.addRow(null, '（暂无对话记录）');
+      this.addCard('', '（暂无对话记录）', this.theme.colors.textMuted);
     } else {
       for (const entry of entries) {
-        // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记
-        this.addRow(
-          entry.speaker.length > 0 ? entry.speaker : null,
-          parseRichText(entry.text).plain,
-        );
+        // 记录里存的是原始文本，历史视图走与对话框同一套解析，剥掉富文本标记；
+        // 非法富文本不应阻止历史面板打开，此时退回原始文本
+        let plain: string;
+        try {
+          plain = parseRichText(entry.text).plain;
+        } catch {
+          plain = entry.text;
+        }
+        this.addCard(entry.speaker, plain, this.opts.textColor);
       }
     }
 
-    let total = 0;
-    for (const row of this.rows) {
-      total +=
-        (row.speaker ? row.speaker.height + 6 : 0) +
-        row.body.height +
-        ENTRY_GAP;
-    }
+    const total = this.historyCards.reduce(
+      (sum, card) => sum + card.height + this.theme.spacing.s8,
+      0,
+    );
     this.scroll.setContentHeight(total);
     this.scroll.setScroll(this.scroll.maxScroll);
   }
 
-  private addRow(speaker: string | null, body: string): void {
-    let y = 0;
-    for (const row of this.rows) {
-      y +=
-        (row.speaker ? row.speaker.height + 6 : 0) +
-        row.body.height +
-        ENTRY_GAP;
-    }
+  private addCard(speaker: string, text: string, color: number): void {
+    const width = this.scrollWidth;
+    const pad = this.theme.spacing.s16;
+    const card = new Container();
 
-    let speakerText: Text | null = null;
-    if (speaker) {
-      speakerText = new Text({
-        text: speaker,
-        style: {
-          fontSize: 20,
-          fontFamily: THEME.fontFamily,
-          fill: THEME.accent,
-          fontWeight: 'bold',
-        },
-      });
-      speakerText.x = 0;
-      speakerText.y = y;
-      this.scroll.content.addChild(speakerText);
-    }
-
-    const bodyText = new Text({
-      text: body,
+    const body = new Text({
+      text,
       style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
         fontSize: this.opts.fontSize,
-        fontFamily: THEME.fontFamily,
-        fill: this.opts.textColor,
+        fill: color,
         wordWrap: true,
-        wordWrapWidth: Math.max(this.scrollWidth, 1),
+        wordWrapWidth: Math.max(width - pad * 2, 1),
         lineHeight: this.opts.lineHeight,
       },
     });
-    bodyText.x = 0;
-    bodyText.y = y + (speakerText ? speakerText.height + 6 : 0);
-    this.scroll.content.addChild(bodyText);
 
-    this.rows.push({ speaker: speakerText, body: bodyText });
+    let y = pad;
+    let rowText = text;
+    if (speaker.length > 0) {
+      const speakerText = new Text({
+        text: speaker,
+        style: {
+          fontFamily: this.theme.typography.fontFamilyBody,
+          fontSize: this.theme.typography.sizes.md,
+          fontWeight: this.theme.typography.weights.semibold,
+          fill: this.theme.colors.accent,
+        },
+      });
+      speakerText.x = pad;
+      speakerText.y = y;
+      card.addChild(speakerText);
+      y += speakerText.height + this.theme.spacing.s8;
+      rowText = `${speaker}：${text}`;
+    }
+
+    body.x = pad;
+    body.y = y;
+    const height = y + body.height + pad;
+
+    const bg = createPanelBox(width, height, {
+      theme: this.theme,
+      alpha: 0.72,
+    });
+    card.addChildAt(bg, 0);
+    card.addChild(body);
+    card.y = this.historyCards.reduce(
+      (sum, item) => sum + item.height + this.theme.spacing.s8,
+      0,
+    );
+
+    this.historyCards.push({ node: card, height, text: rowText });
+    this.scroll.content.addChild(card);
   }
 
-  private clearRows(): void {
-    for (const row of this.rows) {
-      row.speaker?.destroy();
-      row.body.destroy();
+  private clearCards(): void {
+    for (const card of this.historyCards) {
+      card.node.destroy();
     }
-    this.rows = [];
+    this.historyCards.length = 0;
   }
 
   get rowCount(): number {
-    return this.rows.length;
+    return this.historyCards.length;
   }
 
-  /** 测试/调试用：当前渲染的正文文本 */
+  /** 测试/调试用：当前渲染的文本行 */
   get rowTexts(): string[] {
-    return this.rows.map((row) => row.body.text);
-  }
-
-  /** 测试/调试用：与 rowTexts 对齐的说话人名（无名人配 null） */
-  get rowSpeakers(): (string | null)[] {
-    return this.rows.map((row) => (row.speaker ? row.speaker.text : null));
+    return this.historyCards.map((card) => card.text);
   }
 }
 

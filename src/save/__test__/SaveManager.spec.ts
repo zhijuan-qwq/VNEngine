@@ -360,6 +360,24 @@ describe('SaveManager', () => {
         timestamp: 999,
       });
     });
+
+    it('should round-trip the thumbnail through capture', async () => {
+      const h = makeHarness();
+      await h.manager.capture(h.engine, 0, 'data:image/jpeg;base64,thumb');
+
+      const info = h.manager.list().find((entry) => entry.slot === 0);
+
+      expect(info?.thumbnail).toBe('data:image/jpeg;base64,thumb');
+    });
+
+    it('should omit an empty thumbnail from slot metadata', async () => {
+      const h = makeHarness();
+      await h.manager.capture(h.engine, 0);
+
+      const info = h.manager.list().find((entry) => entry.slot === 0);
+
+      expect(info?.thumbnail).toBeUndefined();
+    });
   });
 });
 

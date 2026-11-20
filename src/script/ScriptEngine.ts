@@ -4,6 +4,7 @@ import VariableStore from './VariableStore';
 import Interpreter, { FLOW_COMMANDS, assertValidStartPc } from './Interpreter';
 import CommandRegistry from './CommandRegistry';
 import { registerBuiltinCommands } from './commands';
+import { VNScriptError } from './errors';
 
 class ScriptEngine {
   public readonly commandRegistry: CommandRegistry;
@@ -32,9 +33,15 @@ class ScriptEngine {
         !FLOW_COMMANDS.has(command.type) &&
         !this.commandRegistry.has(command.type)
       ) {
-        throw new Error(
+        throw new VNScriptError(
           `Unknown command "@${command.type}" in script "${id}" ` +
             `at line ${command.line}.`,
+          {
+            phase: 'load',
+            script: id,
+            line: command.line,
+            command: command.type,
+          },
         );
       }
     }

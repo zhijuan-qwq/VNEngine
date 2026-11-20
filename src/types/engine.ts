@@ -7,8 +7,9 @@ import type { IResourceManager } from './resource';
 import type { ISaveManager } from './save';
 import type { UIManager } from '@/ui/UIManager';
 import type { SettingsManager } from '@/settings/SettingsManager';
+import type { DeepPartial, UITheme } from '@/ui/theme';
 
-/** 立绘位置关键字（`doc/script-dsl.md` §5.3 的 PositionSpec） */
+/** 立绘位置关键字（见 `doc/dsl/language.md` 的「保留值」） */
 export type PositionKeyword =
   'farLeft' | 'left' | 'center' | 'right' | 'farRight' | 'offLeft' | 'offRight';
 
@@ -27,6 +28,8 @@ export interface GameConfig {
   scripts: string[];
   assets: AssetManifest;
   plugins?: Plugin[];
+  /** 可选 UI 主题覆盖；未传时使用内置暖调暗色主题 */
+  theme?: DeepPartial<UITheme>;
 }
 
 export interface AssetManifest {
@@ -126,6 +129,8 @@ export interface IRenderer {
   resize(size: { width: number; height: number }): void;
   /** UI 层容器，供 §8 的 UI 子系统挂载（Renderer 预建，可能为 null） */
   getUILayer(): Container | null;
+  /** 场景根容器（bg/chara/effect/ui 图层的父级），供截图等整体操作 */
+  getSceneRoot(): Container;
   /** 屏幕坐标 → 逻辑坐标，供输入层复用渲染的同一换算（见架构文档 §4.8） */
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
@@ -169,6 +174,6 @@ export interface VNEngine {
   destroy(): void;
   pause(): void;
   resume(): void;
-  saveGame(slot: number): void;
+  saveGame(slot: number, thumbnail?: string): void;
   loadGame(slot: number): void;
 }

@@ -1,17 +1,13 @@
-import { Container, Graphics, Rectangle, Text } from 'pixi.js';
-import type { FederatedPointerEvent } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import type { DestroyOptions, FederatedPointerEvent } from 'pixi.js';
+import { PagePanel } from './PagePanel';
 import { ScrollView } from './controls/ScrollView';
 import { UIComponent } from './UIComponent';
-import { createFullscreenPanel, createPanelHeader } from './overlay';
-import { THEME } from './theme';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
+import type { SaveSlotInfo } from '@/types/save';
 
 export type SaveLoadMode = 'save' | 'load';
-
-export interface SaveSlotInfo {
-  slot: number;
-  label?: string;
-  timestamp?: number;
-}
 
 export interface SaveLoadMenuOptions {
   width: number;
@@ -20,13 +16,18 @@ export interface SaveLoadMenuOptions {
   slots?: number[];
   /** 槽位元数据提供方；缺省时由 slots 生成空槽 */
   getSlots?: () => readonly SaveSlotInfo[];
-  onSave?: (slot: number) => void;
+  /** thumbnail 由 UIManager 包装回调时注入，菜单自身只传槽位 */
+  onSave?: (slot: number, thumbnail?: string) => void;
   onLoad?: (slot: number) => void;
+  /** 点击右下角返回；缺省隐藏自身 */
+  onClose?: () => void;
+  /** 固定列数；缺省按内容宽度自适应 */
   columns?: number;
   fontSize?: number;
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -34,29 +35,38 @@ interface ResolvedOptions {
   height: number;
   slots: number[];
   getSlots?: () => readonly SaveSlotInfo[];
-  onSave?: (slot: number) => void;
+  /** thumbnail 由 UIManager 包装回调时注入，菜单自身只传槽位 */
+  onSave?: (slot: number, thumbnail?: string) => void;
   onLoad?: (slot: number) => void;
-  columns: number;
+  columns?: number;
   fontSize: number;
   padding: number;
-  panelColor: number;
+  panelColor?: number;
   textColor: number;
 }
 
-const BUTTON_HEIGHT = 88;
-const GAP = 16;
-const PAGE_TOP = 28;
+const CARD_ASPECT = 9 / 16;
+
+interface SlotCard {
+  node: Container;
+  /** 已存槽位的时间文案；空槽为 undefined */
+  time?: string;
+}
 
 export class SaveLoadMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
+  private readonly page: PagePanel;
   private readonly scroll: ScrollView;
   private readonly contentWidth: number;
-  private readonly headerTitle: Text;
-  private slotButtons: Container[] = [];
+  private slotCards: SlotCard[] = [];
+  private readonly thumbnailImages = new Map<string, HTMLImageElement>();
+  private readonly thumbnailTextures = new Map<string, Texture>();
   private currentMode: SaveLoadMode = 'load';
 
   constructor(options: SaveLoadMenuOptions) {
     super({ id: 'save-load-menu' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height,
@@ -64,42 +74,33 @@ export class SaveLoadMenu extends UIComponent {
       getSlots: options.getSlots,
       onSave: options.onSave,
       onLoad: options.onLoad,
-      columns: Math.max(options.columns ?? 4, 1),
-      fontSize: options.fontSize ?? 22,
-      padding: options.padding ?? 48,
-      panelColor: options.panelColor ?? THEME.panel,
-      textColor: options.textColor ?? THEME.text,
+      columns: options.columns,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
+      padding: options.padding ?? this.theme.spacing.s24,
+      panelColor: options.panelColor,
+      textColor: options.textColor ?? this.theme.colors.textPrimary,
     };
 
-    // 独占全屏：整页底色即界面，不透出底下画面
-    this.addChild(
-      createFullscreenPanel(this.opts.width, this.opts.height, {
-        color: this.opts.panelColor,
-      }),
-    );
-
-    const padding = this.opts.padding;
-    const contentWidth = this.opts.width - padding * 2;
-    this.contentWidth = contentWidth;
-    const header = createPanelHeader({
-      title: '',
-      width: contentWidth,
-      onClose: () => this.hide(),
+    this.page = new PagePanel({
+      width: this.opts.width,
+      height: this.opts.height,
+      title: '读取进度',
+      padding: this.opts.padding,
+      panelColor: this.opts.panelColor,
+      onBack: this.hideOnClose(options.onClose),
+      theme: this.theme,
     });
-    header.root.x = padding;
-    header.root.y = PAGE_TOP;
-    this.addChild(header.root);
-    this.headerTitle = header.title;
+    this.addChild(this.page);
 
-    const scrollTop = PAGE_TOP + header.height + 20;
-    const scrollHeight = this.opts.height - scrollTop - padding;
+    this.contentWidth = this.page.contentWidth;
     this.scroll = new ScrollView({
-      width: contentWidth,
-      height: scrollHeight,
+      width: this.contentWidth,
+      height: this.page.contentHeight,
+      step: this.theme.sizes.scrollStep,
     });
-    this.scroll.x = padding;
-    this.scroll.y = scrollTop;
-    this.addChild(this.scroll);
+    this.scroll.x = 0;
+    this.scroll.y = 0;
+    this.page.content.addChild(this.scroll);
 
     this.hide();
   }
@@ -111,33 +112,48 @@ export class SaveLoadMenu extends UIComponent {
   /** 打开菜单；未知模式按 'load' 处理 */
   public show(mode: SaveLoadMode): void {
     this.currentMode = mode === 'save' ? 'save' : 'load';
-    this.headerTitle.text =
-      this.currentMode === 'save' ? '保存进度' : '读取进度';
+    this.page.setTitle(this.currentMode === 'save' ? '保存进度' : '读取进度');
     this.rebuild();
     super.show();
   }
 
+  /** 存档写入完成后刷新卡片（缩略图/时间） */
+  public refresh(): void {
+    if (this.visible) {
+      this.rebuild();
+    }
+  }
+
   public override hide(): void {
-    this.clearButtons();
+    this.clearCards();
     super.hide();
   }
 
+  /** 测试/调试用：当前槽位卡片；返回新数组，避免调用方改动内部记录 */
   get buttons(): Container[] {
-    return this.slotButtons;
+    return this.slotCards.map((card) => card.node);
+  }
+
+  /** 测试/调试用：当前渲染的时间标签 */
+  get times(): string[] {
+    return this.slotCards.flatMap((card) =>
+      card.time === undefined ? [] : [card.time],
+    );
   }
 
   private rebuild(): void {
-    this.clearButtons();
-    const slots =
+    this.clearCards();
+    const slots: readonly SaveSlotInfo[] =
       this.opts.getSlots?.() ?? this.opts.slots.map((slot) => ({ slot }));
+    this.pruneThumbnailCache(slots);
 
     if (slots.length === 0) {
       const empty = new Text({
         text: '（无可用存档槽）',
         style: {
+          fontFamily: this.theme.typography.fontFamilyBody,
           fontSize: this.opts.fontSize,
-          fontFamily: THEME.fontFamily,
-          fill: this.opts.textColor,
+          fill: this.theme.colors.textMuted,
         },
       });
       this.scroll.content.addChild(empty);
@@ -145,129 +161,233 @@ export class SaveLoadMenu extends UIComponent {
       return;
     }
 
-    const columns = Math.min(this.opts.columns, slots.length);
-    const cellWidth = (this.contentWidth - GAP * (columns - 1)) / columns;
+    const gap = this.theme.sizes.slotGap;
+    const columns = this.columnCount(slots.length);
+    const cellWidth = (this.contentWidth - gap * (columns - 1)) / columns;
+    const imageHeight = Math.round(cellWidth * CARD_ASPECT);
+    const timeGap = this.theme.spacing.s8;
+    const timeHeight = this.measureTimeHeight();
+    const cellHeight = imageHeight + timeGap + timeHeight;
     for (let index = 0; index < slots.length; index += 1) {
       const info = slots[index];
-      const button = this.createSlotButton(info, cellWidth);
-      button.x = (index % columns) * (cellWidth + GAP);
-      button.y = Math.floor(index / columns) * (BUTTON_HEIGHT + GAP);
-      this.slotButtons.push(button);
-      this.scroll.content.addChild(button);
+      // 读档模式下空槽不可用：没有存档可恢复，点了只会触发一次注定失败的读取
+      const disabled =
+        this.currentMode === 'load' && info.timestamp === undefined;
+      const time =
+        info.timestamp === undefined
+          ? undefined
+          : this.formatTime(info.timestamp);
+      const card = this.buildCard(
+        info,
+        cellWidth,
+        imageHeight,
+        timeGap,
+        timeHeight,
+        time,
+        disabled,
+      );
+      card.x = (index % columns) * (cellWidth + gap);
+      card.y = Math.floor(index / columns) * (cellHeight + gap);
+      this.slotCards.push({ node: card, time });
+      this.scroll.content.addChild(card);
     }
 
     const rows = Math.ceil(slots.length / columns);
-    this.scroll.setContentHeight(rows * (BUTTON_HEIGHT + GAP));
+    this.scroll.setContentHeight(rows * (cellHeight + gap));
   }
 
-  /** 槽位卡：首行「存档 N + 时间」，次行摘要；读档模式下空槽禁用 */
-  private createSlotButton(info: SaveSlotInfo, cellWidth: number): Container {
-    const button = new Container();
-    button.eventMode = 'static';
-    button.hitArea = new Rectangle(0, 0, cellWidth, BUTTON_HEIGHT);
+  private columnCount(count: number): number {
+    if (this.opts.columns !== undefined) {
+      return Math.max(1, Math.min(this.opts.columns, count));
+    }
+    const gap = this.theme.sizes.slotGap;
+    const min = this.theme.sizes.slotMinWidth;
+    return Math.max(
+      1,
+      Math.min(count, Math.floor((this.contentWidth + gap) / (min + gap))),
+    );
+  }
 
-    const occupied = info.timestamp !== undefined;
-    // BUG-006：读档模式下空槽不可点，避免触发一次注定失败的恢复
-    const disabled = this.currentMode === 'load' && !occupied;
+  private buildCard(
+    info: SaveSlotInfo,
+    width: number,
+    imageHeight: number,
+    timeGap: number,
+    timeHeight: number,
+    time: string | undefined,
+    disabled: boolean,
+  ): Container {
+    const card = new Container();
+    card.eventMode = 'static';
+    card.hitArea = new Rectangle(
+      0,
+      0,
+      width,
+      imageHeight + timeGap + timeHeight,
+    );
 
     const bg = new Graphics();
-    const drawBg = (hover: boolean): void => {
-      bg.clear();
-      bg.roundRect(0, 0, cellWidth, BUTTON_HEIGHT, 12);
-      if (disabled) {
-        bg.fill(THEME.panel, 0.5);
-        bg.stroke({ color: THEME.border, width: 1, alpha: 0.4 });
-        return;
-      }
-      if (hover) {
-        bg.fill(THEME.accent, 0.14);
-        bg.stroke({ color: THEME.accent, width: 2 });
-      } else {
-        bg.fill(THEME.panelSoft, 0.9);
-        bg.stroke({ color: THEME.border, width: 1.5 });
-      }
-    };
-    drawBg(false);
-    button.addChild(bg);
+    bg.roundRect(0, 0, width, imageHeight, this.theme.radius.lg);
+    bg.fill(this.theme.colors.surfaceButton, 0.92);
+    card.addChild(bg);
 
-    const title = new Text({
-      text: `存档 ${info.slot + 1}`,
-      style: {
-        fontSize: 20,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.accent,
-        fontWeight: 'bold',
-      },
-    });
-    title.x = 18;
-    title.y = 16;
-    button.addChild(title);
+    const occupied = time !== undefined;
+    if (occupied && info.thumbnail) {
+      this.attachThumbnail(card, info.thumbnail, width, imageHeight);
+    }
 
-    if (occupied) {
-      const ts = new Text({
-        text: formatTimestamp(info.timestamp as number),
+    if (time !== undefined) {
+      const label = new Text({
+        text: time,
         style: {
-          fontSize: 14,
-          fontFamily: THEME.fontFamily,
-          fill: THEME.textDim,
+          fontFamily: this.theme.typography.fontFamilyBody,
+          fontSize: this.theme.typography.sizes.sm,
+          fill: this.theme.colors.textSecondary,
         },
       });
-      ts.x = cellWidth - 18 - ts.width;
-      ts.y = 20;
-      button.addChild(ts);
+      label.x = (width - label.width) / 2;
+      label.y = imageHeight + timeGap;
+      card.addChild(label);
+    } else {
+      const empty = new Text({
+        text: '空',
+        style: {
+          fontFamily: this.theme.typography.fontFamilyBody,
+          fontSize: this.theme.typography.sizes.lg,
+          fill: this.theme.colors.textMuted,
+        },
+      });
+      empty.x = (width - empty.width) / 2;
+      empty.y = (imageHeight - empty.height) / 2;
+      card.addChild(empty);
     }
 
-    const detail = occupied
-      ? info.label || '已保存'
-      : this.currentMode === 'save'
-        ? '空槽 · 点击保存'
-        : '空槽';
-    const detailText = new Text({
-      text: this.clipText(detail, cellWidth - 36, 18),
-      style: {
-        fontSize: 18,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.textDim,
-      },
-    });
-    detailText.x = 18;
-    detailText.y = 50;
-    button.addChild(detailText);
+    const border = new Graphics();
+    const paintBorder = (hover: boolean): void => {
+      border.clear();
+      border.roundRect(0, 0, width, imageHeight, this.theme.radius.lg);
+      border.stroke({
+        width: this.theme.border.thin,
+        color: hover
+          ? this.theme.colors.accent
+          : this.theme.colors.borderSubtle,
+        alpha: hover ? 0.9 : this.theme.colors.borderSubtleAlpha,
+      });
+    };
+    paintBorder(false);
+    card.addChild(border);
 
     if (disabled) {
-      button.alpha = 0.45;
-      button.cursor = 'default';
-    } else {
-      button.cursor = 'pointer';
-      button.on('pointerover', () => drawBg(true));
-      button.on('pointerout', () => drawBg(false));
-      button.on('pointertap', (event: FederatedPointerEvent) => {
-        event.stopPropagation();
-        this.select(info.slot);
-      });
+      card.alpha = this.theme.opacity.disabled;
+      return card;
     }
 
-    return button;
+    card.on('pointerover', () => paintBorder(true));
+    card.on('pointerout', () => paintBorder(false));
+    card.on('pointerdown', () => {
+      card.alpha = this.theme.opacity.pressed;
+    });
+    card.on('pointerup', () => {
+      card.alpha = 1;
+    });
+    card.on('pointerupoutside', () => {
+      card.alpha = 1;
+    });
+    card.on('pointertap', (event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      this.select(info.slot);
+    });
+
+    return card;
   }
 
-  /** 超宽文本截断加省略号，避免摘要溢出槽位卡 */
-  private clipText(text: string, maxWidth: number, fontSize: number): string {
-    const measure = new Text({
-      text,
-      style: { fontSize, fontFamily: THEME.fontFamily },
+  /**
+   * data URL 先交给 Image 解码，再转成纹理贴上卡片。
+   * `Texture.from(string)` 只查资源缓存、不会主动加载，直接建 Sprite 会拿到空纹理；
+   * 图片解码期间卡片保留底色和时间，不阻塞页面打开。
+   */
+  private attachThumbnail(
+    card: Container,
+    uri: string,
+    width: number,
+    height: number,
+  ): void {
+    // node 测试环境没有 DOM；生产端由浏览器提供 Image
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const apply = (image: HTMLImageElement): void => {
+      if (card.destroyed || image.naturalWidth === 0) {
+        return;
+      }
+      const texture = this.thumbnailTextures.get(uri) ?? Texture.from(image);
+      this.thumbnailTextures.set(uri, texture);
+      const sprite = new Sprite(texture);
+      sprite.width = width;
+      sprite.height = height;
+      const mask = new Graphics();
+      mask.roundRect(0, 0, width, height, this.theme.radius.lg);
+      mask.fill(0xffffff);
+      card.addChildAt(sprite, 1);
+      card.addChildAt(mask, 2);
+      sprite.mask = mask;
+    };
+
+    const cached = this.thumbnailImages.get(uri);
+    if (cached) {
+      if (cached.complete) {
+        apply(cached);
+      } else {
+        cached.addEventListener('load', () => apply(cached), { once: true });
+      }
+      return;
+    }
+
+    const image = new Image();
+    this.thumbnailImages.set(uri, image);
+    image.addEventListener('load', () => apply(image), { once: true });
+    image.src = uri;
+  }
+
+  /** 只保留当前槽位仍引用的缩略图与纹理，避免反复存档后缓存无限增长 */
+  private pruneThumbnailCache(slots: readonly SaveSlotInfo[]): void {
+    const keep = new Set<string>();
+    for (const info of slots) {
+      if (info.thumbnail) {
+        keep.add(info.thumbnail);
+      }
+    }
+    for (const uri of [...this.thumbnailImages.keys()]) {
+      if (!keep.has(uri)) {
+        this.thumbnailImages.delete(uri);
+      }
+    }
+    for (const [uri, texture] of [...this.thumbnailTextures]) {
+      if (!keep.has(uri)) {
+        texture.destroy(true);
+        this.thumbnailTextures.delete(uri);
+      }
+    }
+  }
+
+  /** 用真实 Text 量时间行高度，避免不同字体下热区比字形矮 */
+  private measureTimeHeight(): number {
+    const probe = new Text({
+      text: '00-00 00:00',
+      style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
+        fontSize: this.theme.typography.sizes.sm,
+      },
     });
-    if (measure.width <= maxWidth) {
-      measure.destroy();
-      return text;
-    }
-    let cut = text.length - 1;
-    while (cut > 1) {
-      measure.text = `${text.slice(0, cut)}…`;
-      if (measure.width <= maxWidth) break;
-      cut -= 1;
-    }
-    measure.destroy();
-    return `${text.slice(0, cut)}…`;
+    const height = probe.height;
+    probe.destroy();
+    return height;
+  }
+
+  private formatTime(timestamp: number): string {
+    const date = new Date(timestamp);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
   private select(slot: number): void {
@@ -276,27 +396,24 @@ export class SaveLoadMenu extends UIComponent {
     } else {
       this.opts.onLoad?.(slot);
     }
-    this.hide();
   }
 
-  private clearButtons(): void {
+  private clearCards(): void {
     for (const child of this.scroll.content.children.slice()) {
       child.removeAllListeners();
       child.destroy();
     }
-    this.slotButtons = [];
+    this.slotCards = [];
   }
-}
 
-/** 存档时间 → `YYYY-MM-DD HH:MM`（本地时区） */
-export function formatTimestamp(ts: number): string {
-  const date = new Date(ts);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  const datePart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate(),
-  )}`;
-  const timePart = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  return `${datePart} ${timePart}`;
+  public override destroy(options?: DestroyOptions): void {
+    this.thumbnailImages.clear();
+    for (const texture of this.thumbnailTextures.values()) {
+      texture.destroy(true);
+    }
+    this.thumbnailTextures.clear();
+    super.destroy(options);
+  }
 }
 
 export default SaveLoadMenu;

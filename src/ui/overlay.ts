@@ -1,8 +1,16 @@
 import { Container, Graphics, Rectangle, Text } from 'pixi.js';
-import type { FederatedPointerEvent } from 'pixi.js';
-import { THEME } from './theme';
-import { attachIcon } from './icon';
-import type { IconName } from './icon';
+import type { FederatedPointerEvent, TextStyleFontWeight } from 'pixi.js';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
+
+export type ButtonVariant =
+  'primary' | 'secondary' | 'ghost' | 'danger' | 'choice';
+export type ButtonAlign = 'left' | 'center';
+export type ButtonState = 'normal' | 'hover' | 'pressed';
+
+export interface OverlayOptions {
+  theme?: DeepPartial<UITheme>;
+}
 
 /**
  * 全屏遮罩：不透明背景 + 命中层，吞掉面板之外的点击，
@@ -11,11 +19,15 @@ import type { IconName } from './icon';
 export function createBackdrop(
   width: number,
   height: number,
-  alpha = 0.62,
+  options: OverlayOptions & { alpha?: number; color?: number } = {},
 ): Graphics {
+  const theme = resolveTheme(options.theme);
   const backdrop = new Graphics();
   backdrop.rect(0, 0, width, height);
-  backdrop.fill(THEME.veil, alpha);
+  backdrop.fill(
+    options.color ?? theme.colors.backdrop,
+    options.alpha ?? theme.colors.backdropAlpha,
+  );
   backdrop.eventMode = 'static';
   backdrop.hitArea = new Rectangle(0, 0, width, height);
   backdrop.on('pointertap', (event: FederatedPointerEvent) => {
@@ -24,29 +36,13 @@ export function createBackdrop(
   return backdrop;
 }
 
-/** 独占全屏的界面：整页不透明底，兼作命中层吞掉底层点击 */
-export function createFullscreenPanel(
-  width: number,
-  height: number,
-  options: { color?: number } = {},
-): Graphics {
-  const bg = new Graphics();
-  bg.rect(0, 0, width, height);
-  bg.fill(options.color ?? THEME.panel, 1);
-  bg.eventMode = 'static';
-  bg.hitArea = new Rectangle(0, 0, width, height);
-  bg.on('pointertap', (event: FederatedPointerEvent) => {
-    event.stopPropagation();
-  });
-  return bg;
-}
-
-export interface PanelBoxOptions {
+export interface PanelBoxOptions extends OverlayOptions {
   radius?: number;
   color?: number;
   alpha?: number;
-  borderColor?: number;
   borderWidth?: number;
+  borderColor?: number;
+  borderAlpha?: number;
 }
 
 export function createPanelBox(
@@ -54,240 +50,366 @@ export function createPanelBox(
   height: number,
   options: PanelBoxOptions = {},
 ): Graphics {
+  const theme = resolveTheme(options.theme);
+  const radius = options.radius ?? theme.radius.lg;
+  const borderWidth = options.borderWidth ?? theme.border.thin;
+
   const box = new Graphics();
-  box.roundRect(0, 0, width, height, options.radius ?? 16);
-  box.fill(options.color ?? THEME.panel, options.alpha ?? 0.94);
-  box.stroke({
-    color: options.borderColor ?? THEME.border,
-    width: options.borderWidth ?? 1.5,
-    alpha: 0.9,
-  });
+  box.roundRect(0, 0, width, height, radius);
+  box.fill(
+    options.color ?? theme.colors.surfacePanel,
+    options.alpha ?? theme.colors.surfacePanelAlpha,
+  );
+  if (borderWidth > 0) {
+    box.stroke({
+      width: borderWidth,
+      color: options.borderColor ?? theme.colors.borderSubtle,
+      alpha: options.borderAlpha ?? theme.colors.borderSubtleAlpha,
+    });
+  }
   return box;
 }
 
-export type ButtonVariant = 'default' | 'primary' | 'ghost';
-
-export interface ButtonOptions {
+export interface ButtonOptions extends OverlayOptions {
   width: number;
   height: number;
   label: string;
-  variant?: ButtonVariant;
   fontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   backgroundColor?: number;
   textColor?: number;
+  variant?: ButtonVariant;
+  align?: ButtonAlign;
+  disabled?: boolean;
+  disabledTextColor?: number;
   onTap?: () => void;
 }
 
-function drawButtonBg(
-  bg: Graphics,
-  width: number,
-  height: number,
-  variant: ButtonVariant,
-  hover: boolean,
-  fillOverride?: number,
-): void {
-  bg.clear();
-  bg.roundRect(0, 0, width, height, 10);
-  if (variant === 'primary') {
-    bg.fill(fillOverride ?? THEME.accent, hover ? 1 : 0.94);
-    bg.stroke({ color: THEME.accentBright, width: 1.5, alpha: 0.5 });
-    return;
-  }
-  if (variant === 'ghost') {
-    if (hover) {
-      bg.fill(THEME.panelSoft, 0.9);
-    }
-    bg.stroke({ color: hover ? THEME.accent : THEME.border, width: 1.5 });
-    return;
-  }
-  if (hover) {
-    bg.fill(THEME.accent, 0.18);
-    bg.stroke({ color: THEME.accent, width: 1.5 });
-  } else {
-    bg.fill(fillOverride ?? THEME.panelSoft, 0.92);
-    bg.stroke({ color: THEME.border, width: 1.5 });
-  }
-}
-
-function labelColor(
-  variant: ButtonVariant,
-  hover: boolean,
-  override?: number,
-): number {
-  if (override !== undefined) return override;
-  if (variant === 'primary') return THEME.onAccent;
-  return hover ? THEME.accentBright : THEME.text;
-}
-
-/** 常规文字按钮：居中文字 + hover 高亮（金边 + 亮字） */
-export function createButton(options: ButtonOptions): Container {
-  const button = new Container();
-  button.eventMode = 'static';
-  button.hitArea = new Rectangle(0, 0, options.width, options.height);
-  button.cursor = 'pointer';
-  const variant = options.variant ?? 'default';
-
-  const bg = new Graphics();
-  drawButtonBg(bg, options.width, options.height, variant, false);
-  button.addChild(bg);
-
-  const style = {
-    fontSize: options.fontSize ?? 22,
-    fontFamily: options.fontFamily ?? THEME.fontFamily,
-    fill: labelColor(variant, false, options.textColor),
-  };
-  const label = new Text({ text: options.label, style });
-  label.anchor.set(0.5);
-  label.position.set(options.width / 2, options.height / 2);
-  button.addChild(label);
-
-  const setHover = (hover: boolean): void => {
-    drawButtonBg(bg, options.width, options.height, variant, hover);
-    label.style = {
-      ...style,
-      fill: labelColor(variant, hover, options.textColor),
-    };
-  };
-  button.on('pointerover', () => setHover(true));
-  button.on('pointerout', () => setHover(false));
-  button.on('pointertap', (event: FederatedPointerEvent) => {
-    event.stopPropagation();
-    options.onTap?.();
-  });
-
-  return button;
-}
-
-export interface IconButtonOptions {
-  icon: IconName;
-  /** 正方形按钮边长 */
-  size?: number;
-  /** 悬停时按钮下方浮现的说明文字 */
-  tooltip?: string;
-  onTap?: () => void;
-}
-
-/** 图标按钮：图标加载失败时回落为文字；hover 高亮并显示提示 */
-export function createIconButton(options: IconButtonOptions): Container {
-  const size = options.size ?? 44;
-  const button = new Container();
-  button.eventMode = 'static';
-  button.hitArea = new Rectangle(0, 0, size, size);
-  button.cursor = 'pointer';
-
-  const bg = new Graphics();
-  const drawBg = (hover: boolean): void => {
-    bg.clear();
-    bg.roundRect(0, 0, size, size, 10);
-    bg.fill(THEME.veil, hover ? 0.85 : 0.55);
-    bg.stroke({
-      color: hover ? THEME.accent : THEME.border,
-      width: 1.5,
-      alpha: hover ? 1 : 0.8,
-    });
-  };
-  drawBg(false);
-  button.addChild(bg);
-
-  const { sprite } = attachIcon(button, options.icon, {
-    size: Math.round(size * 0.5),
-    tint: THEME.text,
-    fallbackText: options.tooltip ?? '',
-    x: size / 2,
-    y: size / 2,
-  });
-
-  let tooltip: Text | null = null;
-  if (options.tooltip) {
-    tooltip = new Text({
-      text: options.tooltip,
-      style: {
-        fontSize: 14,
-        fontFamily: THEME.fontFamily,
-        fill: THEME.accent,
-        stroke: { color: 0x000000, width: 3 },
-      },
-    });
-    tooltip.anchor.set(0.5, 0);
-    tooltip.position.set(size / 2, size + 6);
-    tooltip.visible = false;
-    button.addChild(tooltip);
-  }
-
-  button.on('pointerover', () => {
-    drawBg(true);
-    sprite.tint = THEME.accentBright;
-    if (tooltip) tooltip.visible = true;
-  });
-  button.on('pointerout', () => {
-    drawBg(false);
-    sprite.tint = THEME.text;
-    if (tooltip) tooltip.visible = false;
-  });
-  button.on('pointertap', (event: FederatedPointerEvent) => {
-    event.stopPropagation();
-    options.onTap?.();
-  });
-
-  return button;
-}
-
-export interface PanelHeaderOptions {
-  title: string;
-  /** 头部内容区宽度（标题起点到关闭按钮） */
+interface ChoiceMarkerPalette {
+  color: number;
+  alpha: number;
+  inset: number;
   width: number;
-  fontSize?: number;
-  onClose?: () => void;
-}
-
-export interface PanelHeader {
-  root: Container;
-  /** 标题文本（面板可按模式改写） */
-  title: Text;
-  /** 头部占用的总高度，内容区从 root.y + height 开始 */
+  hoverWidth: number;
   height: number;
 }
 
-/** 面板头部：金色标题 + 短下划线 + 通栏分隔线 + 可选右上角关闭图标 */
-export function createPanelHeader(options: PanelHeaderOptions): PanelHeader {
-  const root = new Container();
-  const fontSize = options.fontSize ?? 30;
+interface VariantPalette {
+  fill: number;
+  fillAlpha: number;
+  hoverFill: number;
+  pressedFill: number;
+  text: number;
+  border: number;
+  borderAlpha: number;
+  /** 缺省用主题的 md 圆角；'pill' 取按钮高度的一半 */
+  radius?: number | 'pill';
+  fontWeight?: TextStyleFontWeight;
+  /** 缺省为 1：ghost 靠它从透明跳回可见底色，choice 用它保持玻璃透明度 */
+  hoverFillAlpha?: number;
+  pressedFillAlpha?: number;
+  shadow?: { color: number; alpha: number; offsetY: number };
+  highlight?: { color: number; alpha: number };
+  marker?: ChoiceMarkerPalette;
+  disabledAlpha?: number;
+  disabledText?: number;
+}
 
-  const title = new Text({
-    text: options.title,
-    style: {
-      fontSize,
-      fontFamily: THEME.fontFamily,
-      fill: THEME.accent,
-      fontWeight: 'bold',
-    },
-  });
-  root.addChild(title);
+function paletteFor(theme: UITheme, variant: ButtonVariant): VariantPalette {
+  const { colors } = theme;
+  switch (variant) {
+    case 'primary':
+      return {
+        fill: colors.accent,
+        fillAlpha: 1,
+        hoverFill: colors.accentStrong,
+        pressedFill: colors.primary600,
+        text: colors.textOnPrimary,
+        border: colors.accent,
+        borderAlpha: 0,
+      };
+    case 'danger':
+      // 浅阶 dangerLight 在暗底上适合做文字/边框，做填充会压低白字对比度，
+      // 因此 hover / pressed 保持主 danger 色，只用状态透明度表达。
+      return {
+        fill: colors.danger,
+        fillAlpha: 1,
+        hoverFill: colors.danger,
+        pressedFill: colors.danger,
+        text: colors.textPrimary,
+        border: colors.danger,
+        borderAlpha: 0,
+      };
+    case 'ghost':
+      return {
+        fill: colors.surfaceButton,
+        fillAlpha: 0,
+        hoverFill: colors.surfaceButtonHover,
+        pressedFill: colors.surfaceButtonPressed,
+        text: colors.textPrimary,
+        border: colors.borderSubtle,
+        borderAlpha: 0,
+      };
+    case 'choice':
+      return {
+        fill: colors.surfaceChoice,
+        fillAlpha: colors.surfaceChoiceAlpha,
+        hoverFill: colors.surfaceChoiceHover,
+        pressedFill: colors.surfaceChoicePressed,
+        text: colors.textChoice,
+        border: colors.borderChoice,
+        borderAlpha: colors.borderChoiceAlpha,
+        radius: 'pill',
+        fontWeight: theme.typography.weights.semibold,
+        hoverFillAlpha: colors.surfaceChoiceAlpha,
+        pressedFillAlpha: colors.surfaceChoiceAlpha,
+        shadow: {
+          color: colors.backdrop,
+          alpha: colors.choiceShadowAlpha,
+          offsetY: theme.border.thick,
+        },
+        highlight: {
+          color: colors.borderSubtle,
+          alpha: colors.choiceHighlightAlpha,
+        },
+        marker: {
+          color: colors.borderChoice,
+          alpha: colors.choiceMarkerAlpha,
+          inset: theme.spacing.s16,
+          width: theme.border.thick,
+          hoverWidth: theme.spacing.s4,
+          height: theme.spacing.s24,
+        },
+        disabledAlpha: theme.opacity.choiceDisabled,
+        disabledText: colors.textChoiceMuted,
+      };
+    case 'secondary':
+    default:
+      return {
+        fill: colors.surfaceButton,
+        fillAlpha: 1,
+        hoverFill: colors.surfaceButtonHover,
+        pressedFill: colors.surfaceButtonPressed,
+        text: colors.textPrimary,
+        border: colors.borderSubtle,
+        borderAlpha: colors.borderSubtleAlpha,
+      };
+  }
+}
 
-  const underline = new Graphics();
-  underline.roundRect(0, 0, 64, 3, 1.5);
-  underline.fill(THEME.accent, 0.85);
-  underline.y = title.height + 8;
-  root.addChild(underline);
+/** 带 hover / pressed / disabled 视觉状态的按钮 */
+export class UIButton extends Container {
+  public readonly labelText: Text;
+  private readonly bg: Graphics;
+  private readonly theme: UITheme;
+  private readonly variant: ButtonVariant;
+  private readonly widthValue: number;
+  private readonly heightValue: number;
+  private readonly fontSize: number;
+  private readonly fontFamily: string | string[];
+  /** 显式颜色覆盖需在每次重绘时复用，否则一次 hover 就会回落到主题色 */
+  private readonly backgroundOverride?: number;
+  private readonly textOverride?: number;
+  private readonly disabledTextColor?: number;
+  private readonly onTap?: () => void;
+  private enabledValue: boolean;
+  private stateValue: ButtonState = 'normal';
 
-  // 通栏发丝线，与标题行一同把整页界面与内容区分开
-  const divider = new Graphics();
-  divider.rect(0, 0, options.width, 1);
-  divider.fill(THEME.border, 0.55);
-  divider.y = title.height + 22;
-  root.addChild(divider);
+  constructor(options: ButtonOptions) {
+    super();
+    this.theme = resolveTheme(options.theme);
+    this.variant = options.variant ?? 'secondary';
+    this.widthValue = options.width;
+    this.heightValue = options.height;
+    this.backgroundOverride = options.backgroundColor;
+    this.textOverride = options.textColor;
+    this.disabledTextColor = options.disabledTextColor;
+    this.onTap = options.onTap;
+    this.enabledValue = options.disabled !== true;
 
-  if (options.onClose) {
-    const close = createIconButton({
-      icon: 'close',
-      size: 40,
-      onTap: options.onClose,
+    this.eventMode = 'static';
+    this.hitArea = new Rectangle(0, 0, options.width, options.height);
+
+    this.bg = new Graphics();
+    this.addChild(this.bg);
+
+    const palette = paletteFor(this.theme, this.variant);
+    this.fontSize = options.fontSize ?? this.theme.typography.sizes.md;
+    this.fontFamily =
+      options.fontFamily ?? this.theme.typography.fontFamilyBody;
+    this.labelText = new Text({
+      text: options.label,
+      style: {
+        fontSize: this.fontSize,
+        fontFamily: this.fontFamily,
+        fontWeight: palette.fontWeight ?? this.theme.typography.weights.regular,
+        fill: options.textColor ?? palette.text,
+      },
     });
-    close.x = options.width - 40;
-    close.y = -2;
-    root.addChild(close);
+    this.labelText.y = (options.height - this.labelText.height) / 2;
+    this.addChild(this.labelText);
+
+    this.layoutLabel(options.align ?? 'left');
+    this.redraw();
+    if (!this.enabledValue) {
+      this.applyEnabledVisual();
+    }
+
+    this.on('pointerover', () => this.setState('hover'));
+    this.on('pointerout', () => this.setState('normal'));
+    this.on('pointerdown', () => this.setState('pressed'));
+    this.on('pointerup', () => this.setState('hover'));
+    this.on('pointerupoutside', () => this.setState('normal'));
+    this.on('pointertap', (event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      if (this.enabledValue) {
+        this.onTap?.();
+      }
+    });
   }
 
-  return { root, title, height: title.height + 22 + 20 };
+  public get enabled(): boolean {
+    return this.enabledValue;
+  }
+
+  public get state(): ButtonState {
+    return this.stateValue;
+  }
+
+  /** 运行时切换可用状态（SaveLoadMenu 的读档空槽、ChoicePanel 的禁用选项） */
+  public setEnabled(enabled: boolean): void {
+    if (this.enabledValue === enabled) {
+      return;
+    }
+    this.enabledValue = enabled;
+    if (enabled) {
+      this.alpha = 1;
+      this.stateValue = 'normal';
+      this.redraw();
+    } else {
+      this.applyEnabledVisual();
+    }
+  }
+
+  private layoutLabel(align: ButtonAlign): void {
+    if (align === 'center') {
+      this.labelText.x = (this.widthValue - this.labelText.width) / 2;
+      return;
+    }
+    this.labelText.x = this.theme.spacing.s12;
+  }
+
+  private setState(next: ButtonState): void {
+    if (!this.enabledValue || this.stateValue === next) {
+      return;
+    }
+    this.stateValue = next;
+    this.redraw();
+  }
+
+  private applyEnabledVisual(): void {
+    const palette = paletteFor(this.theme, this.variant);
+    this.alpha = palette.disabledAlpha ?? this.theme.opacity.disabled;
+    this.stateValue = 'normal';
+    this.redraw();
+  }
+
+  /**
+   * 重绘背景。保留 children 顺序 [背景, 文字]：现有测试通过
+   * `button.children[1]` 读取标签文字。
+   */
+  private redraw(): void {
+    const palette = paletteFor(this.theme, this.variant);
+    const fill = this.backgroundOverride ?? this.fillForState(palette);
+    // ghost 常态透明，但 hover / pressed 需要有可见底色才形成反馈；
+    // choice 用独立的状态透明度保持玻璃质感。
+    const alpha =
+      this.stateValue === 'pressed'
+        ? (palette.pressedFillAlpha ?? 1)
+        : this.stateValue === 'hover'
+          ? (palette.hoverFillAlpha ?? 1)
+          : palette.fillAlpha;
+    const radius =
+      palette.radius === 'pill'
+        ? this.heightValue / 2
+        : (palette.radius ?? this.theme.radius.md);
+
+    this.bg.clear();
+    if (palette.shadow) {
+      this.bg.roundRect(
+        0,
+        palette.shadow.offsetY,
+        this.widthValue,
+        this.heightValue,
+        radius,
+      );
+      this.bg.fill(palette.shadow.color, palette.shadow.alpha);
+    }
+    this.bg.roundRect(0, 0, this.widthValue, this.heightValue, radius);
+    this.bg.fill(fill, alpha);
+    if (palette.borderAlpha > 0) {
+      this.bg.stroke({
+        width: this.theme.border.thin,
+        color: palette.border,
+        alpha: palette.borderAlpha,
+      });
+    }
+    // 光从上方来：胶囊顶部留一条高光，配合下方阴影形成抬升感
+    if (palette.highlight) {
+      this.bg.moveTo(radius, this.theme.border.thin);
+      this.bg.lineTo(this.widthValue - radius, this.theme.border.thin);
+      this.bg.stroke({
+        width: this.theme.border.thin,
+        color: palette.highlight.color,
+        alpha: palette.highlight.alpha,
+        cap: 'round',
+      });
+    }
+    // 左侧标记：常态细而淡，hover / pressed 加宽提亮，用形状补足颜色反馈
+    if (palette.marker) {
+      const markerWidth =
+        this.stateValue === 'normal'
+          ? palette.marker.width
+          : palette.marker.hoverWidth;
+      const markerAlpha = this.enabledValue
+        ? this.stateValue === 'normal'
+          ? palette.marker.alpha
+          : 1
+        : palette.marker.alpha * 0.4;
+      const markerY = (this.heightValue - palette.marker.height) / 2;
+      this.bg.roundRect(
+        palette.marker.inset,
+        markerY,
+        markerWidth,
+        palette.marker.height,
+        markerWidth / 2,
+      );
+      this.bg.fill(palette.marker.color, markerAlpha);
+    }
+
+    this.labelText.style = {
+      fontSize: this.fontSize,
+      fontFamily: this.fontFamily,
+      fontWeight: palette.fontWeight ?? this.theme.typography.weights.regular,
+      fill: this.enabledValue
+        ? (this.textOverride ?? palette.text)
+        : (this.disabledTextColor ??
+          palette.disabledText ??
+          this.theme.colors.disabledText),
+    };
+  }
+
+  private fillForState(palette: VariantPalette): number {
+    if (this.stateValue === 'pressed') {
+      return palette.pressedFill;
+    }
+    if (this.stateValue === 'hover') {
+      return palette.hoverFill;
+    }
+    return palette.fill;
+  }
+}
+
+export function createButton(options: ButtonOptions): UIButton {
+  return new UIButton(options);
 }

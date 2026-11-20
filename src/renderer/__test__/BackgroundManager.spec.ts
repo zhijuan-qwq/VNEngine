@@ -1,4 +1,4 @@
-import { Container, Sprite, Texture } from 'pixi.js';
+import { BufferImageSource, Container, Sprite, Texture } from 'pixi.js';
 import BackgroundManager from '../BackgroundManager';
 import { DEFAULT_TRANSITION_DURATION, DEFAULT_ZOOM_FROM } from '../transitions';
 import TweenEngine from '../tween';
@@ -7,6 +7,16 @@ const SIZE = { width: 800, height: 600 };
 
 function newTexture(): Texture {
   return new Texture({ source: Texture.WHITE.source });
+}
+
+function sizedTexture(width: number, height: number): Texture {
+  return new Texture({
+    source: new BufferImageSource({
+      resource: new Uint8Array(width * height * 4),
+      width,
+      height,
+    }),
+  });
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -127,17 +137,41 @@ describe('BackgroundManager', () => {
       expect(sprite.x).toBe(0);
     });
 
-    it('should zoom the new background in from a larger scale', async () => {
-      const { manager, parent, tweens } = makeManager();
+    it('should scale the background to cover the screen and centre it', async () => {
+      const texture = sizedTexture(16, 9);
+      const { manager, parent } = makeManager(() => Promise.resolve(texture));
+
+      manager.change({ id: 'bg_room', transition: 'none' });
+      await flush();
+
+      const sprite = firstSprite(parent);
+      const fit = 600 / 9;
+      expect(sprite.scale.x).toBeCloseTo(fit);
+      expect(sprite.scale.y).toBeCloseTo(fit);
+      expect(texture.width * sprite.scale.x).toBeGreaterThanOrEqual(SIZE.width);
+      expect(texture.height * sprite.scale.y).toBeGreaterThanOrEqual(
+        SIZE.height,
+      );
+      // 宽度溢出，水平居中裁切；高度正好铺满
+      expect(sprite.x).toBeCloseTo((SIZE.width - texture.width * fit) / 2);
+      expect(sprite.y).toBeCloseTo(0);
+    });
+
+    it('should zoom the new background in relative to its fitted scale', async () => {
+      const texture = sizedTexture(16, 9);
+      const { manager, parent, tweens } = makeManager(() =>
+        Promise.resolve(texture),
+      );
 
       manager.change({ id: 'bg_room', transition: 'zoom' });
       await flush();
 
       const sprite = firstSprite(parent);
-      expect(sprite.scale.x).toBeCloseTo(DEFAULT_ZOOM_FROM);
+      const fit = 600 / 9;
+      expect(sprite.scale.x).toBeCloseTo(DEFAULT_ZOOM_FROM * fit);
 
       tweens.update(DEFAULT_TRANSITION_DURATION / 1000);
-      expect(sprite.scale.x).toBe(1);
+      expect(sprite.scale.x).toBeCloseTo(fit);
       expect(sprite.alpha).toBe(1);
     });
 

@@ -1,8 +1,9 @@
-import { Container, Graphics, Rectangle, Text } from 'pixi.js';
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import type { Choice } from '@/types/script';
 import { UIComponent } from './UIComponent';
-import { THEME } from './theme';
+import { createButton } from './overlay';
+import { resolveTheme } from './theme';
+import type { DeepPartial, UITheme } from './theme';
 
 export interface ChoicePanelOptions {
   width: number;
@@ -10,16 +11,17 @@ export interface ChoicePanelOptions {
   height?: number;
   x?: number;
   y?: number;
-  /** 选项按钮宽度；缺省取 72% 画面宽与 640px 的较小者 */
+  /** 选项按钮宽度；缺省取 72% 画面宽与主题最大宽（560px）的较小者 */
   buttonWidth?: number;
   buttonHeight?: number;
   buttonGap?: number;
   fontSize?: number;
-  fontFamily?: string;
+  fontFamily?: string | string[];
   backgroundColor?: number;
   textColor?: number;
   disabledColor?: number;
   onSelect?: (label: string) => void;
+  theme?: DeepPartial<UITheme>;
 }
 
 interface ResolvedOptions {
@@ -31,32 +33,39 @@ interface ResolvedOptions {
   buttonHeight: number;
   buttonGap: number;
   fontSize: number;
-  fontFamily: string;
-  backgroundColor: number;
-  textColor: number;
-  disabledColor: number;
+  fontFamily: string | string[];
+  backgroundColor?: number;
+  textColor?: number;
+  disabledColor?: number;
   onSelect?: (label: string) => void;
 }
 
 export class ChoicePanel extends UIComponent {
   private readonly opts: ResolvedOptions;
+  private readonly theme: UITheme;
   private choiceButtons: Container[] = [];
 
   constructor(options: ChoicePanelOptions) {
     super({ id: 'choice-panel' });
+    this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
       height: options.height ?? null,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      buttonWidth: options.buttonWidth ?? Math.min(options.width * 0.72, 640),
-      buttonHeight: options.buttonHeight ?? 52,
-      buttonGap: options.buttonGap ?? 14,
-      fontSize: options.fontSize ?? 24,
-      fontFamily: options.fontFamily ?? THEME.fontFamily,
-      backgroundColor: options.backgroundColor ?? THEME.panel,
-      textColor: options.textColor ?? THEME.text,
-      disabledColor: options.disabledColor ?? THEME.textDim,
+      buttonWidth:
+        options.buttonWidth ??
+        Math.min(
+          options.width * this.theme.sizes.choiceWidthRatio,
+          this.theme.sizes.choiceMaxWidth,
+        ),
+      buttonHeight: options.buttonHeight ?? this.theme.sizes.choiceHeight,
+      buttonGap: options.buttonGap ?? this.theme.sizes.choiceGap,
+      fontSize: options.fontSize ?? this.theme.typography.sizes.md,
+      fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
+      backgroundColor: options.backgroundColor,
+      textColor: options.textColor,
+      disabledColor: options.disabledColor,
       onSelect: options.onSelect,
     };
     this.x = this.opts.x;
@@ -69,9 +78,10 @@ export class ChoicePanel extends UIComponent {
     const total =
       choices.length * this.opts.buttonHeight +
       (choices.length - 1) * this.opts.buttonGap;
-    // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白
+    // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白。
+    // 0.8 让块中心落在画面约 40% 处，比原先的 0.66（33%）略低。
     const areaHeight = this.opts.height
-      ? this.opts.height * 0.66
+      ? this.opts.height * 0.8
       : Number.POSITIVE_INFINITY;
     const startY = this.opts.height
       ? Math.max(this.opts.height * 0.08, (areaHeight - total) / 2)
@@ -95,67 +105,25 @@ export class ChoicePanel extends UIComponent {
   }
 
   private createButton(choice: Choice): Container {
-    const button = new Container();
-    button.eventMode = 'static';
-    button.hitArea = new Rectangle(
-      0,
-      0,
-      this.opts.buttonWidth,
-      this.opts.buttonHeight,
-    );
-    button.cursor = 'pointer';
-
     const disabled = choice.enabled === false;
-    const bg = new Graphics();
-    const style = {
+    return createButton({
+      width: this.opts.buttonWidth,
+      height: this.opts.buttonHeight,
+      label: choice.text,
       fontSize: this.opts.fontSize,
       fontFamily: this.opts.fontFamily,
-      fill: disabled ? this.opts.disabledColor : this.opts.textColor,
-    };
-    const drawBg = (hover: boolean): void => {
-      bg.clear();
-      bg.roundRect(0, 0, this.opts.buttonWidth, this.opts.buttonHeight, 12);
-      if (disabled) {
-        bg.fill(this.opts.backgroundColor, 0.5);
-        bg.stroke({ color: THEME.border, width: 1, alpha: 0.5 });
-        return;
-      }
-      if (hover) {
-        bg.fill(THEME.accent, 0.16);
-        bg.stroke({ color: THEME.accent, width: 2 });
-      } else {
-        bg.fill(this.opts.backgroundColor, 0.88);
-        bg.stroke({ color: THEME.border, width: 1.5 });
-      }
-    };
-    drawBg(false);
-    button.addChild(bg);
-
-    const label = new Text({ text: choice.text, style });
-    label.anchor.set(0.5);
-    label.position.set(this.opts.buttonWidth / 2, this.opts.buttonHeight / 2);
-    button.addChild(label);
-
-    if (disabled) {
-      button.alpha = 0.5;
-      button.cursor = 'default';
-    } else {
-      button.on('pointerover', () => {
-        drawBg(true);
-        label.style = { ...style, fill: THEME.accentBright };
-      });
-      button.on('pointerout', () => {
-        drawBg(false);
-        label.style = style;
-      });
-      button.on('pointertap', (event: FederatedPointerEvent) => {
-        event.stopPropagation();
+      backgroundColor: this.opts.backgroundColor,
+      textColor: this.opts.textColor,
+      disabledTextColor: this.opts.disabledColor,
+      variant: 'choice',
+      align: 'center',
+      disabled,
+      theme: this.theme,
+      onTap: () => {
         this.opts.onSelect?.(choice.label);
         this.hide();
-      });
-    }
-
-    return button;
+      },
+    });
   }
 
   get buttons(): Container[] {

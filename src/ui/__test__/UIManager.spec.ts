@@ -1,4 +1,4 @@
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { Container, FederatedPointerEvent } from 'pixi.js';
 import EventBus from '@/core/EventBus';
 import type { EngineEvents } from '@/types/events';
 import { UIManager } from '../UIManager';
@@ -33,16 +33,33 @@ describe('UIManager', () => {
     expect(ui.choicePanel).toBeDefined();
   });
 
+  it('should place the dialogue box at the bottom by default', () => {
+    const { ui } = makeManager();
+    expect(ui.dialogueBox.x).toBe(0);
+    expect(ui.dialogueBox.y).toBe(420);
+  });
+
+  it('should honour an explicit dialogue box height', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+    expect(ui.dialogueBox.y).toBe(400);
+  });
+
   it('should route script:say to the dialogue box', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.dialogueBox.visible).toBe(true);
     expect(ui.dialogueBox.isBusy()).toBe(true);
   });
 
   it('should route script:clear to clear the dialogue box', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     bus.emit('script:clear', {});
     expect(ui.dialogueBox.isBusy()).toBe(false);
     expect(ui.dialogueBox.visible).toBe(false);
@@ -50,7 +67,7 @@ describe('UIManager', () => {
 
   it('should clear dialogue and choices on game:load', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     bus.emit('script:choice', {
       choices: [{ text: '回应他', label: 'respond' }],
     });
@@ -87,13 +104,17 @@ describe('UIManager', () => {
 
   it('should report busy while the typewriter is running', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'A long message' });
+    bus.emit('script:say', {
+      speaker: 'Hero',
+      text: 'A long message',
+      mode: 'adv',
+    });
     expect(ui.isBusy()).toBe(true);
   });
 
   it('should report idle once the typewriter finishes', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     ui.update(100);
     expect(ui.isBusy()).toBe(false);
   });
@@ -119,6 +140,7 @@ describe('UIManager', () => {
     bus.emit('script:say', {
       speaker: 'Hero',
       text: 'Hello world',
+      mode: 'adv',
       speed: 100,
     });
     ui.update(0.016); // update 以秒为单位：16ms
@@ -128,7 +150,7 @@ describe('UIManager', () => {
   it('should stop listening to script events after destroy', () => {
     const { bus, ui } = makeManager();
     ui.destroy();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.dialogueBox.visible).toBe(false);
   });
 
@@ -143,7 +165,7 @@ describe('UIManager', () => {
 
   it('should record dialogue into the history buffer', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     expect(ui.history.entries()).toHaveLength(1);
     expect(ui.history.entries()[0]).toMatchObject({
       speaker: 'Hero',
@@ -153,10 +175,9 @@ describe('UIManager', () => {
 
   it('should default the history view to the history buffer', () => {
     const { bus, ui } = makeManager();
-    bus.emit('script:say', { speaker: 'Hero', text: 'Hi' });
+    bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
     ui.open('history');
-    expect(ui.historyView.rowTexts).toEqual(['Hi']);
-    expect(ui.historyView.rowSpeakers).toEqual(['Hero']);
+    expect(ui.historyView.rowTexts).toEqual(['Hero：Hi']);
   });
 
   it('should open a panel from a ui:open event', () => {
@@ -176,6 +197,7 @@ describe('UIManager', () => {
     const { bus, ui } = makeManager();
     bus.emit('ui:open', { panel: 'history' });
     bus.emit('ui:close', {});
+    ui.update(0.2);
     expect(ui.historyView.visible).toBe(false);
   });
 
@@ -210,5 +232,163 @@ describe('UIManager', () => {
     ui.destroy();
     bus.emit('ui:open', { panel: 'settings' });
     expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should fade pages in and out over the update loop', () => {
+    const { ui } = makeManager();
+    ui.open('settings');
+    expect(ui.settingsMenu.visible).toBe(true);
+    expect(ui.settingsMenu.alpha).toBe(0);
+    ui.update(0.2);
+    expect(ui.settingsMenu.alpha).toBe(1);
+    ui.close();
+    ui.update(0.2);
+    expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should shield input during page transitions', () => {
+    // 真实命中顺序由 Pixi 层序保证（shield 在页面之上、确认框之下）；
+    // 这里验证屏蔽层随过渡开关，动作回调的过渡期守卫由下一条用例覆盖。
+    const { ui } = makeManager();
+    ui.open('settings');
+    expect(ui.inputLocked).toBe(true);
+    ui.update(0.2);
+    expect(ui.inputLocked).toBe(false);
+    ui.close();
+    expect(ui.inputLocked).toBe(true);
+    ui.update(0.2);
+    expect(ui.inputLocked).toBe(false);
+    expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should ignore save taps during fade-out', () => {
+    const bus = new EventBus<EngineEvents>();
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: { getSlots: () => [{ slot: 0 }], onSave },
+    });
+    ui.open('save');
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledOnce();
+
+    ui.close();
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledOnce();
+
+    ui.update(0.2);
+    expect(ui.saveLoadMenu.visible).toBe(false);
+  });
+
+  it('should finish fades immediately while the game is paused', () => {
+    const { bus, ui } = makeManager();
+    ui.open('settings');
+    expect(ui.settingsMenu.alpha).toBe(0);
+
+    bus.emit('game:pause', {});
+    expect(ui.settingsMenu.alpha).toBe(1);
+    expect(ui.inputLocked).toBe(false);
+
+    ui.open('history');
+    expect(ui.historyView.alpha).toBe(1);
+    expect(ui.inputLocked).toBe(false);
+    ui.close();
+    expect(ui.historyView.visible).toBe(false);
+  });
+
+  function tapNode(node: Container): void {
+    node.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+  }
+
+  it('should capture a thumbnail before opening the save page', () => {
+    const bus = new EventBus<EngineEvents>();
+    const capture = vi.fn(() => 'data:image/jpeg;base64,thumb');
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      captureThumbnail: capture,
+      saveLoadMenu: { getSlots: () => [{ slot: 0 }], onSave },
+    });
+    ui.open('save');
+    expect(capture).toHaveBeenCalledOnce();
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledWith(0, 'data:image/jpeg;base64,thumb');
+  });
+
+  it('should confirm before overwriting an existing save and keep the page open', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      captureThumbnail: () => 'data:image/jpeg;base64,thumb',
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 0, timestamp: 1 }],
+        onSave,
+      },
+    });
+    ui.open('save');
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(ui.confirmDialog.visible).toBe(true);
+    expect(ui.saveLoadMenu.visible).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+
+    tapNode(ui.confirmDialog.buttons[1]);
+    await Promise.resolve();
+    expect(onSave).toHaveBeenCalledWith(0, 'data:image/jpeg;base64,thumb');
+    expect(ui.saveLoadMenu.visible).toBe(true);
+  });
+
+  it('should confirm before loading and return to the game', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onLoad = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 2, timestamp: 1 }],
+        onLoad,
+      },
+    });
+    ui.open('load');
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(ui.confirmDialog.visible).toBe(true);
+    tapNode(ui.confirmDialog.buttons[1]);
+    await Promise.resolve();
+    expect(onLoad).toHaveBeenCalledWith(2);
+    expect(ui.saveLoadMenu.visible).toBe(false);
+  });
+
+  it('should keep the page open when load is cancelled', async () => {
+    const bus = new EventBus<EngineEvents>();
+    const onLoad = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: {
+        getSlots: () => [{ slot: 0, timestamp: 1 }],
+        onLoad,
+      },
+    });
+    ui.open('load');
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    tapNode(ui.confirmDialog.buttons[0]);
+    await Promise.resolve();
+    expect(onLoad).not.toHaveBeenCalled();
+    expect(ui.saveLoadMenu.visible).toBe(true);
   });
 });

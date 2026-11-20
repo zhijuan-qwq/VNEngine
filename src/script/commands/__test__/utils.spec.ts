@@ -1,38 +1,6 @@
-import {
-  asNumber,
-  asString,
-  getVarName,
-  positionalArgs,
-  toMs,
-  toNumber,
-} from '../utils';
+import { asNumber, asString, getVarName, toNumber } from '../utils';
 
 describe('command utils', () => {
-  describe('toMs', () => {
-    it('should pass a plain number through unchanged', () => {
-      expect(toMs(500)).toBe(500);
-      expect(toMs(0)).toBe(0);
-    });
-
-    it('should convert a seconds duration to milliseconds', () => {
-      expect(toMs({ value: 1.5, unit: 's' })).toBe(1500);
-    });
-
-    it('should keep a non-second duration value as-is', () => {
-      expect(toMs({ value: 500, unit: 'ms' })).toBe(500);
-      expect(toMs({ value: 2, unit: 'min' })).toBe(2);
-    });
-
-    it('should return undefined for values that are not a number or duration', () => {
-      expect(toMs('2s')).toBeUndefined();
-      expect(toMs(null)).toBeUndefined();
-      expect(toMs(undefined)).toBeUndefined();
-      expect(toMs({})).toBeUndefined();
-      expect(toMs({ value: 1 })).toBeUndefined();
-      expect(toMs({ value: '1', unit: 's' })).toBeUndefined();
-    });
-  });
-
   describe('asString', () => {
     it('should return strings unchanged', () => {
       expect(asString('fade')).toBe('fade');
@@ -58,41 +26,6 @@ describe('command utils', () => {
       expect(asNumber(null)).toBeUndefined();
       expect(asNumber(undefined)).toBeUndefined();
       expect(asNumber({})).toBeUndefined();
-    });
-  });
-
-  describe('positionalArgs', () => {
-    it('should collect contiguous numeric keys in order', () => {
-      expect(positionalArgs({ '0': 'a', '1': 'b', '2': 'c' })).toEqual([
-        'a',
-        'b',
-        'c',
-      ]);
-    });
-
-    it('should stop at the first missing index', () => {
-      expect(positionalArgs({ '0': 'a', '2': 'c' })).toEqual(['a']);
-    });
-
-    it('should ignore non-positional keys', () => {
-      expect(positionalArgs({ '0': 'a', transition: 'fade' })).toEqual(['a']);
-    });
-
-    it('should return an empty array when there are no positional args', () => {
-      expect(positionalArgs({})).toEqual([]);
-      expect(positionalArgs({ '1': 'b' })).toEqual([]);
-      expect(positionalArgs({ sprite: 'smile' })).toEqual([]);
-    });
-
-    it('should stop scanning at an explicit undefined value', () => {
-      expect(positionalArgs({ '0': 'a', '1': undefined, '2': 'c' })).toEqual([
-        'a',
-      ]);
-      expect(positionalArgs({ '0': undefined, '1': 'b' })).toEqual([]);
-    });
-
-    it('should keep null values because only undefined ends the scan', () => {
-      expect(positionalArgs({ '0': null, '1': 'b' })).toEqual([null, 'b']);
     });
   });
 

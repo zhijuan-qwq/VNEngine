@@ -335,6 +335,7 @@ describe('Interpreter', () => {
       expect(() => interpreter.step()).not.toThrow();
       expect(errorHandler).toHaveBeenCalledWith({
         message: 'boom',
+        phase: 'runtime',
         script: 'test',
         line: 1,
         command: 'say',
@@ -359,6 +360,7 @@ describe('Interpreter', () => {
       interpreter.step();
       expect(errorHandler).toHaveBeenCalledWith({
         message: 'nope',
+        phase: 'runtime',
         script: 'test',
         line: 7,
         command: 'boom',
@@ -584,6 +586,7 @@ describe('Interpreter', () => {
       bus.emit('input:click', { x: 0, y: 0 });
       expect(errorHandler).toHaveBeenCalledWith({
         message: 'handler boom',
+        phase: 'runtime',
         script: 'test',
         line: 5,
         command: 'say',
@@ -616,6 +619,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: 'Label "missing" not found in script "test".',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'jump',
@@ -632,6 +636,34 @@ describe('Interpreter', () => {
           expect.objectContaining({
             message: 'Flow command is missing a label name.',
             command: 'jump',
+          }),
+        );
+      });
+
+      it('should reject extra args on @jump', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(
+          makeScript([makeCmd('jump', { '0': 'target', '1': 'extra' }, 1)]),
+        );
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@jump does not accept argument "1".',
+            command: 'jump',
+          }),
+        );
+      });
+
+      it('should reject extra args on @end', () => {
+        const errorHandler = vi.fn();
+        bus.on('script:error', errorHandler);
+        interpreter.load(makeScript([makeCmd('end', { '0': 'extra' }, 1)]));
+        interpreter.step();
+        expect(errorHandler).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: '@end does not accept argument "0".',
+            command: 'end',
           }),
         );
       });
@@ -709,6 +741,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: 'Call stack is empty. Cannot return from function.',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'return',
@@ -884,6 +917,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: '@elseif without matching @if',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'elseif',
@@ -898,6 +932,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: '@else without matching @if',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'else',
@@ -912,6 +947,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: '@endif without matching @if',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'endif',
@@ -930,6 +966,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: 'Unclosed @if block starting at line 1.',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'if',
@@ -950,6 +987,7 @@ describe('Interpreter', () => {
         expect(() => interpreter.step()).not.toThrow();
         expect(errorHandler).toHaveBeenCalledWith({
           message: 'Unclosed @if block starting at line 1.',
+          phase: 'runtime',
           script: 'test',
           line: 1,
           command: 'if',

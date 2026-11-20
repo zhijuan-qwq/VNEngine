@@ -1,5 +1,5 @@
 import Parser from '../Parser';
-import { SyntaxError } from '../parser.js';
+import { VNScriptError } from '../errors';
 
 const COMPLETE_SCRIPT = `
 @title 第一章 — 转校生
@@ -101,6 +101,64 @@ describe('Parser', () => {
     expect(() =>
       parser.parseScript('@label start\n@set $a 1\n@label start\n'),
     ).toThrow('Duplicate label "start" at line 3.');
+  });
+
+  it('should accept Chinese identifiers', () => {
+    const script = parser.parseScript(
+      '@label 开始\n@set $好感 1\n@flag 中文旗标\n',
+    );
+    expect(script.labels.has('开始')).toBe(true);
+    expect(script.commands[1].args).toEqual({
+      '0': { type: 'var', name: '好感' },
+      '1': 1,
+    });
+  });
+
+  it('should parse an inline dialogue with a quoted speaker', () => {
+    const script = parser.parseScript('"???" "……"\n');
+    expect(script.commands[0].args).toEqual({
+      speaker: '???',
+      text: '……',
+    });
+  });
+
+  it('should reject extra values on variable commands', () => {
+    expect(() => parser.parseScript('@set $x 1 2\n')).toThrow(
+      '@set expects exactly 1 value, got 2',
+    );
+    expect(() => parser.parseScript('@random $d 1\n')).toThrow(
+      '@random expects exactly 2 values, got 1',
+    );
+  });
+
+  it('should allow blank lines and comments inside a choice block', () => {
+    const script = parser.parseScript(
+      '@choice\n\n  // a comment\n  -> "a": A\n@endchoice\n',
+    );
+    expect(script.commands[0].args.choices).toEqual([
+      { text: 'a', label: 'A' },
+    ]);
+  });
+
+  it('should reject an empty choice block', () => {
+    expect(() => parser.parseScript('@choice\n@endchoice\n')).toThrow(
+      '@choice block must contain at least one option',
+    );
+  });
+
+  it('should not treat @titlefoo as @title', () => {
+    const script = parser.parseScript('@titlefoo bar\n');
+    expect(script.metadata).toEqual({});
+    expect(script.commands[0]).toMatchObject({
+      type: 'titlefoo',
+      args: { '0': 'bar' },
+    });
+  });
+
+  it('should reject duplicate key-value arguments', () => {
+    expect(() => parser.parseScript('@bg room fade=1 fade=2\n')).toThrow(
+      'Duplicate argument "fade" in @bg',
+    );
   });
 
   it('should have correct label positions', () => {
@@ -280,8 +338,33 @@ describe('Parser', () => {
     );
   });
 
-  it('should throw SyntaxError for invalid script syntax', () => {
-    expect(() => parser.parseScript('@@')).toThrow(SyntaxError);
-    expect(() => parser.parseScript('{{{')).toThrow(SyntaxError);
+  it('should throw VNScriptError for invalid script syntax', () => {
+    expect(() => parser.parseScript('@@')).toThrow(VNScriptError);
+    expect(() => parser.parseScript('{{{')).toThrow(VNScriptError);
+  });
+
+  it('should reject malformed commands with dedicated syntax', () => {
+    expect(() => parser.parseScript('@say Hero "hi" junk\n')).toThrow(
+      VNScriptError,
+    );
+    expect(() => parser.parseScript('@if\n')).toThrow(VNScriptError);
+  });
+
+  it('should expose the parse phase and line on errors', () => {
+    try {
+      parser.parseScript('@@');
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(VNScriptError);
+      expect(error).toMatchObject({ phase: 'parse', line: 1 });
+    }
+
+    try {
+      parser.parseScript('@title a\n@title b\n');
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(VNScriptError);
+      expect(error).toMatchObject({ phase: 'parse', line: 2 });
+    }
   });
 });

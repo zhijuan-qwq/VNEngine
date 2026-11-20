@@ -82,6 +82,15 @@ describe('Renderer', () => {
       expect(layer('ui').zIndex).toBe(LAYER_Z_INDEX.ui);
     });
 
+    it('should expose the scene root for captures', () => {
+      const { renderer, stage } = createRenderer();
+
+      expect(renderer.getSceneRoot()).toBe(renderer.layers);
+      expect(renderer.getSceneRoot()).toBe(stage.children[0]);
+      // 场景根包含 UI 图层，截图即“所见即所得”
+      expect(renderer.getSceneRoot().children).toContain(renderer.getUILayer());
+    });
+
     it('should resize through the ScaleManager', () => {
       const { renderer, stage } = createRenderer({
         width: 400,
