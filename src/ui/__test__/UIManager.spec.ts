@@ -246,16 +246,39 @@ describe('UIManager', () => {
     expect(ui.settingsMenu.visible).toBe(false);
   });
 
-  it('should lock page input during fades', () => {
+  it('should shield input during page transitions', () => {
     const { ui } = makeManager();
     ui.open('settings');
-    expect(ui.settingsMenu.interactiveChildren).toBe(false);
+    expect(ui.inputLocked).toBe(true);
     ui.update(0.2);
-    expect(ui.settingsMenu.interactiveChildren).toBe(true);
+    expect(ui.inputLocked).toBe(false);
     ui.close();
-    expect(ui.settingsMenu.interactiveChildren).toBe(false);
+    expect(ui.inputLocked).toBe(true);
     ui.update(0.2);
+    expect(ui.inputLocked).toBe(false);
     expect(ui.settingsMenu.visible).toBe(false);
+  });
+
+  it('should ignore save taps during fade-out', () => {
+    const bus = new EventBus<EngineEvents>();
+    const onSave = vi.fn();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      saveLoadMenu: { getSlots: () => [{ slot: 0 }], onSave },
+    });
+    ui.open('save');
+    ui.update(0.2);
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledOnce();
+
+    ui.close();
+    tapNode(ui.saveLoadMenu.buttons[0]);
+    expect(onSave).toHaveBeenCalledOnce();
+
+    ui.update(0.2);
+    expect(ui.saveLoadMenu.visible).toBe(false);
   });
 
   it('should finish fades immediately while the game is paused', () => {
@@ -265,10 +288,11 @@ describe('UIManager', () => {
 
     bus.emit('game:pause', {});
     expect(ui.settingsMenu.alpha).toBe(1);
-    expect(ui.settingsMenu.interactiveChildren).toBe(true);
+    expect(ui.inputLocked).toBe(false);
 
     ui.open('history');
     expect(ui.historyView.alpha).toBe(1);
+    expect(ui.inputLocked).toBe(false);
     ui.close();
     expect(ui.historyView.visible).toBe(false);
   });
@@ -292,6 +316,7 @@ describe('UIManager', () => {
     });
     ui.open('save');
     expect(capture).toHaveBeenCalledOnce();
+    ui.update(0.2);
     tapNode(ui.saveLoadMenu.buttons[0]);
     expect(onSave).toHaveBeenCalledWith(0, 'data:image/jpeg;base64,thumb');
   });
@@ -310,6 +335,7 @@ describe('UIManager', () => {
       },
     });
     ui.open('save');
+    ui.update(0.2);
     tapNode(ui.saveLoadMenu.buttons[0]);
     expect(ui.confirmDialog.visible).toBe(true);
     expect(ui.saveLoadMenu.visible).toBe(true);
@@ -334,6 +360,7 @@ describe('UIManager', () => {
       },
     });
     ui.open('load');
+    ui.update(0.2);
     tapNode(ui.saveLoadMenu.buttons[0]);
     expect(ui.confirmDialog.visible).toBe(true);
     tapNode(ui.confirmDialog.buttons[1]);
@@ -355,6 +382,7 @@ describe('UIManager', () => {
       },
     });
     ui.open('load');
+    ui.update(0.2);
     tapNode(ui.saveLoadMenu.buttons[0]);
     tapNode(ui.confirmDialog.buttons[0]);
     await Promise.resolve();

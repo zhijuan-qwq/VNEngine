@@ -1,4 +1,5 @@
-import { Container } from 'pixi.js';
+import { Container, Rectangle } from 'pixi.js';
+import type { FederatedPointerEvent } from 'pixi.js';
 import type { EventBus } from '@/core/EventBus';
 import type { EngineEvents, UiPanel } from '@/types/events';
 import type { VarResolver } from '@/types/text';
@@ -56,7 +57,7 @@ interface PageFade {
 }
 
 /**
- * UI 门面（见架构文档 §8.1）：持有对话核心（DialogueBox/ChoicePanel）与四个内置面板，
+ * UI 门面（见架构文档 §8.1）：持有对话核心、快捷栏、三个全屏页与确认弹窗，
  * 订阅脚本事件与 ui:open/ui:close，并对外暴露 open/close/confirm 供脚本命令层调用。
  */
 export class UIManager {
@@ -73,6 +74,7 @@ export class UIManager {
   private readonly bus: EventBus<EngineEvents>;
   private readonly captureThumbnail?: () => string;
   private readonly getSlots?: () => readonly SaveSlotInfo[];
+  private readonly transitionShield: Container;
   private rafId: number | null = null;
   private lastTime = 0;
   private pendingThumbnail = '';
@@ -148,14 +150,28 @@ export class UIManager {
       theme: themeFor(options.confirmDialog?.theme),
     });
 
-    // 层级：按钮栏夹在对话核心与四个模态面板之间。这样无面板时按钮可点
-    // （盖住对话框/选项），有面板时面板的全屏背板又盖住按钮（见 InputManager
+    // 层级：按钮栏夹在对话核心与页面之间。这样无页面时按钮可点
+    // （盖住对话框/选项），有页面时页面的全屏背板又盖住按钮（见 InputManager
     // 的命中层位于 root 首个子节点，最底层）。
     this.menuBar = new MenuBar(bus, {
       ...size,
       ...options.menuBar,
       theme: themeFor(options.menuBar?.theme),
     });
+
+    // 页面过渡期间盖住整个 UI 根：既挡住页面自身，也避免点击穿透到下层快捷栏/对话。
+    // 放在确认框下方，确认框仍可正常操作。
+    this.transitionShield = new Container();
+    this.transitionShield.eventMode = 'none';
+    this.transitionShield.hitArea = new Rectangle(
+      0,
+      0,
+      options.width,
+      options.height,
+    );
+    this.transitionShield.on('pointertap', (event: FederatedPointerEvent) =>
+      event.stopPropagation(),
+    );
 
     this.root.addChild(
       this.dialogueBox,
@@ -164,6 +180,7 @@ export class UIManager {
       this.saveLoadMenu,
       this.settingsMenu,
       this.historyView,
+      this.transitionShield,
       this.confirmDialog,
     );
 
@@ -193,6 +210,11 @@ export class UIManager {
   /** 打字机是否正在逐字显示（供 InputManager 决定点击语义） */
   public isBusy(): boolean {
     return this.dialogueBox.isBusy();
+  }
+
+  /** 测试/调试用：页面过渡期间是否正在屏蔽输入 */
+  get inputLocked(): boolean {
+    return this.transitionShield.eventMode === 'static';
   }
 
   /** 打开某个页面（互斥：先关闭其它页面） */
@@ -254,6 +276,7 @@ export class UIManager {
     this.history.destroy();
     this.confirmDialog.destroy();
     this.menuBar.destroy();
+    this.transitionShield.destroy();
   }
 
   private readonly handleSay = (payload: EngineEvents['script:say']): void => {
@@ -306,6 +329,7 @@ export class UIManager {
     slot: number,
     onSave?: (slot: number, thumbnail?: string) => void,
   ): void {
+    if (this.fades.length > 0) return;
     const existing = this.getSlots?.().find((info) => info.slot === slot);
     const write = (): void => onSave?.(slot, this.pendingThumbnail);
     if (existing?.timestamp === undefined) {
@@ -325,6 +349,7 @@ export class UIManager {
 
   /** 读档确认后立即回到游戏，页面不参与淡出（读档会替换整个场景） */
   private requestLoad(slot: number, onLoad?: (slot: number) => void): void {
+    if (this.fades.length > 0) return;
     void this.confirmDialog
       .confirm({
         title: '读取进度',
@@ -349,11 +374,9 @@ export class UIManager {
   private fadeIn(view: UIComponent): void {
     this.fades = this.fades.filter((fade) => fade.view !== view);
     view.visible = true;
-    // 过渡期间锁住页面内的交互，避免半透明阶段误触卡片/按钮
-    view.interactiveChildren = false;
     if (this.paused) {
       view.alpha = 1;
-      view.interactiveChildren = true;
+      this.syncShield();
       return;
     }
     view.alpha = 0;
@@ -365,6 +388,7 @@ export class UIManager {
       duration: PAGE_FADE_SECONDS,
       hideOnDone: false,
     });
+    this.syncShield();
   }
 
   private fadeOut(view: UIComponent): void {
@@ -372,9 +396,9 @@ export class UIManager {
       return;
     }
     this.fades = this.fades.filter((fade) => fade.view !== view);
-    view.interactiveChildren = false;
     if (this.paused) {
       view.hide();
+      this.syncShield();
       return;
     }
     this.fades.push({
@@ -385,6 +409,7 @@ export class UIManager {
       duration: PAGE_FADE_SECONDS,
       hideOnDone: true,
     });
+    this.syncShield();
   }
 
   /** 立刻结束进行中的淡入淡出，避免旧动画把重新打开的页面藏掉 */
@@ -395,10 +420,9 @@ export class UIManager {
       fade.view.alpha = fade.to;
       if (fade.hideOnDone) {
         fade.view.hide();
-      } else {
-        fade.view.interactiveChildren = true;
       }
     }
+    this.syncShield();
   }
 
   private updateFades(dt: number): void {
@@ -416,12 +440,17 @@ export class UIManager {
           fade.view.hide();
         } else {
           fade.view.alpha = 1;
-          fade.view.interactiveChildren = true;
         }
         continue;
       }
       this.fades.push(fade);
     }
+    this.syncShield();
+  }
+
+  /** 过渡期间用全屏屏蔽层拦截点击，避免穿透到下层快捷栏或对话 */
+  private syncShield(): void {
+    this.transitionShield.eventMode = this.fades.length > 0 ? 'static' : 'none';
   }
 
   private startTicking(): void {
