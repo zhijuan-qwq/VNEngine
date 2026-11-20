@@ -4,8 +4,8 @@ import type { Application, Container } from 'pixi.js';
 const THUMBNAIL_WIDTH = 320;
 
 /**
- * 把场景根容器按逻辑分辨率截成 16:9 缩略图（JPEG data URL）。
- * 截图失败（无 WebGL、被存储拒绝等）时返回空串，调用方降级为无图卡片。
+ * 把场景根容器截成宽 320px 的 JPEG data URL，高度随画面比例缩放（16:9 即 320×180）。
+ * 尺寸非法或截图失败（无 WebGL、被存储拒绝等）时返回空串，调用方降级为无图卡片。
  */
 export function captureThumbnail(
   app: Application,
@@ -13,6 +13,14 @@ export function captureThumbnail(
   width: number,
   height: number,
 ): string {
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return '';
+  }
   try {
     const canvas = app.renderer.extract.canvas({
       target,

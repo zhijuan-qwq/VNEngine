@@ -58,6 +58,16 @@ describe('captureThumbnail', () => {
     expect(captureThumbnail(app, new Container(), 1280, 720)).toBe('');
   });
 
+  it('should return an empty string for invalid sizes', () => {
+    const { app, canvasSpy } = makeApp({ toDataURL: () => 'data' });
+
+    expect(captureThumbnail(app, new Container(), 0, 720)).toBe('');
+    expect(captureThumbnail(app, new Container(), -1, 720)).toBe('');
+    expect(captureThumbnail(app, new Container(), 1280, 0)).toBe('');
+    expect(captureThumbnail(app, new Container(), NaN, 720)).toBe('');
+    expect(canvasSpy).not.toHaveBeenCalled();
+  });
+
   it('should degrade to an empty string when extraction throws', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const app = {
