@@ -132,7 +132,7 @@ function drawIcon(
 
 /**
  * 右下角快捷栏：图标 + 大写标签，覆盖在画面上方。
- * 点击任一按钮在 EventBus 上 emit `ui:open`，作为四个内置面板的入口。
+ * 点击任一按钮在 EventBus 上 emit `ui:open`，作为设置/保存/读取/历史四个页面的入口。
  */
 export class MenuBar extends UIComponent {
   private readonly opts: ResolvedOptions;

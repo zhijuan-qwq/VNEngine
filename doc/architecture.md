@@ -1052,18 +1052,18 @@ class UIComponent extends Container {
 
 对话核心、快捷栏、三个全屏页与确认弹窗（均继承 `UIComponent`）：
 
-| 组件            | 说明                                                                                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`；订阅 `game:settings` 响应 `textSpeed`/`fontSize`                                                                    |
-| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                                         |
-| `MenuBar`       | 右下角快捷栏：SYSTEM/SAVE/LOAD/HISTORY 四个入口，点击 emit `ui:open`                                                                                                                         |
-| `PagePanel`     | 全屏页骨架：半透明暗化底 + 左上标题 + 内容区 + 右下「← 返回游戏」；设置/历史/存读档三页组合它                                                                                                |
-| `SaveLoadMenu`  | 存读档页：`show('save'\|'load')`，自适应列数的缩略图卡片网格 + `ScrollView`；卡片显示缩略图与时间，空槽显示「空」；注入 `{ slots?, getSlots?, onSave?, onLoad? }`（共享类型 `SaveSlotInfo`） |
-| `SettingsMenu`  | 设置页：两栏分组——「音频」4 个音量 `Slider`，「文字与显示」文字速度 `Slider` + `skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController }`，生产端接线 `SettingsManager`    |
-| `HistoryView`   | 对话历史页：每条对话一张全宽卡片（角色名 + 台词），注入 `getEntries?: () => readonly DialogueEntry[]`，`show()` 刷新并滚动到底部                                                             |
-| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束；可叠在全屏页之上                                                              |
+| 组件            | 说明                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`；订阅 `game:settings` 响应 `textSpeed`/`fontSize`                                                                              |
+| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                                                   |
+| `MenuBar`       | 右下角快捷栏：SYSTEM/SAVE/LOAD/HISTORY 四个入口，点击 emit `ui:open`                                                                                                                                   |
+| `PagePanel`     | 全屏页骨架：半透明暗化底 + 左上标题 + 内容区 + 右下「← 返回游戏」；设置/历史/存读档三页组合它                                                                                                          |
+| `SaveLoadMenu`  | 存读档页：`show('save'\|'load')`，自适应列数的缩略图卡片网格 + `ScrollView`；卡片显示缩略图与时间，空槽显示「空」；注入 `{ slots?, getSlots?, onSave?, onLoad?, onClose? }`（共享类型 `SaveSlotInfo`） |
+| `SettingsMenu`  | 设置页：两栏分组——「音频」4 个音量 `Slider`，「文字与显示」文字速度 `Slider` + `skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController, onClose? }`，生产端接线 `SettingsManager`    |
+| `HistoryView`   | 对话历史页：每条对话一张全宽卡片（角色名 + 台词），注入 `{ getEntries?: () => readonly DialogueEntry[]; onClose? }`，`show()` 刷新并滚动到底部                                                         |
+| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束；可叠在全屏页之上                                                                        |
 
-**对契约编程：** 三个全屏页只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`），不直接依赖 `SaveManager` / `SettingsManager` 的持久化实现。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。存档缩略图由 `Game` 提供的抓帧回调在打开存档页前生成；历史数据生产链路仍留待 M5。
+**对契约编程：** 三个全屏页只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`/`onClose`），不直接依赖 `SaveManager` / `SettingsManager` 的持久化实现。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。存档缩略图由 `Game` 提供的抓帧回调在打开存档页前生成；历史数据生产链路仍留待 M5。
 
 全屏页改造删除了仅服务于旧模态框的主题键 `modalWidthRatio` / `modalHeightRatio` / `settingsWidthRatio` / `slotHeight`；外部主题覆盖若引用它们需同步移除。
 

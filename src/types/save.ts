@@ -26,7 +26,7 @@ export interface DialogueEntrySnapshot {
   timestamp: number;
 }
 
-/** 存读档菜单的槽位元数据（结构与 UI 局部契约 SaveSlotInfo 兼容） */
+/** 存读档页与 SaveManager 共用的槽位元数据 */
 export interface SaveSlotInfo {
   slot: number;
   label?: string;
