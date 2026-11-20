@@ -87,6 +87,8 @@ describe('Renderer', () => {
 
       expect(renderer.getSceneRoot()).toBe(renderer.layers);
       expect(renderer.getSceneRoot()).toBe(stage.children[0]);
+      // 场景根包含 UI 图层，截图即“所见即所得”
+      expect(renderer.getSceneRoot().children).toContain(renderer.getUILayer());
     });
 
     it('should resize through the ScaleManager', () => {

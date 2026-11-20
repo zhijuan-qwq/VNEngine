@@ -247,6 +247,8 @@ describe('UIManager', () => {
   });
 
   it('should shield input during page transitions', () => {
+    // 真实命中顺序由 Pixi 层序保证（shield 在页面之上、确认框之下）；
+    // 这里验证屏蔽层随过渡开关，动作回调的过渡期守卫由下一条用例覆盖。
     const { ui } = makeManager();
     ui.open('settings');
     expect(ui.inputLocked).toBe(true);
