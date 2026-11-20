@@ -74,7 +74,7 @@ export class HistoryView extends UIComponent {
       title: this.opts.title,
       padding: this.opts.padding,
       panelColor: this.opts.panelColor,
-      onBack: options.onClose ?? (() => this.hide()),
+      onBack: this.hideOnClose(options.onClose),
       theme: this.theme,
     });
     this.addChild(this.page);

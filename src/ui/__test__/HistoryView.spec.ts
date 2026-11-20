@@ -1,5 +1,7 @@
+import type { FederatedPointerEvent } from 'pixi.js';
 import type { DialogueEntry } from '@/types/engine';
 import { HistoryView } from '../HistoryView';
+import { PagePanel } from '../PagePanel';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -93,5 +95,18 @@ describe('HistoryView', () => {
     view.show();
     view.hide();
     expect(view.visible).toBe(false);
+  });
+
+  it('should forward the page back button to onClose', () => {
+    const onClose = vi.fn();
+    const view = new HistoryView({ width: 800, height: 600, onClose });
+    view.show();
+    const page = view.children[0] as PagePanel;
+
+    page.backButton.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

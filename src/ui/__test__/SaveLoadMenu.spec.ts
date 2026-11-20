@@ -1,6 +1,7 @@
 import type { Container, FederatedPointerEvent } from 'pixi.js';
 import { SaveLoadMenu } from '../SaveLoadMenu';
 import type { SaveLoadMenuOptions } from '../SaveLoadMenu';
+import { PagePanel } from '../PagePanel';
 import type { SaveSlotInfo } from '@/types/save';
 
 vi.mock('pixi.js', async (importOriginal) => {
@@ -227,5 +228,32 @@ describe('SaveLoadMenu', () => {
     slots = [{ slot: 0, timestamp: 1 }, { slot: 1 }];
     menu.refresh();
     expect(menu.buttons).toHaveLength(2);
+  });
+
+  it('should not rebuild cards on refresh while hidden', () => {
+    const getSlots = vi.fn(() => [{ slot: 0 }]);
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots,
+    });
+
+    menu.refresh();
+
+    expect(menu.buttons).toHaveLength(0);
+    expect(getSlots).not.toHaveBeenCalled();
+  });
+
+  it('should forward the page back button to onClose', () => {
+    const onClose = vi.fn();
+    const menu = makeMenu({ onClose });
+    menu.show('save');
+    const page = menu.children[0] as PagePanel;
+
+    page.backButton.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

@@ -37,6 +37,11 @@ export class UIComponent extends Container {
     super.destroy(options);
   }
 
+  /** 页面返回按钮的默认行为：未注入 onClose 时隐藏自身 */
+  protected hideOnClose(handler?: () => void): () => void {
+    return handler ?? (() => this.hide());
+  }
+
   protected bind<E extends EventName>(
     emitter: EventBus<EngineEvents>,
     event: E,

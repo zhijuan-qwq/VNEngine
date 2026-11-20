@@ -47,14 +47,19 @@ interface ResolvedOptions {
 
 const CARD_ASPECT = 9 / 16;
 
+interface SlotCard {
+  node: Container;
+  /** 已存槽位的时间文案；空槽为 undefined */
+  time?: string;
+}
+
 export class SaveLoadMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly page: PagePanel;
   private readonly scroll: ScrollView;
   private readonly contentWidth: number;
-  private slotButtons: Container[] = [];
-  private timeLabels: string[] = [];
+  private slotCards: SlotCard[] = [];
   private readonly thumbnailImages = new Map<string, HTMLImageElement>();
   private readonly thumbnailTextures = new Map<string, Texture>();
   private currentMode: SaveLoadMode = 'load';
@@ -82,7 +87,7 @@ export class SaveLoadMenu extends UIComponent {
       title: '读取进度',
       padding: this.opts.padding,
       panelColor: this.opts.panelColor,
-      onBack: options.onClose ?? (() => this.hide()),
+      onBack: this.hideOnClose(options.onClose),
       theme: this.theme,
     });
     this.addChild(this.page);
@@ -125,12 +130,14 @@ export class SaveLoadMenu extends UIComponent {
   }
 
   get buttons(): Container[] {
-    return this.slotButtons;
+    return this.slotCards.map((card) => card.node);
   }
 
   /** 测试/调试用：当前渲染的时间标签 */
   get times(): string[] {
-    return [...this.timeLabels];
+    return this.slotCards.flatMap((card) =>
+      card.time === undefined ? [] : [card.time],
+    );
   }
 
   private rebuild(): void {
@@ -165,17 +172,22 @@ export class SaveLoadMenu extends UIComponent {
       // 读档模式下空槽不可用：没有存档可恢复，点了只会触发一次注定失败的读取
       const disabled =
         this.currentMode === 'load' && info.timestamp === undefined;
+      const time =
+        info.timestamp === undefined
+          ? undefined
+          : this.formatTime(info.timestamp);
       const card = this.buildCard(
         info,
         cellWidth,
         imageHeight,
         timeGap,
         timeHeight,
+        time,
         disabled,
       );
       card.x = (index % columns) * (cellWidth + gap);
       card.y = Math.floor(index / columns) * (cellHeight + gap);
-      this.slotButtons.push(card);
+      this.slotCards.push({ node: card, time });
       this.scroll.content.addChild(card);
     }
 
@@ -201,6 +213,7 @@ export class SaveLoadMenu extends UIComponent {
     imageHeight: number,
     timeGap: number,
     timeHeight: number,
+    time: string | undefined,
     disabled: boolean,
   ): Container {
     const card = new Container();
@@ -217,14 +230,12 @@ export class SaveLoadMenu extends UIComponent {
     bg.fill(this.theme.colors.surfaceButton, 0.92);
     card.addChild(bg);
 
-    const occupied = info.timestamp !== undefined;
+    const occupied = time !== undefined;
     if (occupied && info.thumbnail) {
       this.attachThumbnail(card, info.thumbnail, width, imageHeight);
     }
 
-    if (occupied) {
-      const time = this.formatTime(info.timestamp as number);
-      this.timeLabels.push(time);
+    if (time !== undefined) {
       const label = new Text({
         text: time,
         style: {
@@ -391,8 +402,7 @@ export class SaveLoadMenu extends UIComponent {
       child.removeAllListeners();
       child.destroy();
     }
-    this.slotButtons = [];
-    this.timeLabels = [];
+    this.slotCards = [];
   }
 
   public override destroy(options?: DestroyOptions): void {
