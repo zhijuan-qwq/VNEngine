@@ -54,6 +54,7 @@ function makeRenderer(uiLayer: Container | null = null): IRenderer {
     setState: vi.fn(),
     resize: vi.fn(),
     getUILayer: vi.fn(() => uiLayer),
+    getSceneRoot: vi.fn(() => new Container()),
     toLogical: vi.fn((point: { x: number; y: number }) => point),
     destroy: vi.fn(),
   };
@@ -483,7 +484,7 @@ describe('Game', () => {
       await h.game.saveSlot(2);
       await h.game.loadSlot(2);
 
-      expect(capture).toHaveBeenCalledWith(h.game.engine, 2);
+      expect(capture).toHaveBeenCalledWith(h.game.engine, 2, undefined);
       expect(restore).toHaveBeenCalledWith(h.game.engine, 2);
       expect(h.emitSpy).toHaveBeenCalledWith('game:save', { slot: 2 });
       expect(h.emitSpy).toHaveBeenCalledWith('game:load', { slot: 2 });

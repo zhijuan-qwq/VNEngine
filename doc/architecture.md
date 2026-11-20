@@ -63,7 +63,7 @@ Game
 ├── eventBus: EventBus               // 事件总线
 ├── renderer: Renderer               // 渲染器（持有 LayerStack，驱动 bg/character/effect）
 ├── input: InputManager | null       // 输入分发（pixi 指针事件 → input:* 事件）
-├── ui: UIManager | null             // UI 门面（对话核心 + 四个内置面板）
+├── ui: UIManager | null             // UI 门面（对话核心 + 快捷栏 + 三个全屏页 + 确认弹窗）
 ├── script: ScriptEngine             // 脚本引擎
 ├── audio: AudioManager              // 音频管理
 ├── resource: ResourceManager        // 资源管理
@@ -1023,11 +1023,14 @@ UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Contai
 
 **UIManager（UI 门面）** 持有全部 UI 组件并对外提供统一入口：
 
-- 持有 `root: Container`（挂到 `ui` 图层的根）、`dialogueBox`、`choicePanel` 与四个内置面板（§8.2）；
+- 持有 `root: Container`（挂到 `ui` 图层的根）、`dialogueBox`、`choicePanel`、`menuBar` 与三个全屏页（§8.2）；确认弹窗 `ConfirmDialog` 独立存在；
 - 订阅脚本事件（`script:say` / `script:clear` / `script:choice` / `script:end`）驱动对话核心；
-- 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；面板互斥（打开一个先关掉其它）；
+- 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；页面互斥（打开一个先关掉其它），开关带约 150ms 淡入淡出，引擎暂停时立即完成过渡；
+- 页面过渡期间由 `transitionShield`（覆盖 UI 根的全屏命中层，位于页面之上、确认框之下）屏蔽输入，结束后关闭；
+- 打开存档页前调用注入的 `captureThumbnail()` 抓取当前画面（所见即所得，含对话框与快捷栏），存入选槽时写入存档；
+- 覆盖已有存档、读取存档前直接叠确认框（不关闭底层页面）；读档确认后关闭页面回到游戏；
 - `isBusy()` 委托 `dialogueBox.isBusy()`，供 InputManager（§8.3）判定点击语义；
-- 由 `Updater` 驱动（`update(dt)` 推进打字机）；构造时传 `autoTick: false` 关闭内部 RAF，避免与 Updater 双重循环。
+- 由 `Updater` 驱动（`update(dt)` 推进打字机与页面淡入淡出）；构造时传 `autoTick: false` 关闭内部 RAF，避免与 Updater 双重循环。
 
 ```ts
 import { Container } from 'pixi.js';
@@ -1048,18 +1051,22 @@ class UIComponent extends Container {
 
 ### 8.2 内置 UI 组件
 
-对话核心与四个面板（均继承 `UIComponent`）：
+对话核心、快捷栏、三个全屏页与确认弹窗（均继承 `UIComponent`）：
 
-| 组件            | 说明                                                                                                                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`；订阅 `game:settings` 响应 `textSpeed`/`fontSize`                                                                                      |
-| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                                                           |
-| `SaveLoadMenu`  | 存读档菜单：`show('save'\|'load')`，槽位网格 + `ScrollView`；注入 `{ slots?, getSlots?, onSave?, onLoad? }`（UI 局部契约 `SaveSlotInfo`，缺省时空态）                                                          |
-| `SettingsMenu`  | 设置菜单：4 个音量 `Slider`、`textSpeed` `Slider`、`skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController }`，生产端接线 `SettingsManager`，缺省时显示 `DEFAULT_SETTINGS`、`onChange` no-op |
-| `HistoryView`   | 对话历史：注入 `getEntries?: () => readonly DialogueEntry[]`，`show()` 刷新并滚动到底部                                                                                                                        |
-| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束                                                                                                  |
+| 组件            | 说明                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DialogueBox`   | 对话框：pixi Text 分段 + 打字机（见 §4.7）；`show/hide/isBusy/complete`；订阅 `game:settings` 响应 `textSpeed`/`fontSize`                                                                              |
+| `ChoicePanel`   | 选项面板：`script:choice` → 按钮列表 → 发射 `script:choice:selected`                                                                                                                                   |
+| `MenuBar`       | 右下角快捷栏：SYSTEM/SAVE/LOAD/HISTORY 四个入口，点击 emit `ui:open`                                                                                                                                   |
+| `PagePanel`     | 全屏页骨架：半透明暗化底 + 左上标题 + 内容区 + 右下「← 返回游戏」；设置/历史/存读档三页组合它                                                                                                          |
+| `SaveLoadMenu`  | 存读档页：`show('save'\|'load')`，自适应列数的缩略图卡片网格 + `ScrollView`；卡片显示缩略图与时间，空槽显示「空」；注入 `{ slots?, getSlots?, onSave?, onLoad?, onClose? }`（共享类型 `SaveSlotInfo`） |
+| `SettingsMenu`  | 设置页：两栏分组——「音频」4 个音量 `Slider`，「文字与显示」文字速度 `Slider` + `skipMode`/`fullscreen` `Toggle`；注入 `{ controller?: SettingsController, onClose? }`，生产端接线 `SettingsManager`    |
+| `HistoryView`   | 对话历史页：每条对话一张全宽卡片（角色名 + 台词），注入 `{ getEntries?: () => readonly DialogueEntry[]; onClose? }`，`show()` 刷新并滚动到底部                                                         |
+| `ConfirmDialog` | 确认弹窗：`confirm(request): Promise<boolean>`，确认→`true`、取消/关闭→`false`，已有未决请求先以 `false` 结束；可叠在全屏页之上                                                                        |
 
-**对契约编程：** 四个面板只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`），不直接依赖 `SaveManager` / `SettingsManager` 的持久化实现。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。存档实现与设置持久化已接线（§9.3 / §9.1）；历史数据生产链路仍留待 M5。
+**对契约编程：** 三个全屏页只依赖注入的局部 UI 契约（`SettingsController`、`getSlots`/`SaveSlotInfo`、`getEntries`、`onSave`/`onLoad`/`onClose`），不直接依赖 `SaveManager` / `SettingsManager` 的持久化实现。缺省（未注入）时显示空态或默认值，`onChange` / `onSave` 等回调 no-op。存档缩略图由 `Game` 提供的抓帧回调在打开存档页前生成；历史数据生产链路仍留待 M5。
+
+全屏页改造删除了仅服务于旧模态框的主题键 `modalWidthRatio` / `modalHeightRatio` / `settingsWidthRatio` / `slotHeight`；外部主题覆盖若引用它们需同步移除。
 
 通用控件位于 `src/ui/controls/`（纯手写；pixi `Container`/`Graphics`/`Text`，不使用 `@pixi/ui`）：
 
@@ -1069,7 +1076,7 @@ class UIComponent extends Container {
 | `Toggle`     | 两态开关：`value`/`setValue`/`toggle`；`disabled` 时 `toggle` no-op                                                 |
 | `ScrollView` | 遮罩裁剪 + 垂直滚动偏移：`content`/`setContentHeight`/`scrollBy`/`setScroll`/`scrollTop`/`maxScroll`                |
 
-`src/ui/overlay.ts` 提供面板共用的绘制助手：`createBackdrop`（全屏吞噬点击的模态遮罩）/ `createPanelBox` / `createButton`。
+`src/ui/overlay.ts` 提供页面/弹窗共用的绘制助手：`createBackdrop`（全屏吞噬点击的遮罩）/ `createPanelBox` / `createButton`。
 
 ### 8.3 输入事件分发
 
@@ -1085,7 +1092,7 @@ pixi Federated Events → InputManager 路由
   → pointermove → 发射 input:hover { x, y }
 ```
 
-命中层位于 UI 根的第一个子节点：只有当指针下没有更上层的交互对象（按钮、模态遮罩等）时才会命中。模态面板的全屏 backdrop 在更高层且 `stopPropagation`，因此天然屏蔽底层点击，无需额外的「模态是否开启」布尔门控。
+命中层位于 UI 根的第一个子节点：只有当指针下没有更上层的交互对象（按钮、全屏页/确认框遮罩等）时才会命中。全屏页与确认框的 backdrop 在更高层且 `stopPropagation`，因此**页面完全打开后**天然屏蔽底层点击，无需额外的「页面是否开启」布尔门控；仅在约 150ms 的过渡期间由 `transitionShield` 临时接管命中，避免半透明阶段点击穿透到下层快捷栏或对话。
 
 ```ts
 class InputManager implements IInputManager {
@@ -1166,11 +1173,11 @@ Settings **独立持久化（全局一份），不嵌入每个存档槽中**。�
 ### 9.3 存档流程（SaveManager）
 
 ```
-Game.saveSlot(slot)
-  → saveManager.capture(engine, slot)
+Game.saveSlot(slot, thumbnail?)
+  → saveManager.capture(engine, slot, thumbnail)
   → eventBus.emit('game:save', { slot })
 
-SaveManager.capture(engine, slot):
+SaveManager.capture(engine, slot, thumbnail = ''):
   1. 读取各子系统快照：script.getState() / renderer.getState() / audio.getState() /
      variableStore.dump() / ui.history.entries()
   2. 若阻塞在 @say 上（getBlockedCommandType() === 'say'）且历史非空，裁掉历史末条
@@ -1180,7 +1187,8 @@ SaveManager.capture(engine, slot):
   4. 取当前对话文本截取（≤30字）作为 slotLabel
   5. 构建 SaveData { version, timestamp, thumbnail, slotLabel, gameState }
   6. storage.setItem(`save_${slot}`, JSON.stringify(saveData))  // IndexedDB 优先，降级 localStorage
-  （thumbnail / playTime 尚未接线，暂存空值）
+  （thumbnail 由 UIManager 在打开存档页前抓帧、经 saveGame(slot, thumbnail) 注入；
+    playTime 尚未累计，暂存 0）
 
 Game.loadSlot(slot)
   → 若 state === 'running' 先 pause()
@@ -1344,10 +1352,12 @@ src/
 │
 ├── ui/                            # UI 组件（pixi Container + 手写控件）
 │   ├── UIComponent.ts             # UI组件基类（extends pixi Container）
-│   ├── UIManager.ts               # UI门面（持有对话核心与四个面板，open/close/confirm）
+│   ├── UIManager.ts               # UI门面（持有对话核心与三个全屏页，open/close/confirm）
 │   ├── DialogueBox.ts             # 对话框（富文本分段 + 打字机）
 │   ├── ChoicePanel.ts             # 选项面板
-│   ├── SaveLoadMenu.ts            # 存档/读档菜单（槽位网格 + ScrollView）
+│   ├── MenuBar.ts                 # 右下角快捷栏（ui:open 入口）
+│   ├── PagePanel.ts               # 全屏页骨架（暗化底/标题/内容区/返回按钮）
+│   ├── SaveLoadMenu.ts            # 存档/读档页（缩略图卡片网格 + ScrollView）
 │   ├── SettingsMenu.ts            # 设置菜单（音量/文字速度 Slider + Toggle）
 │   ├── HistoryView.ts             # 对话历史（ScrollView）
 │   ├── ConfirmDialog.ts           # 确认弹窗（模态 backdrop）
@@ -1458,13 +1468,14 @@ Game.init(config)
 存档:
   UI点击存档槽
     → SaveLoadSlot.onClick()
-    → Game.saveSlot(slot)
-    → SaveManager.capture(engine, slot)
+    → UIManager 覆盖确认 → Game.saveSlot(slot, thumbnail)
+      （thumbnail 在打开存档页前由 captureThumbnail 抓取并缓存）
+    → SaveManager.capture(engine, slot, thumbnail)
       → 遍历各子系统收集快照（script/renderer/audio/variableStore/history）
       → 阻塞在 @say 上时裁掉历史末条（重放会再次记录）
       → 组装 GameStateSnapshot → 构建 SaveData
-      → IndexedDB 持久化（缩略图尚未接线）
-    → EventBus 发送 'game:save'
+      → IndexedDB 持久化
+    → EventBus 发送 'game:save' → UIManager 刷新存档卡片
 
 读档:
   UI点击读档槽
@@ -1627,6 +1638,8 @@ interface IRenderer {
   resize(size: { width: number; height: number }): void;
   // UI 层容器（Renderer 预建，可能为 null），供 UIManager 挂载 root（见 §8.1）
   getUILayer(): Container | null;
+  // 场景根容器（bg/chara/effect/ui 图层的父级），供截图抓帧（见 §9.3）
+  getSceneRoot(): Container;
   // 屏幕坐标 → 逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
@@ -1663,7 +1676,7 @@ interface VNEngine {
   destroy(): void;
   pause(): void;
   resume(): void;
-  saveGame(slot: number): void;
+  saveGame(slot: number, thumbnail?: string): void;
   loadGame(slot: number): void;
 }
 ```
@@ -1729,7 +1742,7 @@ interface GameStateSnapshot {
 
 `GameStateSnapshot.characters` 复用 `CharacterState[]`（`position: Position`），与渲染层 `RendererState` 的
 字段一致，`renderer.setState(snapshot.characters)` 可直接赋值、`tsc` 通过（此前的类型缺口已消除）。
-`thumbnail` / `playTime` 目前仍是占位（缩略图未接线、playTime 未累计）。
+`thumbnail` 已接线（打开存档页前抓帧，宽 320px、按画面比例缩放的 JPEG data URL，16:9 下即 320×180；包含对话框与快捷栏）；`playTime` 仍未累计。
 
 ---
 
@@ -1753,7 +1766,7 @@ interface GameStateSnapshot {
 - [x] 对话历史/回看（`HistoryView`，对注入的 `getEntries` 契约编程）
 - [x] 设置菜单（音量、文字速度等；`SettingsMenu`，`@pixi/ui` → 手写 Slider/Toggle）
 - [x] 设置持久化（`SettingsManager`，全局独立一份 + `game:settings` 广播；音量/文字速度/字号/全屏已接线）
-- [x] 存读档菜单与确认弹窗（`SaveLoadMenu` / `ConfirmDialog`；`SaveManager` 已接线，缩略图/历史仍待 M5）
+- [x] 存读档页与确认弹窗（`SaveLoadMenu` / `ConfirmDialog`；`SaveManager` 已接线，缩略图已接入，历史生产链路仍待 M5）
 - [ ] 多语言支持
 - [ ] IndexedDB 存档
 

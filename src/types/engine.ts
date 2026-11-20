@@ -129,6 +129,8 @@ export interface IRenderer {
   resize(size: { width: number; height: number }): void;
   /** UI 层容器，供 §8 的 UI 子系统挂载（Renderer 预建，可能为 null） */
   getUILayer(): Container | null;
+  /** 场景根容器（bg/chara/effect/ui 图层的父级），供截图等整体操作 */
+  getSceneRoot(): Container;
   /** 屏幕坐标 → 逻辑坐标，供输入层复用渲染的同一换算（见架构文档 §4.8） */
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
@@ -172,6 +174,6 @@ export interface VNEngine {
   destroy(): void;
   pause(): void;
   resume(): void;
-  saveGame(slot: number): void;
+  saveGame(slot: number, thumbnail?: string): void;
   loadGame(slot: number): void;
 }

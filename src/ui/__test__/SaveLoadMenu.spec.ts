@@ -1,6 +1,8 @@
-import type { FederatedPointerEvent } from 'pixi.js';
+import type { Container, FederatedPointerEvent } from 'pixi.js';
 import { SaveLoadMenu } from '../SaveLoadMenu';
 import type { SaveLoadMenuOptions } from '../SaveLoadMenu';
+import { PagePanel } from '../PagePanel';
+import type { SaveSlotInfo } from '@/types/save';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -24,9 +26,38 @@ function tap(button: { emit(event: string, payload: unknown): void }): void {
   } as unknown as FederatedPointerEvent);
 }
 
-function labelOf(menu: SaveLoadMenu, index: number): string {
-  const label = menu.buttons[index].children[1] as unknown as { text: string };
-  return label.text;
+function textsOf(container: Container): string[] {
+  const result: string[] = [];
+  const visit = (node: Container): void => {
+    const text = (node as unknown as { text?: unknown }).text;
+    if (typeof text === 'string') {
+      result.push(text);
+    }
+    for (const child of node.children) {
+      visit(child as Container);
+    }
+  };
+  visit(container);
+  return result;
+}
+
+function findText(
+  container: Container,
+  text: string,
+): { x: number; y: number } | null {
+  let found: { x: number; y: number } | null = null;
+  const visit = (node: Container): void => {
+    if (found) return;
+    if ((node as unknown as { text?: unknown }).text === text) {
+      found = node as unknown as { x: number; y: number };
+      return;
+    }
+    for (const child of node.children) {
+      visit(child as Container);
+    }
+  };
+  visit(container);
+  return found;
 }
 
 describe('SaveLoadMenu', () => {
@@ -49,7 +80,7 @@ describe('SaveLoadMenu', () => {
     expect(menu.mode).toBe('load');
   });
 
-  it('should create one button per slot', () => {
+  it('should create one card per slot', () => {
     const menu = makeMenu();
     menu.show('load');
     expect(menu.buttons).toHaveLength(3);
@@ -69,13 +100,59 @@ describe('SaveLoadMenu', () => {
     expect(menu.buttons[2].y).toBeGreaterThan(menu.buttons[0].y);
   });
 
-  it('should call onSave with the slot in save mode and hide', () => {
+  it('should adapt columns to the available width', () => {
+    const menu = new SaveLoadMenu({
+      width: 1280,
+      height: 720,
+      slots: Array.from({ length: 12 }, (_, index) => index),
+    });
+    menu.show('load');
+    expect(menu.buttons).toHaveLength(12);
+    expect(menu.buttons[4].y).toBe(menu.buttons[0].y);
+    expect(menu.buttons[5].y).toBeGreaterThan(menu.buttons[0].y);
+    expect(menu.buttons[5].x).toBe(menu.buttons[0].x);
+  });
+
+  it('should render an empty placeholder for unsaved slots', () => {
+    const menu = makeMenu();
+    menu.show('save');
+    expect(textsOf(menu.buttons[0])).toContain('空');
+  });
+
+  it('should render the save time on occupied cards', () => {
+    const timestamp = new Date(2026, 0, 2, 3, 4).getTime();
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots: () => [{ slot: 0, timestamp }],
+    });
+    menu.show('load');
+    expect(menu.times).toEqual(['01-02 03:04']);
+    expect(textsOf(menu.buttons[0])).toContain('01-02 03:04');
+  });
+
+  it('should place the time centred below the thumbnail', () => {
+    const timestamp = new Date(2026, 0, 2, 3, 4).getTime();
+    const menu = makeMenu({
+      columns: 2,
+      getSlots: () => [{ slot: 0, timestamp }],
+    });
+    menu.show('load');
+    const label = findText(menu.buttons[0], '01-02 03:04');
+    expect(label).not.toBeNull();
+    // 800 宽、页面左右各 24 内边距、两列一间隔
+    const cellWidth = (800 - 48 - 24) / 2;
+    const imageHeight = Math.round(cellWidth * (9 / 16));
+    expect(label?.y).toBeGreaterThanOrEqual(imageHeight);
+  });
+
+  it('should call onSave with the slot in save mode and stay open', () => {
     const onSave = vi.fn();
     const menu = makeMenu({ onSave });
     menu.show('save');
     tap(menu.buttons[1]);
     expect(onSave).toHaveBeenCalledWith(1);
-    expect(menu.visible).toBe(false);
+    expect(menu.visible).toBe(true);
   });
 
   it('should call onLoad with the slot in load mode', () => {
@@ -113,35 +190,20 @@ describe('SaveLoadMenu', () => {
   });
 
   it('should prefer getSlots over slots', () => {
+    const timestamp = new Date(2026, 5, 6, 7, 8).getTime();
     const menu = new SaveLoadMenu({
       width: 800,
       height: 600,
       slots: [0],
-      getSlots: () => [{ slot: 5, label: '章节一' }, { slot: 6 }],
+      getSlots: () => [{ slot: 5, label: '章节一', timestamp }, { slot: 6 }],
     });
     menu.show('load');
     expect(menu.buttons).toHaveLength(2);
-    expect(labelOf(menu, 0)).toBe('存档 6  章节一');
-    expect(labelOf(menu, 1)).toBe('存档 7  空');
+    expect(menu.times).toEqual(['06-06 07:08']);
+    expect(textsOf(menu.buttons[1])).toContain('空');
   });
 
-  it('should clip an over-long summary with an ellipsis', () => {
-    const menu = new SaveLoadMenu({
-      width: 800,
-      height: 600,
-      getSlots: () => [
-        { slot: 0, label: '一'.repeat(30), timestamp: 1 },
-        { slot: 1, label: '短摘要', timestamp: 1 },
-      ],
-    });
-    menu.show('load');
-    const clipped = labelOf(menu, 0);
-    expect(clipped.endsWith('…')).toBe(true);
-    expect(clipped.length).toBeLessThan(`存档 1  ${'一'.repeat(30)}`.length);
-    expect(labelOf(menu, 1)).toBe('存档 2  短摘要');
-  });
-
-  it('should rebuild buttons when reopened with different slots', () => {
+  it('should rebuild cards when reopened with different slots', () => {
     let slots = [0, 1];
     const menu = new SaveLoadMenu({
       width: 800,
@@ -153,5 +215,45 @@ describe('SaveLoadMenu', () => {
     slots = [0, 1, 2, 3];
     menu.show('save');
     expect(menu.buttons).toHaveLength(4);
+  });
+
+  it('should rebuild cards on refresh while visible', () => {
+    let slots: SaveSlotInfo[] = [{ slot: 0 }];
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots: () => slots,
+    });
+    menu.show('save');
+    slots = [{ slot: 0, timestamp: 1 }, { slot: 1 }];
+    menu.refresh();
+    expect(menu.buttons).toHaveLength(2);
+  });
+
+  it('should not rebuild cards on refresh while hidden', () => {
+    const getSlots = vi.fn(() => [{ slot: 0 }]);
+    const menu = new SaveLoadMenu({
+      width: 800,
+      height: 600,
+      getSlots,
+    });
+
+    menu.refresh();
+
+    expect(menu.buttons).toHaveLength(0);
+    expect(getSlots).not.toHaveBeenCalled();
+  });
+
+  it('should forward the page back button to onClose', () => {
+    const onClose = vi.fn();
+    const menu = makeMenu({ onClose });
+    menu.show('save');
+    const page = menu.children[0] as PagePanel;
+
+    page.backButton.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

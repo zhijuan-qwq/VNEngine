@@ -1,7 +1,7 @@
-import { Text } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
 import type { Settings } from '@/types/engine';
 import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
-import { ModalPanel } from './ModalPanel';
+import { PagePanel } from './PagePanel';
 import { Slider } from './controls/Slider';
 import { Toggle } from './controls/Toggle';
 import { UIComponent } from './UIComponent';
@@ -22,6 +22,8 @@ export interface SettingsMenuOptions {
   padding?: number;
   panelColor?: number;
   textColor?: number;
+  /** 点击右下角返回；缺省隐藏自身 */
+  onClose?: () => void;
   theme?: DeepPartial<UITheme>;
 }
 
@@ -39,7 +41,7 @@ interface ResolvedOptions {
 export class SettingsMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
-  private readonly modal: ModalPanel;
+  private readonly page: PagePanel;
   private readonly sliders: Record<string, Slider> = {};
   private readonly toggles: Record<string, Toggle> = {};
   private syncing = false;
@@ -58,33 +60,44 @@ export class SettingsMenu extends UIComponent {
       textColor: options.textColor ?? this.theme.colors.textSecondary,
     };
 
-    this.modal = new ModalPanel({
+    this.page = new PagePanel({
       width: this.opts.width,
       height: this.opts.height,
-      boxWidthRatio: this.theme.sizes.settingsWidthRatio,
-      boxHeightRatio: this.theme.sizes.modalHeightRatio,
       title: this.opts.title,
       padding: this.opts.padding,
       panelColor: this.opts.panelColor,
-      onClose: () => this.hide(),
+      onBack: this.hideOnClose(options.onClose),
       theme: this.theme,
     });
-    this.addChild(this.modal);
+    this.addChild(this.page);
 
-    const content = this.modal.content;
+    const columnGap = this.theme.spacing.s48;
+    const columnWidth = (this.page.contentWidth - columnGap) / 2;
+    const audio = new Container();
+    const display = new Container();
+    display.x = columnWidth + columnGap;
+    this.page.content.addChild(audio, display);
+
+    const audioHeading = this.addHeading('音频', audio);
+    const displayHeading = this.addHeading('文字与显示', display);
+
     const labelWidth = this.theme.sizes.labelWidth;
     const rowHeight = this.theme.sizes.rowHeight;
-    const sliderWidth = this.modal.contentWidth - labelWidth;
-    let y = 0;
+    const sliderWidth = columnWidth - labelWidth;
+    const headingGap = this.theme.spacing.s16;
+    let audioY = audioHeading.height + headingGap;
+    let displayY = displayHeading.height + headingGap;
 
     const addSlider = (
+      parent: Container,
       key: keyof Settings,
       label: string,
       min: number,
       max: number,
       step: number,
-    ): void => {
-      this.addLabel(label, y);
+      y: number,
+    ): number => {
+      this.addLabel(parent, label, y);
       const slider = new Slider({
         width: sliderWidth,
         min,
@@ -97,12 +110,17 @@ export class SettingsMenu extends UIComponent {
       // 控件在行高内垂直居中
       slider.y = y + (rowHeight - this.theme.sizes.sliderHeight) / 2;
       this.sliders[key] = slider;
-      content.addChild(slider);
-      y += rowHeight;
+      parent.addChild(slider);
+      return y + rowHeight;
     };
 
-    const addToggle = (key: keyof Settings, label: string): void => {
-      this.addLabel(label, y);
+    const addToggle = (
+      parent: Container,
+      key: keyof Settings,
+      label: string,
+      y: number,
+    ): number => {
+      this.addLabel(parent, label, y);
       const toggle = new Toggle({
         width: this.theme.sizes.toggleWidth,
         theme: this.theme,
@@ -111,17 +129,18 @@ export class SettingsMenu extends UIComponent {
       toggle.x = labelWidth;
       toggle.y = y + (rowHeight - this.theme.sizes.toggleHeight) / 2;
       this.toggles[key] = toggle;
-      content.addChild(toggle);
-      y += rowHeight;
+      parent.addChild(toggle);
+      return y + rowHeight;
     };
 
-    addSlider('masterVolume', '主音量', 0, 1, 0.01);
-    addSlider('bgmVolume', '背景音乐', 0, 1, 0.01);
-    addSlider('seVolume', '音效', 0, 1, 0.01);
-    addSlider('voiceVolume', '语音', 0, 1, 0.01);
-    addSlider('textSpeed', '文字速度', 5, 100, 5);
-    addToggle('skipMode', '跳过已读');
-    addToggle('fullscreen', '全屏');
+    audioY = addSlider(audio, 'masterVolume', '主音量', 0, 1, 0.01, audioY);
+    audioY = addSlider(audio, 'bgmVolume', '背景音乐', 0, 1, 0.01, audioY);
+    audioY = addSlider(audio, 'seVolume', '音效', 0, 1, 0.01, audioY);
+    addSlider(audio, 'voiceVolume', '语音', 0, 1, 0.01, audioY);
+
+    displayY = addSlider(display, 'textSpeed', '文字速度', 5, 100, 5, displayY);
+    displayY = addToggle(display, 'skipMode', '跳过已读', displayY);
+    addToggle(display, 'fullscreen', '全屏', displayY);
 
     this.hide();
   }
@@ -148,7 +167,21 @@ export class SettingsMenu extends UIComponent {
     return this.toggles[key];
   }
 
-  private addLabel(text: string, y: number): void {
+  private addHeading(text: string, parent: Container): Text {
+    const heading = new Text({
+      text,
+      style: {
+        fontFamily: this.theme.typography.fontFamilyBody,
+        fontSize: this.theme.typography.sizes.lg,
+        fontWeight: this.theme.typography.weights.semibold,
+        fill: this.theme.colors.accent,
+      },
+    });
+    parent.addChild(heading);
+    return heading;
+  }
+
+  private addLabel(parent: Container, text: string, y: number): void {
     const label = new Text({
       text,
       style: {
@@ -159,7 +192,7 @@ export class SettingsMenu extends UIComponent {
     });
     label.x = 0;
     label.y = y + this.theme.spacing.s12;
-    this.modal.content.addChild(label);
+    parent.addChild(label);
   }
 
   private togglePatch(key: keyof Settings, value: boolean): void {

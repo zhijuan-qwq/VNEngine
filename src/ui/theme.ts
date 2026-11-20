@@ -61,6 +61,9 @@ export interface ThemeColors {
   surfaceButton: number;
   surfaceButtonHover: number;
   surfaceButtonPressed: number;
+  /** 全屏页底色：半透明暗化，底层游戏画面隐约可见 */
+  surfacePage: number;
+  surfacePageAlpha: number;
 
   // semantic · border / overlay
   borderSubtle: number;
@@ -158,9 +161,8 @@ export interface ThemeSizes {
   menuButtonHeight: number;
   menuGap: number;
   menuMargin: number;
-  modalWidthRatio: number;
-  modalHeightRatio: number;
-  settingsWidthRatio: number;
+  /** 全屏页右下角操作按钮宽度 */
+  pageActionWidth: number;
   confirmWidthRatio: number;
   confirmMaxWidth: number;
   confirmHeight: number;
@@ -171,8 +173,9 @@ export interface ThemeSizes {
   choiceGap: number;
   rowHeight: number;
   labelWidth: number;
-  slotHeight: number;
   slotGap: number;
+  /** 存档卡片在自适应列数时的最小宽度 */
+  slotMinWidth: number;
   sliderHeight: number;
   toggleWidth: number;
   toggleHeight: number;
@@ -251,6 +254,10 @@ export const DEFAULT_UI_THEME: UITheme = {
     surfaceButton: 0x3d3a38,
     surfaceButtonHover: 0x4a4643,
     surfaceButtonPressed: 0x56514d,
+    // 全屏页压在游戏画面上：暖深色，比 surfaceSunken 亮一档，避免整页过沉；
+    // 留一成半透明让画面隐约透出
+    surfacePage: 0x2a221e,
+    surfacePageAlpha: 0.86,
 
     borderSubtle: 0xfff8f0,
     borderSubtleAlpha: 0.14,
@@ -353,9 +360,7 @@ export const DEFAULT_UI_THEME: UITheme = {
     menuButtonHeight: 40,
     menuGap: 8,
     menuMargin: 12,
-    modalWidthRatio: 0.8,
-    modalHeightRatio: 0.8,
-    settingsWidthRatio: 0.7,
+    pageActionWidth: 140,
     confirmWidthRatio: 0.6,
     confirmMaxWidth: 560,
     confirmHeight: 220,
@@ -366,8 +371,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     choiceGap: 24,
     rowHeight: 56,
     labelWidth: 130,
-    slotHeight: 64,
-    slotGap: 12,
+    slotGap: 24,
+    slotMinWidth: 220,
     sliderHeight: 8,
     toggleWidth: 60,
     toggleHeight: 32,

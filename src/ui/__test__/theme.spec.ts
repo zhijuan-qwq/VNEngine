@@ -79,9 +79,9 @@ describe('theme', () => {
   });
 
   it('should merge nested size overrides', () => {
-    const theme = resolveTheme({ sizes: { slotHeight: 72 } });
-    expect(theme.sizes.slotHeight).toBe(72);
-    expect(theme.sizes.slotGap).toBe(12);
+    const theme = resolveTheme({ sizes: { slotMinWidth: 260 } });
+    expect(theme.sizes.slotMinWidth).toBe(260);
+    expect(theme.sizes.slotGap).toBe(24);
   });
 
   it('should meet WCAG 4.5:1 for body text on panel surfaces', () => {
