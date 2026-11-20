@@ -66,7 +66,7 @@ export class SettingsMenu extends UIComponent {
       title: this.opts.title,
       padding: this.opts.padding,
       panelColor: this.opts.panelColor,
-      onBack: options.onClose ?? (() => this.hide()),
+      onBack: this.hideOnClose(options.onClose),
       theme: this.theme,
     });
     this.addChild(this.page);
@@ -79,14 +79,14 @@ export class SettingsMenu extends UIComponent {
     this.page.content.addChild(audio, display);
 
     const audioHeading = this.addHeading('音频', audio);
-    this.addHeading('文字与显示', display);
+    const displayHeading = this.addHeading('文字与显示', display);
 
     const labelWidth = this.theme.sizes.labelWidth;
     const rowHeight = this.theme.sizes.rowHeight;
     const sliderWidth = columnWidth - labelWidth;
     const headingGap = this.theme.spacing.s16;
     let audioY = audioHeading.height + headingGap;
-    let displayY = audioHeading.height + headingGap;
+    let displayY = displayHeading.height + headingGap;
 
     const addSlider = (
       parent: Container,

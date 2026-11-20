@@ -1,7 +1,9 @@
+import type { FederatedPointerEvent } from 'pixi.js';
 import type { Settings } from '@/types/engine';
 import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
 import { SettingsMenu } from '../SettingsMenu';
 import type { SettingsController } from '../SettingsMenu';
+import { PagePanel } from '../PagePanel';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -85,5 +87,18 @@ describe('SettingsMenu', () => {
     const menu = makeMenu();
     expect(() => menu.getSlider('masterVolume')?.setValue(0.7)).not.toThrow();
     expect(() => menu.getToggle('fullscreen')?.toggle()).not.toThrow();
+  });
+
+  it('should forward the page back button to onClose', () => {
+    const onClose = vi.fn();
+    const menu = new SettingsMenu({ width: 800, height: 600, onClose });
+    menu.show();
+    const page = menu.children[0] as PagePanel;
+
+    page.backButton.emit('pointertap', {
+      stopPropagation: vi.fn(),
+    } as unknown as FederatedPointerEvent);
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
