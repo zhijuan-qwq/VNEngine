@@ -88,6 +88,7 @@ describe('InputManager', () => {
     expect(root.children).toHaveLength(2);
     expect(root.children[0]).not.toBe(sibling);
     expect(hitOf(root).eventMode).toBe('static');
+    expect(hitOf(root).hitArea).toMatchObject({ width: 800, height: 600 });
   });
 
   it('should replace the previous hit container when re-attached', () => {
