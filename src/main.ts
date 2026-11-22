@@ -1,10 +1,18 @@
 import Game from '@/core/Game';
 import type { GameConfig } from '@/types/engine';
 import { demoManifest } from '@/game/demoManifest';
+import { selectDesignResolution } from '@/game/designResolution';
+import { getViewportSize, matchesMediaQuery } from '@/utils/APIHelper';
+
+// 触摸-only 小屏用 640×360，其余用 1280×720；运行期只缩放画布，不重排 UI
+const design = selectDesignResolution(
+  getViewportSize(),
+  matchesMediaQuery('(hover: none) and (pointer: coarse)'),
+);
 
 const config: GameConfig = {
-  width: 1280,
-  height: 720,
+  width: design.width,
+  height: design.height,
   scaleMode: 'fit',
   fps: 60,
   // 预加载并自动执行主剧本（public/scripts/demo.vns）
