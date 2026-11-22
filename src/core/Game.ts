@@ -16,8 +16,12 @@ import { LocalStorageProvider } from '@/save/SaveStorage';
 import {
   getDevicePixelRatio,
   getElementById,
+  getElementSize,
+  getParentElement,
   getStorage,
+  getViewportSize,
   isFullscreen,
+  observeViewport,
   setFullscreen,
 } from '@/utils/APIHelper';
 import type { EngineEvents } from '@/types/events';
@@ -45,7 +49,7 @@ export interface GameFactories {
   createApplication(config: GameConfig): Promise<Application>;
   createRenderer(options: RendererOptions): IRenderer;
   createAudio(engine: VNEngine): IAudioManager;
-  createInput(engine: VNEngine): IInputManager | null;
+  createInput(engine: VNEngine, config: GameConfig): IInputManager | null;
   createUI(engine: VNEngine, config: GameConfig): UIManager | null;
   createSave(engine: VNEngine): ISaveManager | null;
   createSettings(engine: VNEngine): SettingsManager;
@@ -73,10 +77,11 @@ const defaultFactories: GameFactories = {
       DEFAULT_MAX_SE_TRACKS,
       engine.resource as ResourceManager,
     ),
-  createInput: (engine) =>
+  createInput: (engine, config) =>
     new InputManager(engine.eventBus, {
-      width: engine.app.screen.width,
-      height: engine.app.screen.height,
+      // 命中层使用逻辑分辨率：画布尺寸随视口变化，命中区域始终覆盖整个逻辑画面
+      width: config.width,
+      height: config.height,
       toLogical: (point) => engine.renderer.toLogical(point),
       // 惰性：ui 在本工厂之后才创建，点击时才求值
       isTypewriterBusy: () => engine.ui?.isBusy() ?? false,
@@ -136,6 +141,12 @@ class Game {
   private state: GameStatus = 'uninitialized';
   private readonly factories: GameFactories;
 
+  /** 解除视口监听；未启用响应式或已销毁时为 null */
+  private viewportCleanup: (() => void) | null = null;
+  private viewportActive = false;
+  /** 上一次应用的画布尺寸与 DPR，用于去重 */
+  private lastViewport = { width: 0, height: 0, dpr: 0 };
+
   /** 订阅 `game:settings` 的 fullscreen 键。点亮时进入全屏；关闭时仅在确已全屏才退出，
    * 避免启动阶段 `emitAll` 的 `false` 误触发 `document.exitFullscreen()`。 */
   private readonly onSettingsChange = (
@@ -186,7 +197,14 @@ class Game {
       height: config.height,
       scaleMode: config.scaleMode,
     });
-    this.input = this.factories.createInput(this.engine);
+
+    // 渲染器（ScaleManager）就绪后立即按实际宿主尺寸应用一次，再开始监听；
+    // 早于输入/UI/首帧，逻辑坐标与 UI 布局均不受影响
+    if (config.responsive !== false) {
+      this.startViewport();
+    }
+
+    this.input = this.factories.createInput(this.engine, config);
     this.audio = this.factories.createAudio(this.engine);
     this.save = this.factories.createSave(this.engine);
 
@@ -261,6 +279,8 @@ class Game {
 
   /** 销毁全部子系统并回到 uninitialized；未初始化时为 no-op */
   public destroy(): void {
+    // 放在状态判断之前：init 失败（仍为 uninitialized）时也要解绑视口监听
+    this.stopViewport();
     if (this.state === 'uninitialized') return;
 
     this.eventBus.off('game:settings', this.onSettingsChange);
@@ -319,6 +339,57 @@ class Game {
     void this.loadSlot(slot).catch((error: unknown) => {
       console.error('[VNEngine] load failed', error);
     });
+  }
+
+  /** 按宿主尺寸应用一次并开始监听视口变化 */
+  private startViewport(): void {
+    this.viewportActive = true;
+    this.applyViewport();
+    this.viewportCleanup = observeViewport(
+      getParentElement(this.app.canvas),
+      () => this.applyViewport(),
+    );
+  }
+
+  /** 画布铺满宿主；逻辑分辨率不变，由 ScaleManager 负责缩放/居中 */
+  private applyViewport(): void {
+    if (!this.viewportActive) return;
+
+    const size = this.measureViewport();
+    if (!size) return;
+
+    const dpr = Math.max(1, getDevicePixelRatio());
+    if (
+      size.width === this.lastViewport.width &&
+      size.height === this.lastViewport.height &&
+      dpr === this.lastViewport.dpr
+    ) {
+      return;
+    }
+
+    this.app.renderer.resize(size.width, size.height, dpr);
+    this.renderer.resize(size);
+    // 应用成功后才记录，避免 resize 抛错后被误判为已处理
+    this.lastViewport = { width: size.width, height: size.height, dpr };
+  }
+
+  /**
+   * 优先测量 canvas 宿主；宿主存在但尺寸为 0（隐藏）时跳过，
+   * 只有完全无宿主（embedder 的游离 canvas）才退回窗口尺寸。
+   */
+  private measureViewport(): { width: number; height: number } | null {
+    const host = getParentElement(this.app.canvas);
+    if (host) return getElementSize(host);
+
+    const viewport = getViewportSize();
+    return viewport.width > 0 && viewport.height > 0 ? viewport : null;
+  }
+
+  private stopViewport(): void {
+    this.viewportActive = false;
+    this.viewportCleanup?.();
+    this.viewportCleanup = null;
+    this.lastViewport = { width: 0, height: 0, dpr: 0 };
   }
 
   private requireSaveManager(): ISaveManager {
