@@ -48,7 +48,7 @@
         align-items: center;
         justify-content: center;
         padding: 24px;
-        background: rgba(5, 6, 12, 0.92);
+        background: #05060c;
         color: #e6e8f0;
         font:
           16px/1.5 system-ui,
@@ -61,6 +61,52 @@
           display: flex;
         }
       }
+      /* 横屏全屏引导：仅在触摸横屏显示；hidden 由脚本按全屏/关闭状态控制 */
+      #fullscreen-hint {
+        display: none;
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px 6px 12px;
+        border: 1px solid rgba(230, 232, 240, 0.28);
+        border-radius: 999px;
+        background: rgba(5, 6, 12, 0.82);
+        color: #e6e8f0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        pointer-events: none;
+      }
+      #fullscreen-hint[hidden] {
+        display: none !important;
+      }
+      #fullscreen-hint button {
+        pointer-events: auto;
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font: inherit;
+        color: #05060c;
+        background: #e6e8f0;
+        cursor: pointer;
+      }
+      #fullscreen-hint-dismiss {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        color: #e6e8f0;
+        background: transparent;
+        font-size: 16px;
+        line-height: 1;
+      }
+      @media (orientation: landscape) and (hover: none) and (pointer: coarse) {
+        #fullscreen-hint:not([hidden]) {
+          display: flex;
+        }
+      }
     </style>
   </head>
   <body>
@@ -68,6 +114,17 @@
       <div id="app">
         <div id="rotate-hint" role="status" aria-live="polite">
           请将设备旋转至横屏
+        </div>
+        <div id="fullscreen-hint" hidden>
+          <span>全屏体验更佳</span>
+          <button id="fullscreen-hint-action" type="button">进入全屏</button>
+          <button
+            id="fullscreen-hint-dismiss"
+            type="button"
+            aria-label="关闭提示"
+          >
+            ×
+          </button>
         </div>
       </div>
     </div>
