@@ -78,8 +78,10 @@ export function matchesMediaQuery(query: string): boolean {
 }
 
 /**
- * 订阅视口变化：ResizeObserver(宿主)、window resize / orientationchange、
- * visualViewport.resize 以及 devicePixelRatio 变化。
+ * 订阅视口变化：ResizeObserver(宿主)、window resize / orientationchange /
+ * load / pageshow、visualViewport.resize 以及 devicePixelRatio 变化。
+ * `load`/`pageshow` 用于移动端浏览器：布局与动态视口可能在 init 之后才稳定，
+ * 且不一定伴随 resize 事件。
  * 返回幂等解除函数；无 `window` 时为空操作。
  */
 export function observeViewport(
@@ -93,9 +95,13 @@ export function observeViewport(
     if (typeof window.addEventListener === 'function') {
       window.addEventListener('resize', handle);
       window.addEventListener('orientationchange', handle);
+      window.addEventListener('load', handle);
+      window.addEventListener('pageshow', handle);
       cleanups.push(() => {
         window.removeEventListener('resize', handle);
         window.removeEventListener('orientationchange', handle);
+        window.removeEventListener('load', handle);
+        window.removeEventListener('pageshow', handle);
       });
     }
 
@@ -196,13 +202,34 @@ export function isFullscreen(): boolean {
   return document.fullscreenElement !== null;
 }
 
-/** 进入/退出全屏；无 `document` 时为空操作，Promise 一律吞掉 */
+/** 是否支持元素全屏；iOS 等不支持时返回 false */
+export function isFullscreenSupported(): boolean {
+  if (typeof document === 'undefined') return false;
+  return typeof document.documentElement?.requestFullscreen === 'function';
+}
+
+/** 进入/退出全屏；无 `document` 或不支持时为空操作，Promise 一律吞掉 */
 export function setFullscreen(on: boolean): void {
   if (typeof document === 'undefined') return;
+  if (on && !isFullscreenSupported()) return;
+  if (!on && typeof document.exitFullscreen !== 'function') return;
   const promise = on
     ? document.documentElement.requestFullscreen()
     : document.exitFullscreen();
   void promise.catch(() => {
     // 浏览器可能因非用户手势等原因拒绝，静默忽略
   });
+}
+
+/** 订阅全屏状态变化；无 `document` 时为空操作，返回幂等解除函数 */
+export function observeFullscreen(onChange: () => void): () => void {
+  if (typeof document === 'undefined') return () => {};
+  if (typeof document.addEventListener !== 'function') return () => {};
+  document.addEventListener('fullscreenchange', onChange);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    document.removeEventListener('fullscreenchange', onChange);
+  };
 }

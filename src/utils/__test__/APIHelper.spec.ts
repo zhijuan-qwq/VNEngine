@@ -8,8 +8,10 @@ import {
   getStorage,
   getViewportSize,
   isFullscreen,
+  isFullscreenSupported,
   matchesMediaQuery,
   now,
+  observeFullscreen,
   observeViewport,
   requestFrame,
   setFullscreen,
@@ -312,6 +314,77 @@ describe('isFullscreen / setFullscreen', () => {
     expect(() => setFullscreen(true)).not.toThrow();
     await Promise.resolve();
   });
+
+  it('should be a no-op when fullscreen is unsupported', () => {
+    vi.stubGlobal('document', { documentElement: {} });
+
+    expect(() => setFullscreen(true)).not.toThrow();
+  });
+
+  it('should be a no-op when exitFullscreen is unsupported', () => {
+    vi.stubGlobal('document', {
+      documentElement: { requestFullscreen: vi.fn() },
+    });
+
+    expect(() => setFullscreen(false)).not.toThrow();
+  });
+});
+
+describe('isFullscreenSupported', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('should report true when requestFullscreen exists', () => {
+    vi.stubGlobal('document', {
+      documentElement: { requestFullscreen: vi.fn() },
+    });
+
+    expect(isFullscreenSupported()).toBe(true);
+  });
+
+  it('should report false when requestFullscreen is missing', () => {
+    vi.stubGlobal('document', { documentElement: {} });
+
+    expect(isFullscreenSupported()).toBe(false);
+  });
+
+  it('should report false when document is undefined', () => {
+    vi.stubGlobal('document', undefined);
+
+    expect(isFullscreenSupported()).toBe(false);
+  });
+});
+
+describe('observeFullscreen', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('should subscribe to and unsubscribe from fullscreenchange', () => {
+    const doc = makeEventTarget();
+    vi.stubGlobal('document', {
+      addEventListener: doc.addEventListener,
+      removeEventListener: doc.removeEventListener,
+    });
+    const onChange = vi.fn();
+
+    const cleanup = observeFullscreen(onChange);
+    doc.emit('fullscreenchange');
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    expect(doc.count('fullscreenchange')).toBe(0);
+    cleanup();
+    expect(doc.count('fullscreenchange')).toBe(0);
+  });
+
+  it('should be a no-op without document', () => {
+    vi.stubGlobal('document', undefined);
+
+    expect(() => observeFullscreen(vi.fn())()).not.toThrow();
+  });
 });
 
 describe('getViewportSize', () => {
@@ -501,10 +574,12 @@ describe('observeViewport', () => {
 
     win.emit('resize');
     win.emit('orientationchange');
+    win.emit('load');
+    win.emit('pageshow');
     visualViewport.emit('resize');
     FakeResizeObserver.instances[0]?.callback();
 
-    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange).toHaveBeenCalledTimes(6);
 
     cleanup();
 
@@ -513,6 +588,8 @@ describe('observeViewport', () => {
     );
     expect(win.count('resize')).toBe(0);
     expect(win.count('orientationchange')).toBe(0);
+    expect(win.count('load')).toBe(0);
+    expect(win.count('pageshow')).toBe(0);
     expect(visualViewport.count('resize')).toBe(0);
   });
 
