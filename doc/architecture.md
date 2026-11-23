@@ -155,7 +155,7 @@ interface GameConfig {
 }
 ```
 
-画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。
+画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。
 
 ### 3.2 Updater（游戏循环）
 
@@ -264,7 +264,8 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 ```
 Renderer（依赖经构造函数注入）
-├── layers: LayerStack               // 根 Container + 图层 Container（zIndex 排序）
+├── viewport: Container              // 固定逻辑尺寸的视口容器；挂矩形遮罩裁剪场景
+├── layers: LayerStack               // 场景根 + 图层 Container（zIndex 排序），是 viewport 的子节点
 ├── scale: ScaleManager              // 缩放适配（作用于 app.stage）
 ├── characters: CharacterRegistry    // 角色 → pixi Sprite 生命周期
 ├── backgrounds: BackgroundManager   // 背景切换（淡入淡出）
@@ -272,13 +273,16 @@ Renderer（依赖经构造函数注入）
 ├── tweens: TweenEngine              // 补间（由 update(dt) 驱动）
 │
 ├── constructor({ stage, eventBus, resource, width, height, scaleMode, onError? })
-│                                    // 构建 LayerStack 挂到 stage、订阅 bg/character/effect 事件
+│                                    // 构建 viewport（含逻辑尺寸遮罩）与 LayerStack 挂到 stage、
+│                                    // 订阅 bg/character/effect 事件
 ├── update(dt): void                 // 驱动 tween → 特效
 ├── getState(): RendererState        // 供存档
 ├── setState(state): void            // 供读档
 ├── resize(containerSize): void       // 画布尺寸变化时转发给 ScaleManager（由 Game 调用）
 └── destroy(): void                  // 退订事件、销毁全部显示对象
 ```
+
+场景树形如 `app.stage → viewport(mask) → layers(bg/chara/effect/ui)`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。`getSceneRoot()` 仍返回 `layers`，缩略图按逻辑 frame 截取。
 
 依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
 
@@ -489,7 +493,7 @@ ScaleManager（构造注入 target: Container，即 app.stage）
 └── toLogical(global: Point): Point      // 屏幕坐标 → 逻辑坐标（供输入层）
 ```
 
-实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / ResizeObserver / DPR）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发 `ScaleManager.update`；尺寸与 DPR 均未变化时跳过。逻辑分辨率运行期不变，因此缩放只改变 stage 变换，UI 与场景坐标无需重算。`config.responsive === false` 时不建立任何监听，保持固定画布行为。
+实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发 `ScaleManager.update`；尺寸与 DPR 均未变化时跳过。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。逻辑分辨率运行期不变，因此缩放只改变 stage 变换，UI 与场景坐标无需重算；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为。
 
 ### 4.9 画面特效（EffectManager）
 
@@ -1410,22 +1414,24 @@ src/
 
 **DOM / 全局 API 访问契约：** 业务代码一律经 `src/utils/APIHelper.ts` 访问 `window` / `document` / `localStorage` / `requestAnimationFrame` / `performance` / `ResizeObserver` / `matchMedia` / `visualViewport`，不直接引用，以保证 node / SSR / 隐私模式下的兼容性，并让测试用 `vi.stubGlobal` 集中打桩。该模块以具名函数导出，附带的降级语义：
 
-| 函数                    | 语义                                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `createAudioContext()`  | 建 `AudioContext`（含 `webkitAudioContext` 回落）；均为缺时抛 `TypeError`                                               |
-| `getStorage()`          | 返回 Web Storage；不可用（缺失/访问抛错）→ `null`                                                                       |
-| `getDevicePixelRatio()` | 无 `window` → `1`                                                                                                       |
-| `getElementById(id)`    | 无 `document` → `null`                                                                                                  |
-| `getViewportSize()`     | `{ innerWidth, innerHeight }`；无 `window` → `{ 0, 0 }`                                                                 |
-| `getParentElement(el)`  | 返回 `parentElement`；非 DOM 节点或无父节点 → `null`                                                                    |
-| `getElementSize(el)`    | `{ clientWidth, clientHeight }`；缺失或任一维 ≤ 0 → `null`                                                              |
-| `matchesMediaQuery(q)`  | `window.matchMedia(q).matches`；无 `matchMedia` → `false`                                                               |
-| `observeViewport(t,cb)` | 订阅 ResizeObserver / window resize / orientationchange / visualViewport / DPR；返回幂等 teardown，无 `window` → 空操作 |
-| `now()`                 | `performance.now()`；无 `performance` → `Date.now()`                                                                    |
-| `requestFrame(cb)`      | 无 `requestAnimationFrame` → **抛描述性 `Error`**（不回落 `setTimeout`）                                                |
-| `cancelFrame(handle)`   | 无 `cancelAnimationFrame` → 空操作                                                                                      |
-| `isFullscreen()`        | 无 `document` → `false`                                                                                                 |
-| `setFullscreen(on)`     | 无 `document` → 空操作；拒绝的 Promise 一律 `.catch` 吞掉                                                               |
+| 函数                      | 语义                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `createAudioContext()`    | 建 `AudioContext`（含 `webkitAudioContext` 回落）；均为缺时抛 `TypeError`                                                              |
+| `getStorage()`            | 返回 Web Storage；不可用（缺失/访问抛错）→ `null`                                                                                      |
+| `getDevicePixelRatio()`   | 无 `window` → `1`                                                                                                                      |
+| `getElementById(id)`      | 无 `document` → `null`                                                                                                                 |
+| `getViewportSize()`       | `{ innerWidth, innerHeight }`；无 `window` → `{ 0, 0 }`                                                                                |
+| `getParentElement(el)`    | 返回 `parentElement`；非 DOM 节点或无父节点 → `null`                                                                                   |
+| `getElementSize(el)`      | `{ clientWidth, clientHeight }`；缺失或任一维 ≤ 0 → `null`                                                                             |
+| `matchesMediaQuery(q)`    | `window.matchMedia(q).matches`；无 `matchMedia` → `false`                                                                              |
+| `observeViewport(t,cb)`   | 订阅 ResizeObserver / window resize、orientationchange、load、pageshow / visualViewport / DPR；返回幂等 teardown，无 `window` → 空操作 |
+| `now()`                   | `performance.now()`；无 `performance` → `Date.now()`                                                                                   |
+| `requestFrame(cb)`        | 无 `requestAnimationFrame` → **抛描述性 `Error`**（不回落 `setTimeout`）                                                               |
+| `cancelFrame(handle)`     | 无 `cancelAnimationFrame` → 空操作                                                                                                     |
+| `isFullscreen()`          | 无 `document` → `false`                                                                                                                |
+| `isFullscreenSupported()` | 无 `document` 或缺 `requestFullscreen` → `false`                                                                                       |
+| `setFullscreen(on)`       | 无 `document` 或不支持 → 空操作；拒绝的 Promise 一律 `.catch` 吞掉                                                                     |
+| `observeFullscreen(cb)`   | 订阅 `fullscreenchange`；返回幂等 teardown，无 `document` → 空操作                                                                     |
 
 `requestFrame` 刻意**不**回落到 `setTimeout`：缺 rAF 的环境本就跑不了帧循环，静默空转会把 node 进程钉住。`LocalStorageProvider`（`save/SaveStorage.ts`）经 `getStorage()` 取存储，不可用时静默降级（读→`null`、写空操作、`keys()`→`[]`）。
 
