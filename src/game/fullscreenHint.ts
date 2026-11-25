@@ -24,7 +24,12 @@ export function mountFullscreenHint(
   const hint = getElementById('fullscreen-hint');
   const action = getElementById('fullscreen-hint-action');
   const dismiss = getElementById('fullscreen-hint-dismiss');
-  if (!hint || !action || !dismiss) return () => {};
+  if (!hint) return () => {};
+  // 自定义页面漏了按钮时，不要让提示条可见却不可操作
+  if (!action || !dismiss) {
+    hint.hidden = true;
+    return () => {};
+  }
 
   if (!isFullscreenSupported()) {
     hint.hidden = true;

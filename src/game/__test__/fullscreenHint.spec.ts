@@ -81,6 +81,17 @@ describe('mountFullscreenHint', () => {
     expect(() => mountFullscreenHint()()).not.toThrow();
   });
 
+  it('should hide the hint when a control is missing', () => {
+    const hint = makeElement();
+    vi.spyOn(APIHelper, 'getElementById').mockImplementation((id) =>
+      id === 'fullscreen-hint' ? (hint as unknown as HTMLElement) : null,
+    );
+
+    mountFullscreenHint();
+
+    expect(hint.hidden).toBe(true);
+  });
+
   it('should stay hidden when fullscreen is unsupported', () => {
     const { hint, action } = setup({ supported: false });
     hint.hidden = false;
