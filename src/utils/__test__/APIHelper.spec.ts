@@ -671,6 +671,16 @@ describe('observeViewport', () => {
     expect(win.count('resize')).toBe(0);
   });
 
+  it('should keep the raw fractional DPR in the media query', () => {
+    const { queries } = stubWindow({ devicePixelRatio: 2.625 });
+    vi.stubGlobal('ResizeObserver', undefined);
+
+    const cleanup = observeViewport(null, vi.fn());
+
+    expect(queries[0]?.query).toBe('(resolution: 2.625dppx)');
+    cleanup();
+  });
+
   it('should skip DPR watching when matchMedia lacks addEventListener', () => {
     const win = makeEventTarget();
     vi.stubGlobal('window', {

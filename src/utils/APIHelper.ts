@@ -153,6 +153,9 @@ function observeDprChange(onChange: () => void): () => void {
     if (!active) return;
     query?.removeEventListener('change', handle);
     query = null;
+    // 直接使用原始 devicePixelRatio：四舍五入会让 (resolution: 2.63dppx)
+    // 匹配不上真实的 2.625；原始值（包括 1.100000023841858）可正常匹配。
+    // 极端环境下监听失效时，resize/orientation 仍会兜底。
     const next = window.matchMedia(
       `(resolution: ${window.devicePixelRatio ?? 1}dppx)`,
     );
