@@ -21,6 +21,7 @@ import {
   getStorage,
   getViewportSize,
   isFullscreen,
+  observeFullscreen,
   observeViewport,
   setFullscreen,
 } from '@/utils/APIHelper';
@@ -146,6 +147,10 @@ class Game {
   private viewportActive = false;
   /** 上一次应用的画布尺寸与 DPR，用于去重 */
   private lastViewport = { width: 0, height: 0, dpr: 0 };
+  /** 解除 fullscreenchange 订阅；未初始化/已销毁时为 null */
+  private fullscreenCleanup: (() => void) | null = null;
+  /** app 是否已创建且尚未销毁；init 失败后 destroy 也要释放画布 */
+  private appLive = false;
 
   /** 订阅 `game:settings` 的 fullscreen 键。点亮时进入全屏；关闭时仅在确已全屏才退出，
    * 避免启动阶段 `emitAll` 的 `false` 误触发 `document.exitFullscreen()`。 */
@@ -157,6 +162,14 @@ class Game {
       setFullscreen(true);
     } else if (payload.value === false && isFullscreen()) {
       setFullscreen(false);
+    }
+  };
+
+  /** 用户通过 Esc/手势退出全屏时把设置回写为 false，避免菜单显示与实际不符。
+   * 进入全屏由设置驱动，这里只处理退出；onSettingsChange 对 false 有 isFullscreen 守卫，不会回环。 */
+  private readonly onFullscreenChange = (): void => {
+    if (!isFullscreen() && this.settings.get().fullscreen) {
+      this.settings.onChange({ fullscreen: false });
     }
   };
 
@@ -186,8 +199,11 @@ class Game {
 
     // 设置先于消费它的子系统（渲染/音频/UI）创建，其 get() 立即可用
     this.settings = this.factories.createSettings(this.engine);
+    // 外部退出全屏（Esc/手势）时回写设置；node 下为空操作
+    this.fullscreenCleanup = observeFullscreen(this.onFullscreenChange);
 
     this.app = await this.factories.createApplication(config);
+    this.appLive = true;
 
     this.renderer = this.factories.createRenderer({
       stage: this.app.stage,
@@ -199,8 +215,10 @@ class Game {
     });
 
     // 渲染器（ScaleManager）就绪后立即按实际宿主尺寸应用一次，再开始监听；
-    // 早于输入/UI/首帧，逻辑坐标与 UI 布局均不受影响
-    if (config.responsive !== false) {
+    // 早于输入/UI/首帧，逻辑坐标与 UI 布局均不受影响。
+    // 缺省：引擎自建 canvas 时开启；embedder 自带 canvas 时保持旧的固定尺寸行为
+    const responsive = config.responsive ?? config.canvas === undefined;
+    if (responsive) {
       this.startViewport();
     }
 
@@ -277,11 +295,15 @@ class Game {
     this.eventBus.emit('game:resume', {});
   }
 
-  /** 销毁全部子系统并回到 uninitialized；未初始化时为 no-op */
+  /** 销毁全部子系统并回到 uninitialized；未初始化时只释放可能已创建的 app/监听 */
   public destroy(): void {
-    // 放在状态判断之前：init 失败（仍为 uninitialized）时也要解绑视口监听
+    // 放在状态判断之前：init 失败（仍为 uninitialized）时也要解绑监听并释放画布
     this.stopViewport();
-    if (this.state === 'uninitialized') return;
+    this.stopFullscreenObserver();
+    if (this.state === 'uninitialized') {
+      this.destroyApp();
+      return;
+    }
 
     this.eventBus.off('game:settings', this.onSettingsChange);
     this.eventBus.emit('game:destroy', {});
@@ -292,7 +314,7 @@ class Game {
     this.renderer.destroy();
     this.audio.destroy();
     this.resource.clear();
-    this.app.destroy(true);
+    this.destroyApp();
 
     this.input = null;
     this.ui = null;
@@ -390,6 +412,18 @@ class Game {
     this.viewportCleanup?.();
     this.viewportCleanup = null;
     this.lastViewport = { width: 0, height: 0, dpr: 0 };
+  }
+
+  private stopFullscreenObserver(): void {
+    this.fullscreenCleanup?.();
+    this.fullscreenCleanup = null;
+  }
+
+  /** 销毁已创建的 pixi Application（含 canvas）；重复调用安全 */
+  private destroyApp(): void {
+    if (!this.appLive) return;
+    this.appLive = false;
+    this.app.destroy(true);
   }
 
   private requireSaveManager(): ISaveManager {

@@ -32,7 +32,10 @@ export interface GameConfig {
   plugins?: Plugin[];
   /** 可选 UI 主题覆盖；未传时使用内置暖调暗色主题 */
   theme?: DeepPartial<UITheme>;
-  /** 视口自适应，缺省 true；false 时保持固定尺寸画布且不注册 resize 监听 */
+  /**
+   * 视口自适应。缺省值由 canvas 决定：未传 canvas（引擎自建）时为 true；
+   * 传入 canvas 时为 false，保持旧的固定尺寸行为，可显式设为 true。
+   */
   responsive?: boolean;
 }
 

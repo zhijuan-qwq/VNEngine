@@ -834,5 +834,83 @@ describe('Game', () => {
       expect(windowSize).not.toHaveBeenCalled();
       expect(h.app.renderer.resize).not.toHaveBeenCalled();
     });
+
+    it('should keep fixed canvas by default when a canvas is supplied', async () => {
+      const h = makeHarness({ config: { canvas: {} as HTMLCanvasElement } });
+      const observe = vi.spyOn(APIHelper, 'observeViewport');
+      const windowSize = vi.spyOn(APIHelper, 'getViewportSize');
+
+      await h.game.init(h.config);
+
+      expect(observe).not.toHaveBeenCalled();
+      expect(windowSize).not.toHaveBeenCalled();
+      expect(h.app.renderer.resize).not.toHaveBeenCalled();
+    });
+
+    it('should destroy the app created before a failed init', async () => {
+      const h = makeHarness({});
+      vi.spyOn(ResourceManager.prototype, 'loadScript').mockRejectedValue(
+        new Error('broken script'),
+      );
+
+      await expect(
+        h.game.init({ ...h.config, scripts: ['broken'] }),
+      ).rejects.toThrow(/broken script/);
+      expect(h.app.destroy).not.toHaveBeenCalled();
+
+      h.game.destroy();
+      h.game.destroy();
+
+      expect(h.app.destroy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('fullscreen sync', () => {
+    it('should clear the setting when fullscreen is exited externally', async () => {
+      const h = makeHarness({});
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeFullscreen').mockImplementation((cb) => {
+        notify = cb;
+        return () => {};
+      });
+      vi.spyOn(APIHelper, 'isFullscreen').mockReturnValue(false);
+
+      await h.game.init(h.config);
+      h.game.settings.onChange({ fullscreen: true });
+      expect(h.game.settings.get().fullscreen).toBe(true);
+
+      notify();
+
+      expect(h.game.settings.get().fullscreen).toBe(false);
+    });
+
+    it('should leave an already-false setting untouched', async () => {
+      const h = makeHarness({});
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeFullscreen').mockImplementation((cb) => {
+        notify = cb;
+        return () => {};
+      });
+      vi.spyOn(APIHelper, 'isFullscreen').mockReturnValue(false);
+
+      await h.game.init(h.config);
+      const onChange = vi.spyOn(h.game.settings, 'onChange');
+
+      notify();
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('should release the fullscreen observer on destroy', async () => {
+      const h = makeHarness({});
+      const cleanup = vi.fn();
+      vi.spyOn(APIHelper, 'observeFullscreen').mockReturnValue(cleanup);
+
+      await h.game.init(h.config);
+      h.game.destroy();
+      h.game.destroy();
+
+      expect(cleanup).toHaveBeenCalledTimes(1);
+    });
   });
 });
