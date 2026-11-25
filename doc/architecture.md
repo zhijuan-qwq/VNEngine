@@ -134,7 +134,7 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 
 视口监听在 Renderer 之后、Input/UI 之前建立：此时 `app.canvas`、`ScaleManager` 已就绪，而 UI/场景仍按逻辑分辨率构建，首帧渲染前画布尺寸已应用，不会闪烁。
 
-**destroy 顺序：** 先解除视口监听并退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。
+**destroy 顺序：** 先解除视口/全屏监听并退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。若 `init` 中途失败（状态仍为 `uninitialized`），`destroy` 只释放已创建的 app/canvas 与监听，不触碰未初始化的子系统（重复调用也不会重复销毁 app）。
 
 **GameConfig 结构：**
 
@@ -151,11 +151,11 @@ interface GameConfig {
   scripts: string[]; // 启动时预加载的脚本列表
   assets: AssetManifest; // 资源清单，init 阶段自动加载
   plugins: Plugin[]; // 插件列表
-  responsive?: boolean; // 视口自适应，缺省 true；false 时保持固定尺寸画布且不注册 resize 监听
+  responsive?: boolean; // 缺省：自建 canvas 为 true；传入 canvas 为 false（保持旧固定尺寸）
 }
 ```
 
-画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。
+画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。`responsive` 缺省由 canvas 决定：引擎自建 canvas 时开启；传入 canvas 的 embedder 默认关闭以保持旧行为，可显式设为 true。Game 订阅 `fullscreenchange`：用户通过 Esc/手势退出全屏时把 `settings.fullscreen` 回写为 false，菜单开关不会与实际状态不符。
 
 ### 3.2 Updater（游戏循环）
 
@@ -282,7 +282,7 @@ Renderer（依赖经构造函数注入）
 └── destroy(): void                  // 退订事件、销毁全部显示对象
 ```
 
-场景树形如 `app.stage → viewport(mask) → layers(bg/chara/effect/ui)`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。`getSceneRoot()` 仍返回 `layers`，缩略图按逻辑 frame 截取。
+场景树形如 `app.stage → viewport(mask) → layers(bg/chara/effect/ui)`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景/UI 对象。`getSceneRoot()` 仍返回 `layers`，缩略图按逻辑 frame 截取。
 
 依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
 
@@ -1130,7 +1130,7 @@ class InputManager implements IInputManager {
 
 点击语义采用 **`pointertap`**（而非文档旧稿的 `pointerdown`）：拖动滑条或滚动列表时不会误触发 `input:click` 而推进对话。组件内部命中由 pixi 负责（各交互组件 `eventMode='static'`），无需全局监听 `MouseEvent`。
 
-坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。命中层的 `width/height` 使用**逻辑分辨率**（`config.width/height`），不是 `app.screen`；因此 canvas 铺满视口后命中区域仍恰好覆盖整个逻辑画面，letterbox 区域外的点击因超出矩形被忽略。
+坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。命中层的 `width/height` 使用**逻辑分辨率**（`config.width/height`），不是 `app.screen`；因此 canvas 铺满视口后命中区域仍恰好覆盖整个逻辑画面，letterbox 区域外的点击因超出矩形被忽略。viewport 的逻辑尺寸遮罩也会在 Pixi 命中测试阶段裁掉 letterbox（`EventBoundary.hitPruneFn` 检查 mask），与命中层形成双重保证。
 
 ---
 
@@ -1535,7 +1535,7 @@ interface GameConfig {
   scripts: string[]; // 启动时预加载的脚本 id 列表
   assets: AssetManifest;
   plugins?: Plugin[];
-  responsive?: boolean; // 视口自适应，缺省 true；false 时保持固定尺寸画布
+  responsive?: boolean; // 缺省：自建 canvas 为 true；传入 canvas 为 false
 }
 
 interface AssetManifest {
