@@ -16,8 +16,13 @@ import { LocalStorageProvider } from '@/save/SaveStorage';
 import {
   getDevicePixelRatio,
   getElementById,
+  getElementSize,
+  getParentElement,
   getStorage,
+  getViewportSize,
   isFullscreen,
+  observeFullscreen,
+  observeViewport,
   setFullscreen,
 } from '@/utils/APIHelper';
 import type { EngineEvents } from '@/types/events';
@@ -45,7 +50,7 @@ export interface GameFactories {
   createApplication(config: GameConfig): Promise<Application>;
   createRenderer(options: RendererOptions): IRenderer;
   createAudio(engine: VNEngine): IAudioManager;
-  createInput(engine: VNEngine): IInputManager | null;
+  createInput(engine: VNEngine, config: GameConfig): IInputManager | null;
   createUI(engine: VNEngine, config: GameConfig): UIManager | null;
   createSave(engine: VNEngine): ISaveManager | null;
   createSettings(engine: VNEngine): SettingsManager;
@@ -73,10 +78,11 @@ const defaultFactories: GameFactories = {
       DEFAULT_MAX_SE_TRACKS,
       engine.resource as ResourceManager,
     ),
-  createInput: (engine) =>
+  createInput: (engine, config) =>
     new InputManager(engine.eventBus, {
-      width: engine.app.screen.width,
-      height: engine.app.screen.height,
+      // 命中层使用逻辑分辨率：画布尺寸随视口变化，命中区域始终覆盖整个逻辑画面
+      width: config.width,
+      height: config.height,
       toLogical: (point) => engine.renderer.toLogical(point),
       // 惰性：ui 在本工厂之后才创建，点击时才求值
       isTypewriterBusy: () => engine.ui?.isBusy() ?? false,
@@ -136,6 +142,16 @@ class Game {
   private state: GameStatus = 'uninitialized';
   private readonly factories: GameFactories;
 
+  /** 解除视口监听；未启用响应式或已销毁时为 null */
+  private viewportCleanup: (() => void) | null = null;
+  private viewportActive = false;
+  /** 上一次应用的画布尺寸与 DPR，用于去重 */
+  private lastViewport = { width: 0, height: 0, dpr: 0 };
+  /** 解除 fullscreenchange 订阅；未初始化/已销毁时为 null */
+  private fullscreenCleanup: (() => void) | null = null;
+  /** app 是否已创建且尚未销毁；init 失败后 destroy 也要释放画布 */
+  private appLive = false;
+
   /** 订阅 `game:settings` 的 fullscreen 键。点亮时进入全屏；关闭时仅在确已全屏才退出，
    * 避免启动阶段 `emitAll` 的 `false` 误触发 `document.exitFullscreen()`。 */
   private readonly onSettingsChange = (
@@ -146,6 +162,14 @@ class Game {
       setFullscreen(true);
     } else if (payload.value === false && isFullscreen()) {
       setFullscreen(false);
+    }
+  };
+
+  /** 用户通过 Esc/手势退出全屏时把设置回写为 false，避免菜单显示与实际不符。
+   * 进入全屏由设置驱动，这里只处理退出；onSettingsChange 对 false 有 isFullscreen 守卫，不会回环。 */
+  private readonly onFullscreenChange = (): void => {
+    if (!isFullscreen() && this.settings.get().fullscreen) {
+      this.settings.onChange({ fullscreen: false });
     }
   };
 
@@ -175,8 +199,11 @@ class Game {
 
     // 设置先于消费它的子系统（渲染/音频/UI）创建，其 get() 立即可用
     this.settings = this.factories.createSettings(this.engine);
+    // 外部退出全屏（Esc/手势）时回写设置；node 下为空操作
+    this.fullscreenCleanup = observeFullscreen(this.onFullscreenChange);
 
     this.app = await this.factories.createApplication(config);
+    this.appLive = true;
 
     this.renderer = this.factories.createRenderer({
       stage: this.app.stage,
@@ -186,7 +213,16 @@ class Game {
       height: config.height,
       scaleMode: config.scaleMode,
     });
-    this.input = this.factories.createInput(this.engine);
+
+    // 渲染器（ScaleManager）就绪后立即按实际宿主尺寸应用一次，再开始监听；
+    // 早于输入/UI/首帧，逻辑坐标与 UI 布局均不受影响。
+    // 缺省：引擎自建 canvas 时开启；embedder 自带 canvas 时保持旧的固定尺寸行为
+    const responsive = config.responsive ?? config.canvas === undefined;
+    if (responsive) {
+      this.startViewport();
+    }
+
+    this.input = this.factories.createInput(this.engine, config);
     this.audio = this.factories.createAudio(this.engine);
     this.save = this.factories.createSave(this.engine);
 
@@ -259,9 +295,15 @@ class Game {
     this.eventBus.emit('game:resume', {});
   }
 
-  /** 销毁全部子系统并回到 uninitialized；未初始化时为 no-op */
+  /** 销毁全部子系统并回到 uninitialized；未初始化时只释放可能已创建的 app/监听 */
   public destroy(): void {
-    if (this.state === 'uninitialized') return;
+    // 放在状态判断之前：init 失败（仍为 uninitialized）时也要解绑监听并释放画布
+    this.stopViewport();
+    this.stopFullscreenObserver();
+    if (this.state === 'uninitialized') {
+      this.destroyApp();
+      return;
+    }
 
     this.eventBus.off('game:settings', this.onSettingsChange);
     this.eventBus.emit('game:destroy', {});
@@ -272,7 +314,7 @@ class Game {
     this.renderer.destroy();
     this.audio.destroy();
     this.resource.clear();
-    this.app.destroy(true);
+    this.destroyApp();
 
     this.input = null;
     this.ui = null;
@@ -319,6 +361,69 @@ class Game {
     void this.loadSlot(slot).catch((error: unknown) => {
       console.error('[VNEngine] load failed', error);
     });
+  }
+
+  /** 按宿主尺寸应用一次并开始监听视口变化 */
+  private startViewport(): void {
+    this.viewportActive = true;
+    this.applyViewport();
+    this.viewportCleanup = observeViewport(
+      getParentElement(this.app.canvas),
+      () => this.applyViewport(),
+    );
+  }
+
+  /** 画布铺满宿主；逻辑分辨率不变，由 ScaleManager 负责缩放/居中 */
+  private applyViewport(): void {
+    if (!this.viewportActive) return;
+
+    const size = this.measureViewport();
+    if (!size) return;
+
+    const dpr = Math.max(1, getDevicePixelRatio());
+    if (
+      size.width === this.lastViewport.width &&
+      size.height === this.lastViewport.height &&
+      dpr === this.lastViewport.dpr
+    ) {
+      return;
+    }
+
+    this.app.renderer.resize(size.width, size.height, dpr);
+    this.renderer.resize(size);
+    // 应用成功后才记录，避免 resize 抛错后被误判为已处理
+    this.lastViewport = { width: size.width, height: size.height, dpr };
+  }
+
+  /**
+   * 优先测量 canvas 宿主；宿主存在但尺寸为 0（隐藏）时跳过，
+   * 只有完全无宿主（embedder 的游离 canvas）才退回窗口尺寸。
+   */
+  private measureViewport(): { width: number; height: number } | null {
+    const host = getParentElement(this.app.canvas);
+    if (host) return getElementSize(host);
+
+    const viewport = getViewportSize();
+    return viewport.width > 0 && viewport.height > 0 ? viewport : null;
+  }
+
+  private stopViewport(): void {
+    this.viewportActive = false;
+    this.viewportCleanup?.();
+    this.viewportCleanup = null;
+    this.lastViewport = { width: 0, height: 0, dpr: 0 };
+  }
+
+  private stopFullscreenObserver(): void {
+    this.fullscreenCleanup?.();
+    this.fullscreenCleanup = null;
+  }
+
+  /** 销毁已创建的 pixi Application（含 canvas）；重复调用安全 */
+  private destroyApp(): void {
+    if (!this.appLive) return;
+    this.appLive = false;
+    this.app.destroy(true);
   }
 
   private requireSaveManager(): ISaveManager {

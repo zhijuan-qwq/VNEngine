@@ -110,7 +110,11 @@ uninitialized ──(init)──→ ready ──(start)──→ running
    并将 app.canvas 挂载到容器
 6. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
                                               // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件；预建 ui 图层
+6a. 若 config.responsive !== false：测量 canvas 宿主尺寸，
+    调用 app.renderer.resize(cssW, cssH, dpr) + renderer.resize({ width, height })
+    应用画布尺寸与 ScaleManager，随后注册视口监听（resize/orientation/ResizeObserver/DPR）
 7. 创建 InputManager(eventBus, { width, height, toLogical, isTypewriterBusy })
+                                              // width/height 为逻辑分辨率 config.width/height；
                                               // toLogical 委托 renderer.toLogical；isTypewriterBusy 惰性读取 ui.isBusy()
 8. 创建 AudioManager(eventBus)
 9. 创建 SaveManager({ storage })              // 无可写存储时工厂返回 null
@@ -128,15 +132,17 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 
 依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；SettingsManager 先于消费它的音频/UI 创建（后者的 `settingsMenu` 直接以它为 controller）；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 预建的 `ui` 图层，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
 
-**destroy 顺序：** 先退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。
+视口监听在 Renderer 之后、Input/UI 之前建立：此时 `app.canvas`、`ScaleManager` 已就绪，而 UI/场景仍按逻辑分辨率构建，首帧渲染前画布尺寸已应用，不会闪烁。
+
+**destroy 顺序：** 先解除视口/全屏监听并退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。若 `init` 中途失败（状态仍为 `uninitialized`），`destroy` 只释放已创建的 app/canvas 与监听，不触碰未初始化的子系统（重复调用也不会重复销毁 app）。
 
 **GameConfig 结构：**
 
 ```ts
 interface GameConfig {
   canvas?: HTMLCanvasElement; // 可选；缺省时由 PixiJS 自行创建并挂载
-  width: number; // 逻辑宽度 (如 1280)
-  height: number; // 逻辑高度 (如 720)
+  width: number; // 逻辑/设计分辨率宽度 (如 1280)，运行期不随视口变化
+  height: number; // 逻辑/设计分辨率高度 (如 720)，运行期不随视口变化
   scaleMode: 'fit' | 'stretch' | 'fixed';
   //   fit   — 保持宽高比缩放至容器内（letterbox）
   //   stretch — 拉伸填充整个容器（可能变形）
@@ -145,8 +151,11 @@ interface GameConfig {
   scripts: string[]; // 启动时预加载的脚本列表
   assets: AssetManifest; // 资源清单，init 阶段自动加载
   plugins: Plugin[]; // 插件列表
+  responsive?: boolean; // 缺省：自建 canvas 为 true；传入 canvas 为 false（保持旧固定尺寸）
 }
 ```
+
+画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。`responsive` 缺省由 canvas 决定：引擎自建 canvas 时开启；传入 canvas 的 embedder 默认关闭以保持旧行为，可显式设为 true。Game 订阅 `fullscreenchange`：用户通过 Esc/手势退出全屏时把 `settings.fullscreen` 回写为 false，菜单开关不会与实际状态不符。
 
 ### 3.2 Updater（游戏循环）
 
@@ -255,7 +264,8 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 ```
 Renderer（依赖经构造函数注入）
-├── layers: LayerStack               // 根 Container + 图层 Container（zIndex 排序）
+├── viewport: Container              // 固定逻辑尺寸的视口容器；挂矩形遮罩裁剪场景
+├── layers: LayerStack               // 场景根 + 图层 Container（zIndex 排序），是 viewport 的子节点
 ├── scale: ScaleManager              // 缩放适配（作用于 app.stage）
 ├── characters: CharacterRegistry    // 角色 → pixi Sprite 生命周期
 ├── backgrounds: BackgroundManager   // 背景切换（淡入淡出）
@@ -263,15 +273,20 @@ Renderer（依赖经构造函数注入）
 ├── tweens: TweenEngine              // 补间（由 update(dt) 驱动）
 │
 ├── constructor({ stage, eventBus, resource, width, height, scaleMode, onError? })
-│                                    // 构建 LayerStack 挂到 stage、订阅 bg/character/effect 事件
+│                                    // 构建 viewport（含逻辑尺寸遮罩）与 LayerStack 挂到 stage、
+│                                    // 订阅 bg/character/effect 事件
 ├── update(dt): void                 // 驱动 tween → 特效
 ├── getState(): RendererState        // 供存档
 ├── setState(state): void            // 供读档
-├── resize(containerSize): void       // 画布尺寸变化时转发给 ScaleManager
+├── resize(containerSize): void       // 画布尺寸变化时转发给 ScaleManager（由 Game 调用）
 └── destroy(): void                  // 退订事件、销毁全部显示对象
 ```
 
+场景树形如 `app.stage → viewport(mask) → layers(bg/chara/effect/ui)`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景/UI 对象。`getSceneRoot()` 仍返回 `layers`，缩略图按逻辑 frame 截取。
+
 依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
+
+逻辑尺寸与画布尺寸：构造参数 `width/height` 是逻辑/设计分辨率，供 `ScaleManager`、背景 cover、立绘比例和特效边界使用；canvas 的 CSS 尺寸与 backing store 则是实际视口尺寸，由 Game 在视口变化时通过 `app.renderer.resize(cssW, cssH, dpr)` 更新。Game 现在是 `app.renderer.resize` 与 `IRenderer.resize` 的生产调用方：前者改画布，后者重算 `app.stage` 的缩放/居中；逻辑尺寸保持不变，因此 UI/场景不需要重排。
 
 ### 4.2 图层架构（LayerStack）
 
@@ -478,7 +493,7 @@ ScaleManager（构造注入 target: Container，即 app.stage）
 └── toLogical(global: Point): Point      // 屏幕坐标 → 逻辑坐标（供输入层）
 ```
 
-实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`，之后由 Game 在画布尺寸变化时调用 `renderer.resize(containerSize)`（内部转发给 ScaleManager）。
+实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发 `ScaleManager.update`；尺寸与 DPR 均未变化时跳过。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。逻辑分辨率运行期不变，因此缩放只改变 stage 变换，UI 与场景坐标无需重算；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为。
 
 ### 4.9 画面特效（EffectManager）
 
@@ -1115,7 +1130,7 @@ class InputManager implements IInputManager {
 
 点击语义采用 **`pointertap`**（而非文档旧稿的 `pointerdown`）：拖动滑条或滚动列表时不会误触发 `input:click` 而推进对话。组件内部命中由 pixi 负责（各交互组件 `eventMode='static'`），无需全局监听 `MouseEvent`。
 
-坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。
+坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。命中层的 `width/height` 使用**逻辑分辨率**（`config.width/height`），不是 `app.screen`；因此 canvas 铺满视口后命中区域仍恰好覆盖整个逻辑画面，letterbox 区域外的点击因超出矩形被忽略。viewport 的逻辑尺寸遮罩也会在 Pixi 命中测试阶段裁掉 letterbox（`EventBoundary.hitPruneFn` 检查 mask），与命中层形成双重保证。
 
 ---
 
@@ -1397,19 +1412,26 @@ src/
 ├── main.ts                        # 入口
 ```
 
-**DOM / 全局 API 访问契约：** 业务代码一律经 `src/utils/APIHelper.ts` 访问 `window` / `document` / `localStorage` / `requestAnimationFrame` / `performance`，不直接引用，以保证 node / SSR / 隐私模式下的兼容性，并让测试用 `vi.stubGlobal` 集中打桩。该模块以具名函数导出，附带的降级语义：
+**DOM / 全局 API 访问契约：** 业务代码一律经 `src/utils/APIHelper.ts` 访问 `window` / `document` / `localStorage` / `requestAnimationFrame` / `performance` / `ResizeObserver` / `matchMedia` / `visualViewport`，不直接引用，以保证 node / SSR / 隐私模式下的兼容性，并让测试用 `vi.stubGlobal` 集中打桩。该模块以具名函数导出，附带的降级语义：
 
-| 函数                    | 语义                                                                      |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `createAudioContext()`  | 建 `AudioContext`（含 `webkitAudioContext` 回落）；均为缺时抛 `TypeError` |
-| `getStorage()`          | 返回 Web Storage；不可用（缺失/访问抛错）→ `null`                         |
-| `getDevicePixelRatio()` | 无 `window` → `1`                                                         |
-| `getElementById(id)`    | 无 `document` → `null`                                                    |
-| `now()`                 | `performance.now()`；无 `performance` → `Date.now()`                      |
-| `requestFrame(cb)`      | 无 `requestAnimationFrame` → **抛描述性 `Error`**（不回落 `setTimeout`）  |
-| `cancelFrame(handle)`   | 无 `cancelAnimationFrame` → 空操作                                        |
-| `isFullscreen()`        | 无 `document` → `false`                                                   |
-| `setFullscreen(on)`     | 无 `document` → 空操作；拒绝的 Promise 一律 `.catch` 吞掉                 |
+| 函数                      | 语义                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `createAudioContext()`    | 建 `AudioContext`（含 `webkitAudioContext` 回落）；均为缺时抛 `TypeError`                                                              |
+| `getStorage()`            | 返回 Web Storage；不可用（缺失/访问抛错）→ `null`                                                                                      |
+| `getDevicePixelRatio()`   | 无 `window` → `1`                                                                                                                      |
+| `getElementById(id)`      | 无 `document` → `null`                                                                                                                 |
+| `getViewportSize()`       | `{ innerWidth, innerHeight }`；无 `window` → `{ 0, 0 }`                                                                                |
+| `getParentElement(el)`    | 返回 `parentElement`；非 DOM 节点或无父节点 → `null`                                                                                   |
+| `getElementSize(el)`      | `{ clientWidth, clientHeight }`；缺失或任一维 ≤ 0 → `null`                                                                             |
+| `matchesMediaQuery(q)`    | `window.matchMedia(q).matches`；无 `matchMedia` → `false`                                                                              |
+| `observeViewport(t,cb)`   | 订阅 ResizeObserver / window resize、orientationchange、load、pageshow / visualViewport / DPR；返回幂等 teardown，无 `window` → 空操作 |
+| `now()`                   | `performance.now()`；无 `performance` → `Date.now()`                                                                                   |
+| `requestFrame(cb)`        | 无 `requestAnimationFrame` → **抛描述性 `Error`**（不回落 `setTimeout`）                                                               |
+| `cancelFrame(handle)`     | 无 `cancelAnimationFrame` → 空操作                                                                                                     |
+| `isFullscreen()`          | 无 `document` → `false`                                                                                                                |
+| `isFullscreenSupported()` | 无 `document` 或缺 `requestFullscreen` → `false`                                                                                       |
+| `setFullscreen(on)`       | 无 `document` 或不支持 → 空操作；拒绝的 Promise 一律 `.catch` 吞掉                                                                     |
+| `observeFullscreen(cb)`   | 订阅 `fullscreenchange`；返回幂等 teardown，无 `document` → 空操作                                                                     |
 
 `requestFrame` 刻意**不**回落到 `setTimeout`：缺 rAF 的环境本就跑不了帧循环，静默空转会把 node 进程钉住。`LocalStorageProvider`（`save/SaveStorage.ts`）经 `getStorage()` 取存储，不可用时静默降级（读→`null`、写空操作、`keys()`→`[]`）。
 
@@ -1506,13 +1528,14 @@ Game.init(config)
 
 interface GameConfig {
   canvas?: HTMLCanvasElement; // 可选：缺省时由 pixi Application 自建 canvas
-  width: number;
-  height: number;
+  width: number; // 逻辑/设计分辨率，运行期不随视口变化
+  height: number; // 逻辑/设计分辨率，运行期不随视口变化
   scaleMode: 'fit' | 'stretch' | 'fixed';
   fps: number; // 映射到 app.ticker.maxFPS
   scripts: string[]; // 启动时预加载的脚本 id 列表
   assets: AssetManifest;
   plugins?: Plugin[];
+  responsive?: boolean; // 缺省：自建 canvas 为 true；传入 canvas 为 false
 }
 
 interface AssetManifest {

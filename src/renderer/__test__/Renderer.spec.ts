@@ -69,7 +69,9 @@ describe('Renderer', () => {
       const { stage, renderer, layer } = createRenderer();
 
       expect(stage.children).toHaveLength(1);
-      expect(stage.children[0]).toBe(renderer.layers);
+      const viewport = stage.children[0] as Container;
+      expect(viewport.label).toBe('viewport');
+      expect(viewport.children).toContain(renderer.layers);
       expect(renderer.layers.children.map((child) => child.label)).toEqual([
         'bg',
         'chara',
@@ -82,11 +84,25 @@ describe('Renderer', () => {
       expect(layer('ui').zIndex).toBe(LAYER_Z_INDEX.ui);
     });
 
+    it('should clip the scene to the logical frame', () => {
+      const { stage } = createRenderer();
+      const viewport = stage.children[0] as Container;
+      const mask = viewport.mask as Graphics;
+
+      expect(mask).toBeInstanceOf(Graphics);
+      expect(mask.getLocalBounds()).toMatchObject({
+        x: 0,
+        y: 0,
+        width: SIZE.width,
+        height: SIZE.height,
+      });
+    });
+
     it('should expose the scene root for captures', () => {
       const { renderer, stage } = createRenderer();
 
       expect(renderer.getSceneRoot()).toBe(renderer.layers);
-      expect(renderer.getSceneRoot()).toBe(stage.children[0]);
+      expect(renderer.getSceneRoot().parent).toBe(stage.children[0]);
       // 场景根包含 UI 图层，截图即“所见即所得”
       expect(renderer.getSceneRoot().children).toContain(renderer.getUILayer());
     });

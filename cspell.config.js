@@ -46,6 +46,8 @@ export default {
     'pointertap',
     'pointerwheel',
     'pointerupoutside',
+    'dppx',
+    'dvh',
     'relayout',
     'boldmore',
     'worktree',

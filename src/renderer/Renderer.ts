@@ -1,4 +1,5 @@
-import type { Container, PointData } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
+import type { PointData } from 'pixi.js';
 import type EventBus from '@/core/EventBus';
 import type { IRenderer, RendererState, ScaleMode } from '@/types/engine';
 import type { EngineEvents } from '@/types/events';
@@ -36,6 +37,8 @@ export class Renderer implements IRenderer {
   public readonly backgrounds: BackgroundManager;
   public readonly effects: EffectManager;
   private readonly size: Size;
+  /** 固定逻辑尺寸的视口容器：遮罩不随 shake 移动，只由 ScaleManager 缩放 */
+  private readonly viewport: Container;
   private readonly unbinds: Array<() => void> = [];
   private destroyed = false;
 
@@ -43,7 +46,21 @@ export class Renderer implements IRenderer {
     this.size = { width: options.width, height: options.height };
     this.tweens = new TweenEngine();
     this.layers = new LayerStack();
-    options.stage.addChild(this.layers);
+
+    // 画布可能大于逻辑画面（letterbox），必须在逻辑边界裁掉立绘/背景溢出，
+    // 否则腿部和 cover 溢出的背景会露到黑边里；遮罩放在 viewport 上而非 layers 上，
+    // 这样 shake 只移动内容、不移动裁剪窗口。
+    this.viewport = new Container();
+    this.viewport.label = 'viewport';
+    const mask = new Graphics()
+      .rect(0, 0, this.size.width, this.size.height)
+      .fill(0xffffff);
+    mask.label = 'viewport-mask';
+    mask.eventMode = 'none';
+    this.viewport.addChild(this.layers, mask);
+    this.viewport.mask = mask;
+    options.stage.addChild(this.viewport);
+
     this.scale = new ScaleManager(options.stage, options.scaleMode, this.size);
 
     this.backgrounds = new BackgroundManager({
@@ -116,7 +133,9 @@ export class Renderer implements IRenderer {
     this.characters.destroy();
     this.backgrounds.destroy();
     this.tweens.cancelAll();
-    this.layers.destroy({ children: true });
+    // 先解绑遮罩再销毁，避免 mask effect 引用已销毁的 Graphics
+    this.viewport.mask = null;
+    this.viewport.destroy({ children: true });
   }
 
   private bind(eventBus: EventBus<EngineEvents>): void {

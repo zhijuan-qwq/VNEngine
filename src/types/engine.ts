@@ -21,7 +21,9 @@ export type EasingFn = (t: number) => number;
 
 export interface GameConfig {
   canvas?: HTMLCanvasElement; // 可选：缺省时由 pixi Application 自建 canvas
+  /** 逻辑/设计分辨率宽度，运行期不随视口变化 */
   width: number;
+  /** 逻辑/设计分辨率高度，运行期不随视口变化 */
   height: number;
   scaleMode: ScaleMode;
   fps: number; // 映射到 app.ticker.maxFPS
@@ -30,6 +32,11 @@ export interface GameConfig {
   plugins?: Plugin[];
   /** 可选 UI 主题覆盖；未传时使用内置暖调暗色主题 */
   theme?: DeepPartial<UITheme>;
+  /**
+   * 视口自适应。缺省值由 canvas 决定：未传 canvas（引擎自建）时为 true；
+   * 传入 canvas 时为 false，保持旧的固定尺寸行为，可显式设为 true。
+   */
+  responsive?: boolean;
 }
 
 export interface AssetManifest {

@@ -2,7 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>VNEngine Demo</title>
     <style>
       html,
@@ -12,16 +15,119 @@
         background: #05060c;
         overflow: hidden;
       }
+      /* 外层：固定视口 + 安全区；100dvh 处理移动端地址栏伸缩 */
+      #app-root {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        box-sizing: border-box;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      /* 内层：画布宿主，clientWidth/clientHeight 即安全区内的内容盒 */
       #app {
-        width: 100vw;
-        height: 100vh;
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
         display: grid;
         place-items: center;
+      }
+      #app canvas {
+        display: block;
+      }
+      /* 竖屏提示：仅触摸-only 竖屏显示，覆盖并阻止误触底层画布 */
+      #rotate-hint {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #05060c;
+        color: #e6e8f0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        text-align: center;
+        user-select: none;
+      }
+      @media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+        #rotate-hint {
+          display: flex;
+        }
+      }
+      /* 横屏全屏引导：仅在触摸横屏显示；hidden 由脚本按全屏/关闭状态控制 */
+      #fullscreen-hint {
+        display: none;
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px 6px 12px;
+        border: 1px solid rgba(230, 232, 240, 0.28);
+        border-radius: 999px;
+        background: rgba(5, 6, 12, 0.82);
+        color: #e6e8f0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        pointer-events: none;
+      }
+      #fullscreen-hint[hidden] {
+        display: none !important;
+      }
+      #fullscreen-hint button {
+        pointer-events: auto;
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font: inherit;
+        color: #05060c;
+        background: #e6e8f0;
+        cursor: pointer;
+      }
+      #fullscreen-hint-dismiss {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        color: #e6e8f0;
+        background: transparent;
+        font-size: 16px;
+        line-height: 1;
+      }
+      @media (orientation: landscape) and (hover: none) and (pointer: coarse) {
+        #fullscreen-hint:not([hidden]) {
+          display: flex;
+        }
       }
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app-root">
+      <div id="app">
+        <div id="rotate-hint" role="status" aria-live="polite">
+          请将设备旋转至横屏
+        </div>
+        <div id="fullscreen-hint" hidden>
+          <span>全屏体验更佳</span>
+          <button id="fullscreen-hint-action" type="button">进入全屏</button>
+          <button
+            id="fullscreen-hint-dismiss"
+            type="button"
+            aria-label="关闭提示"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
