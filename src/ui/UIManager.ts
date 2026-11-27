@@ -23,6 +23,11 @@ import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { computeUiLayout } from './uiLayout';
+import type { UiLayout } from './uiLayout';
+
+/** 对话框最小虚拟高度：短横屏下 30% 比例会低于两行正文 */
+const MIN_DIALOGUE_HEIGHT = 120;
 
 export interface UIManagerOptions {
   width: number;
@@ -72,9 +77,17 @@ export class UIManager {
   readonly history: DialogueHistory;
 
   private readonly bus: EventBus<EngineEvents>;
+  private readonly theme: UITheme;
   private readonly captureThumbnail?: () => string;
   private readonly getSlots?: () => readonly SaveSlotInfo[];
   private readonly transitionShield: Container;
+  private readonly originX: number;
+  private readonly originY: number;
+  private readonly dialogueXOverride?: number;
+  private readonly dialogueYOverride?: number;
+  private readonly dialogueWidthOverride?: number;
+  private readonly dialogueHeightOverride?: number;
+  private layout: UiLayout;
   private rafId: number | null = null;
   private lastTime = 0;
   private pendingThumbnail = '';
@@ -84,16 +97,24 @@ export class UIManager {
 
   constructor(bus: EventBus<EngineEvents>, options: UIManagerOptions) {
     this.bus = bus;
-    const theme = resolveTheme(options.theme);
+    this.theme = resolveTheme(options.theme);
+    this.layout = { scale: 1, width: options.width, height: options.height };
+    this.originX = options.x ?? 0;
+    this.originY = options.y ?? 0;
+    const theme = this.theme;
     // 面板级主题是在全局主题之上叠加的局部覆盖，而不是另起一套默认主题
     const themeFor = (overrides?: DeepPartial<UITheme>): UITheme =>
       overrides ? resolveTheme(overrides, theme) : theme;
 
     this.root = new Container();
-    this.root.x = options.x ?? 0;
-    this.root.y = options.y ?? 0;
+    this.root.x = this.originX;
+    this.root.y = this.originY;
 
     const dialogue = options.dialogueBox ?? {};
+    this.dialogueXOverride = dialogue.x;
+    this.dialogueYOverride = dialogue.y;
+    this.dialogueWidthOverride = dialogue.width;
+    this.dialogueHeightOverride = dialogue.height;
     // 缺省为底部对话框条（高度的 30%），避免整屏遮罩
     const boxHeight =
       dialogue.height ??
@@ -207,6 +228,31 @@ export class UIManager {
     this.updateFades(dt);
   }
 
+  /**
+   * 按视口尺寸重排屏幕空间 UI：只跟随宽度缩放，返回虚拟尺寸供输入命中层使用。
+   * 尺寸未变化时直接返回缓存，避免桌面拖拽窗口时每帧重建文本。
+   */
+  public resize(viewport: { width: number; height: number }): {
+    width: number;
+    height: number;
+  } {
+    const current = this.layout;
+    if (!(viewport.width > 0) || !(viewport.height > 0)) {
+      return { width: current.width, height: current.height };
+    }
+    const next = computeUiLayout(viewport.width, viewport.height);
+    if (
+      Math.abs(next.scale - current.scale) < 0.0001 &&
+      Math.abs(next.width - current.width) < 0.5 &&
+      Math.abs(next.height - current.height) < 0.5
+    ) {
+      return { width: current.width, height: current.height };
+    }
+    this.layout = next;
+    this.applyLayout();
+    return { width: next.width, height: next.height };
+  }
+
   /** 打字机是否正在逐字显示（供 InputManager 决定点击语义） */
   public isBusy(): boolean {
     return this.dialogueBox.isBusy();
@@ -253,6 +299,33 @@ export class UIManager {
   public confirm(request: ConfirmRequest): Promise<boolean> {
     this.closeInstant();
     return this.confirmDialog.confirm(request);
+  }
+
+  private applyLayout(): void {
+    const { scale, width, height } = this.layout;
+    this.root.scale.set(scale);
+    this.root.position.set(this.originX, this.originY);
+
+    const dialogueWidth = this.dialogueWidthOverride ?? width;
+    const dialogueHeight =
+      this.dialogueHeightOverride ?? this.dialogueHeight(height);
+    this.dialogueBox.x = this.dialogueXOverride ?? 0;
+    this.dialogueBox.y = this.dialogueYOverride ?? height - dialogueHeight;
+    this.dialogueBox.resize(dialogueWidth, dialogueHeight);
+    this.choicePanel.resize(width, height);
+    this.menuBar.resize(width, height);
+    this.confirmDialog.resize(width, height);
+    this.saveLoadMenu.resize(width, height);
+    this.settingsMenu.resize(width, height);
+    this.historyView.resize(width, height);
+    this.transitionShield.hitArea = new Rectangle(0, 0, width, height);
+  }
+
+  private dialogueHeight(virtualHeight: number): number {
+    return Math.max(
+      MIN_DIALOGUE_HEIGHT,
+      Math.round(virtualHeight * this.theme.sizes.dialogueHeightRatio),
+    );
   }
 
   public destroy(): void {

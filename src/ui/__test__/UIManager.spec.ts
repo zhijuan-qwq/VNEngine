@@ -50,6 +50,50 @@ describe('UIManager', () => {
     expect(ui.dialogueBox.y).toBe(400);
   });
 
+  it('should scale the root and report the virtual size on resize', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    expect(ui.root.scale.x).toBeCloseTo(0.8);
+    expect(virtual.width).toBeCloseTo(745 / 0.8);
+    expect(virtual.height).toBeCloseTo(264 / 0.8);
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 120);
+    expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 48);
+  });
+
+  it('should skip relayout when the viewport is unchanged', () => {
+    const { ui } = makeManager();
+    ui.resize({ width: 745, height: 264 });
+    const resize = vi.spyOn(ui.dialogueBox, 'resize');
+
+    ui.resize({ width: 745, height: 264 });
+
+    expect(resize).not.toHaveBeenCalled();
+  });
+
+  it('should ignore a zero-size viewport', () => {
+    const { ui } = makeManager();
+    const virtual = ui.resize({ width: 0, height: 0 });
+
+    expect(virtual).toEqual({ width: 800, height: 600 });
+    expect(ui.root.scale.x).toBe(1);
+  });
+
+  it('should keep an explicit dialogue height across resize', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 200);
+  });
+
   it('should route script:say to the dialogue box', () => {
     const { bus, ui } = makeManager();
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
