@@ -5,7 +5,7 @@ import { selectDesignResolution } from '@/game/designResolution';
 import { mountFullscreenHint } from '@/game/fullscreenHint';
 import { getViewportSize, matchesMediaQuery } from '@/utils/APIHelper';
 
-// 触摸-only 小屏用 640×360，其余用 1280×720；运行期只缩放画布，不重排 UI
+// 触摸-only 小屏场景用 640×360，其余 1280×720；UI 按视口宽度独立缩放
 const design = selectDesignResolution(
   getViewportSize(),
   matchesMediaQuery('(hover: none) and (pointer: coarse)'),

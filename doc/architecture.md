@@ -109,18 +109,21 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 5. new Application() → await app.init({ width, height, resolution, autoDensity, ... })
    并将 app.canvas 挂载到容器
 6. 创建 Renderer({ stage: app.stage, eventBus, resource, width, height, scaleMode })
-                                              // 内部构建 LayerStack 与 ScaleManager，订阅 bg/character/effect 事件；预建 ui 图层
+                                              // 构建 sceneRoot（ScaleManager 目标）→ viewport(mask) → LayerStack，
+                                              // 以及屏幕空间 uiLayer；订阅 bg/character/effect 事件
 6a. 若 config.responsive !== false：测量 canvas 宿主尺寸，
     调用 app.renderer.resize(cssW, cssH, dpr) + renderer.resize({ width, height })
-    应用画布尺寸与 ScaleManager，随后注册视口监听（resize/orientation/ResizeObserver/DPR）
+    应用画布尺寸与场景缩放，随后注册视口监听（resize/orientation/ResizeObserver/DPR/fullscreenchange）
 7. 创建 InputManager(eventBus, { width, height, toLogical, isTypewriterBusy })
                                               // width/height 为逻辑分辨率 config.width/height；
                                               // toLogical 委托 renderer.toLogical；isTypewriterBusy 惰性读取 ui.isBusy()
 8. 创建 AudioManager(eventBus)
 9. 创建 SaveManager({ storage })              // 无可写存储时工厂返回 null
 10. 创建 UIManager(eventBus, { width, height, autoTick: false, resolveVar, settingsMenu })
-   → renderer.getUILayer()?.addChild(ui.root) // 把 UI 根挂到渲染器预建的 ui 图层
+   → renderer.getUILayer().addChild(ui.root) // UI 根挂到屏幕空间 uiLayer
    → input.setUIRoot(ui.root)                 // 命中层作为 ui.root 的首个子节点（最底层）
+   → 若 responsive 且已测得视口：syncUILayout(lastViewport)
+     // ui.resize(viewport) 返回 UI 虚拟尺寸，再 input.setSize(虚拟宽, 虚拟高)
 11. 创建 ScriptEngine(eventBus, variableStore)
 12. 创建 PluginManager(eventBus)
 13. 注册 config.plugins → PluginManager.loadAll()
@@ -130,11 +133,11 @@ uninitialized ──(init)──→ ready ──(start)──→ running
 17. 发射 game:init 事件
 ```
 
-依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；SettingsManager 先于消费它的音频/UI 创建（后者的 `settingsMenu` 直接以它为 controller）；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 预建的 `ui` 图层，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
+依赖规则：EventBus 最先创建；VariableStore 在 ScriptEngine 之前创建；SettingsManager 先于消费它的音频/UI 创建（后者的 `settingsMenu` 直接以它为 controller）；`Application.init` 异步完成、`app.*` 就绪后才能构建 LayerStack 与 InputManager；InputManager 依赖 `renderer.toLogical`、UIManager 依赖 renderer 的屏幕空间 `uiLayer`，故二者在 Renderer 之后创建；Updater 最后创建，接收 `Updatable[]`（UI 以 `autoTick: false` 交由 Updater 驱动，避免双重循环）。
 
-视口监听在 Renderer 之后、Input/UI 之前建立：此时 `app.canvas`、`ScaleManager` 已就绪，而 UI/场景仍按逻辑分辨率构建，首帧渲染前画布尺寸已应用，不会闪烁。
+视口监听在 Renderer 之后、Input/UI 之前建立：此时 `app.canvas`、`ScaleManager` 已就绪，场景缩放先于首帧应用；UI 创建晚于首次测量，因此在挂载后用同一尺寸补一次 `ui.resize` / `input.setSize`（`lastViewport` 去重不会自动触发），首帧即可拿到正确的屏幕空间布局。
 
-**destroy 顺序：** 先解除视口/全屏监听并退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `ui` 图层及其子节点。若 `init` 中途失败（状态仍为 `uninitialized`），`destroy` 只释放已创建的 app/canvas 与监听，不触碰未初始化的子系统（重复调用也不会重复销毁 app）。
+**destroy 顺序：** 先解除视口/全屏监听并退订 `game:settings`，随后 `updater → ui → input → renderer → audio → resource → app`。UI 与输入先在渲染器之前销毁，因为 `Renderer.destroy()` 会以 `{ children: true }` 连带销毁 `sceneRoot` 与 `uiLayer` 两个根。若 `init` 中途失败（状态仍为 `uninitialized`），`destroy` 只释放已创建的 app/canvas 与监听，不触碰未初始化的子系统（重复调用也不会重复销毁 app）。
 
 **GameConfig 结构：**
 
@@ -155,7 +158,7 @@ interface GameConfig {
 }
 ```
 
-画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定逻辑坐标系与 `ScaleManager` 的缩放比。演示入口 `src/main.ts` 在启动时一次性选择设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。`responsive` 缺省由 canvas 决定：引擎自建 canvas 时开启；传入 canvas 的 embedder 默认关闭以保持旧行为，可显式设为 true。Game 订阅 `fullscreenchange`：用户通过 Esc/手势退出全屏时把 `settings.fullscreen` 回写为 false，菜单开关不会与实际状态不符。
+画布本身（CSS 尺寸与 backing store）等于 canvas 宿主尺寸，`width/height` 只决定场景逻辑坐标系与 `ScaleManager` 的缩放比；UI 已与设计分辨率解耦，按视口宽度独立缩放（§4.8 / §8.1）。演示入口 `src/main.ts` 在启动时一次性选择场景设计分辨率：触摸-only 且视口短边 ≤ 720 CSS px 用 640×360，其余用 1280×720（策略见 `src/game/designResolution.ts`），运行期不再改变。横屏保持 `fit`；触摸横屏时会显示“全屏体验更佳”提示条，`src/game/fullscreenHint.ts` 通过 `game:settings` 的 `fullscreen` 键进入全屏（菜单开关状态保持一致），进入全屏或用户关闭提示后隐藏，不支持 Element Fullscreen 的浏览器直接不显示。`responsive` 缺省由 canvas 决定：引擎自建 canvas 时开启；传入 canvas 的 embedder 默认关闭以保持旧行为，可显式设为 true。Game 订阅 `fullscreenchange`：用户通过 Esc/手势退出全屏时把 `settings.fullscreen` 回写为 false，菜单开关不会与实际状态不符；同时调度一次视口重测。
 
 ### 3.2 Updater（游戏循环）
 
@@ -264,29 +267,34 @@ Game 创建时传入 `EngineEvents` 类型参数，所有事件订阅和发布�
 
 ```
 Renderer（依赖经构造函数注入）
+├── sceneRoot: Container             // ScaleManager 的缩放/居中目标，只包含随画面缩放的内容
 ├── viewport: Container              // 固定逻辑尺寸的视口容器；挂矩形遮罩裁剪场景
 ├── layers: LayerStack               // 场景根 + 图层 Container（zIndex 排序），是 viewport 的子节点
-├── scale: ScaleManager              // 缩放适配（作用于 app.stage）
+├── uiLayer: Container               // 屏幕空间 UI 根，不受场景缩放与遮罩影响
+├── scale: ScaleManager              // 缩放适配（作用于 sceneRoot）
 ├── characters: CharacterRegistry    // 角色 → pixi Sprite 生命周期
 ├── backgrounds: BackgroundManager   // 背景切换（淡入淡出）
 ├── effects: EffectManager           // shake/flash/snow/rain
 ├── tweens: TweenEngine              // 补间（由 update(dt) 驱动）
 │
 ├── constructor({ stage, eventBus, resource, width, height, scaleMode, onError? })
-│                                    // 构建 viewport（含逻辑尺寸遮罩）与 LayerStack 挂到 stage、
-│                                    // 订阅 bg/character/effect 事件
+│                                    // 构建 sceneRoot → viewport（含逻辑尺寸遮罩）→ LayerStack，
+│                                    // 以及挂在 stage 上的 uiLayer；订阅 bg/character/effect 事件
 ├── update(dt): void                 // 驱动 tween → 特效
 ├── getState(): RendererState        // 供存档
 ├── setState(state): void            // 供读档
 ├── resize(containerSize): void       // 画布尺寸变化时转发给 ScaleManager（由 Game 调用）
-└── destroy(): void                  // 退订事件、销毁全部显示对象
+├── getUILayer(): Container          // 屏幕空间 UI 层（恒存在）
+├── getSceneRoot(): Container        // 场景 LayerStack（不含 UI）
+├── getCaptureTarget(): Container    // app.stage，整屏抓帧（含场景与 UI）
+└── destroy(): void                  // 退订事件、销毁 sceneRoot 与 uiLayer
 ```
 
-场景树形如 `app.stage → viewport(mask) → layers(bg/chara/effect/ui)`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景/UI 对象。`getSceneRoot()` 仍返回 `layers`，缩略图按逻辑 frame 截取。
+场景树形如 `app.stage → [sceneRoot → viewport(mask) → layers(bg/chara/effect), uiLayer → ui.root]`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景对象。UI 在 `uiLayer`（屏幕空间、不裁剪、不随场景缩放），所以黑边区域也能响应 UI 与点击。`getSceneRoot()` 仍返回 `layers` 供场景整体操作；存档缩略图改用 `getCaptureTarget()` 截整屏，保留对话框与快捷栏。
 
 依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
 
-逻辑尺寸与画布尺寸：构造参数 `width/height` 是逻辑/设计分辨率，供 `ScaleManager`、背景 cover、立绘比例和特效边界使用；canvas 的 CSS 尺寸与 backing store 则是实际视口尺寸，由 Game 在视口变化时通过 `app.renderer.resize(cssW, cssH, dpr)` 更新。Game 现在是 `app.renderer.resize` 与 `IRenderer.resize` 的生产调用方：前者改画布，后者重算 `app.stage` 的缩放/居中；逻辑尺寸保持不变，因此 UI/场景不需要重排。
+逻辑尺寸与画布尺寸：构造参数 `width/height` 是场景逻辑/设计分辨率，供 `ScaleManager`、背景 cover、立绘比例和特效边界使用；canvas 的 CSS 尺寸与 backing store 则是实际视口尺寸，由 Game 在视口变化时通过 `app.renderer.resize(cssW, cssH, dpr)` 更新。Game 是 `app.renderer.resize` 与 `IRenderer.resize` 的生产调用方：前者改画布，后者重算 `sceneRoot` 的缩放/居中。场景逻辑尺寸保持不变；UI 不在该缩放链里，由 UIManager 按视口独立重排（见 §4.8 / §8.1）。
 
 ### 4.2 图层架构（LayerStack）
 
@@ -306,10 +314,10 @@ zIndex 约定 (从底到顶):
 │  Fore    (400)     │  前景层（近景遮挡物）
 ├────────────────────┤
 │  Effect  (500)     │  特效层（粒子、全屏转场）
-├────────────────────┤
-│  UI      (600)     │  UI层（对话框、选项、菜单）
 └────────────────────┘
 ```
+
+UI（对话框、选项、菜单）不在场景图层内：它挂在 `stage → uiLayer` 的屏幕空间根上，在场景之后渲染（见 §4.1）。
 
 这些值只是约定，可通过 `addLayer()` 传入任意 `zIndex`。`reorderLayer(id, newZIndex)` 修改后 pixi 自动按 `zIndex` 重排。
 
@@ -329,7 +337,7 @@ class LayerStack extends Container {
 }
 ```
 
-Renderer 在构造时预建 4 个图层：`bg`(0)、`chara`(300)、`effect`(500)、`ui`(600)——对应本子系统直接使用的层，UI 层供 §8 的 UI 子系统挂载；`cg`/`middle`/`fore` 由后续功能按需 `addLayer()` 创建。
+Renderer 在构造时预建 3 个场景图层：`bg`(0)、`chara`(300)、`effect`(500)；`cg`/`middle`/`fore` 由后续功能按需 `addLayer()` 创建。UI 不再使用场景内的图层，而是挂在屏幕空间的 `uiLayer`（§4.1），因此不受场景缩放与遮罩影响。
 
 **注意（pixi v8 叶子节点规则）：** `Sprite`/`Text`/`Graphics` 是叶子节点，不能作为子节点容器；图层与分组一律用 `Container`。
 
@@ -486,14 +494,24 @@ DialogueBox（pixi Container）
 | `fixed`   | 不缩放，居中显示（原始分辨率）      |
 
 ```
-ScaleManager（构造注入 target: Container，即 app.stage）
+ScaleManager（构造注入 target: Container，即 sceneRoot）
 ├── mode: 'fit' | 'stretch' | 'fixed'
-├── logical: { width, height }           // GameConfig 指定的逻辑分辨率
+├── logical: { width, height }           // GameConfig 指定的场景逻辑分辨率
 ├── update(containerSize): void          // 容器尺寸变化时重算 target.scale / 偏移
-└── toLogical(global: Point): Point      // 屏幕坐标 → 逻辑坐标（供输入层）
+└── toLogical(global: Point): Point      // 屏幕坐标 → 场景逻辑坐标（供输入层）
 ```
 
-实现要点：`app.stage.scale` 统一缩放 + 居中偏移（letterbox），`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `app.stage.toLocal(e.global)` 得到逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发 `ScaleManager.update`；尺寸与 DPR 均未变化时跳过。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。逻辑分辨率运行期不变，因此缩放只改变 stage 变换，UI 与场景坐标无需重算；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为。
+实现要点：`sceneRoot.scale` 统一缩放 + 居中偏移（letterbox），`app.stage` 保持单位变换；`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `sceneRoot.toLocal(e.global)` 得到场景逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR / fullscreenchange）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发场景缩放；随后 `ui.resize(viewport)` 重排屏幕空间 UI，并把返回的虚拟尺寸交给 `input.setSize`。尺寸与 DPR 均未变化时跳过。多个事件经 `requestAnimationFrame` 合并，每帧最多应用一次；`fullscreenchange` 也调度一次重测。测量顺序为 canvas 宿主 → `documentElement` → `visualViewport` → 窗口，宿主依赖 `100dvh`，全屏切换瞬间为 0 时有兜底；尺寸取整。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。场景逻辑分辨率运行期不变，因此场景只改变 `sceneRoot` 变换；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为，UI 也不做屏幕空间重排。
+
+**UI 屏幕空间缩放（与场景解耦）：** UIManager 自管一套变换，规则见 `src/ui/uiLayout.ts`：
+
+```
+uiScale  = clamp(viewportWidth / 1280, 0.8, 2)
+virtualW = viewportWidth  / uiScale
+virtualH = viewportHeight / uiScale
+```
+
+只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放会让 UI 忽大忽小。手机横屏 745/785 宽都低于 `1280×0.8`，`uiScale` 固定 0.8，UI 物理尺寸在工具栏/全屏切换时完全稳定；虚拟高度随可用高度变化，底部控件贴虚拟底边即贴屏幕底边。桌面 1280/1920 宽分别为 1.0/1.5，虚拟宽恒为 1280。UI 的 `root.scale` 由 `UIManager.resize` 设置，`root.position` 使用调用方传入的 x/y（虚拟单位）。
 
 ### 4.9 画面特效（EffectManager）
 
@@ -1034,15 +1052,16 @@ class AudioTrackPool {
 
 ### 8.1 设计思路
 
-UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Container`（子类或持有 Container），挂载在 UI Layer（§4.2，zIndex=600）上。**VN 专属组件**（对话框/选项/存读档/设置/历史）与**通用交互控件**（按钮/滑动条/开关/滚动视图）均用自定义 pixi Container 实现，不引入 `@pixi/ui`。
+UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Container`（子类或持有 Container），挂载在屏幕空间的 `uiLayer` 上（§4.1，不随场景缩放、不被 letterbox 遮罩裁剪）。**VN 专属组件**（对话框/选项/存读档/设置/历史）与**通用交互控件**（按钮/滑动条/开关/滚动视图）均用自定义 pixi Container 实现，不引入 `@pixi/ui`。
 
 **UIManager（UI 门面）** 持有全部 UI 组件并对外提供统一入口：
 
-- 持有 `root: Container`（挂到 `ui` 图层的根）、`dialogueBox`、`choicePanel`、`menuBar` 与三个全屏页（§8.2）；确认弹窗 `ConfirmDialog` 独立存在；
+- 持有 `root: Container`（挂到 `uiLayer` 的根）、`dialogueBox`、`choicePanel`、`menuBar` 与三个全屏页（§8.2）；确认弹窗 `ConfirmDialog` 独立存在；
+- `resize(viewport)` 按 §4.8 的规则设置 `root.scale`，并把虚拟尺寸传给各组件：对话框/快捷栏/选项/确认框增量 resize（保留打字机进度、当前选项与未决 Promise），三个整页 `relayout` 页面骨架并按需重建内容，`transitionShield` 命中矩形同步；尺寸未变化时直接返回缓存；
 - 订阅脚本事件（`script:say` / `script:clear` / `script:choice` / `script:end`）驱动对话核心；
 - 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；页面互斥（打开一个先关掉其它），开关带约 150ms 淡入淡出，引擎暂停时立即完成过渡；
 - 页面过渡期间由 `transitionShield`（覆盖 UI 根的全屏命中层，位于页面之上、确认框之下）屏蔽输入，结束后关闭；
-- 打开存档页前调用注入的 `captureThumbnail()` 抓取当前画面（所见即所得，含对话框与快捷栏），存入选槽时写入存档；
+- 打开存档页前调用注入的 `captureThumbnail()` 从 `app.stage` 整屏抓帧（所见即所得，含黑边、对话框与快捷栏），存入选槽时写入存档；
 - 覆盖已有存档、读取存档前直接叠确认框（不关闭底层页面）；读档确认后关闭页面回到游戏；
 - `isBusy()` 委托 `dialogueBox.isBusy()`，供 InputManager（§8.3）判定点击语义；
 - 由 `Updater` 驱动（`update(dt)` 推进打字机与页面淡入淡出）；构造时传 `autoTick: false` 关闭内部 RAF，避免与 Updater 双重循环。
@@ -1095,12 +1114,13 @@ class UIComponent extends Container {
 
 ### 8.3 输入事件分发
 
-InputManager 由 Game 持有，在 init 时创建（Renderer 之后、UIManager 之前）。它把 UI 根的第一个子节点占为全屏命中层（最底层），事件源为 **pixi Federated Pointer Events**。
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、UIManager 之前）。它把 UI 根的第一个子节点占为全屏命中层（最底层），事件源为 **pixi Federated Pointer Events**。命中层尺寸是 UI 虚拟尺寸（由 `setSize` 随 `UIManager.resize` 更新），铺满缩放后的物理屏幕，因此黑边点击也会命中。
 
 ```
 pixi Federated Events → InputManager 路由
-  → 全屏命中层（eventMode='static' + 全屏 hitArea）收到 pointertap
-  → toLogical(e.global)                 // 逻辑坐标：ScaleManager.toLogical（app.stage.toLocal）
+  → 全屏命中层（eventMode='static' + 虚拟尺寸 hitArea）收到 pointertap
+  → toLogical(e.global)                 // 场景逻辑坐标：ScaleManager.toLogical（sceneRoot.toLocal）
+  → clamp 到 [0, config.width]×[0, config.height]
   → isTypewriterBusy()?
       → 是：发射 input:skip（补全当前文本）
       → 否：发射 input:click { x, y }（全局命令：点击继续对话）
@@ -1659,11 +1679,13 @@ interface IRenderer {
   setState(state: RendererState): void;
   // 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见 §4.1/§4.8）
   resize(size: { width: number; height: number }): void;
-  // UI 层容器（Renderer 预建，可能为 null），供 UIManager 挂载 root（见 §8.1）
-  getUILayer(): Container | null;
-  // 场景根容器（bg/chara/effect/ui 图层的父级），供截图抓帧（见 §9.3）
+  // 屏幕空间 UI 层（Renderer 预建，恒存在），供 UIManager 挂载 root（见 §8.1）
+  getUILayer(): Container;
+  // 场景根容器（bg/chara/effect 图层的父级），供场景整体操作
   getSceneRoot(): Container;
-  // 屏幕坐标 → 逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
+  // 整屏抓帧根（含场景与 UI），供存档缩略图（见 §9.3）
+  getCaptureTarget(): Container;
+  // 屏幕坐标 → 场景逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
 }
@@ -1765,7 +1787,7 @@ interface GameStateSnapshot {
 
 `GameStateSnapshot.characters` 复用 `CharacterState[]`（`position: Position`），与渲染层 `RendererState` 的
 字段一致，`renderer.setState(snapshot.characters)` 可直接赋值、`tsc` 通过（此前的类型缺口已消除）。
-`thumbnail` 已接线（打开存档页前抓帧，宽 320px、按画面比例缩放的 JPEG data URL，16:9 下即 320×180；包含对话框与快捷栏）；`playTime` 仍未累计。
+`thumbnail` 已接线（打开存档页前从 `app.stage` 整屏抓帧，宽 320px、按整屏比例缩放的 JPEG data URL，如 745×264 手机横屏约 320×113；包含黑边、对话框与快捷栏）；`playTime` 仍未累计。
 
 ---
 
