@@ -91,6 +91,53 @@ describe('InputManager', () => {
     expect(hitOf(root).hitArea).toMatchObject({ width: 800, height: 600 });
   });
 
+  it('should size the hit area independently from the scene bounds', () => {
+    const input = new InputManager(makeBus(), makeOptions());
+    const root = new Container();
+    input.setUIRoot(root);
+
+    input.setSize(931, 330);
+
+    expect(hitOf(root).hitArea).toMatchObject({ width: 931, height: 330 });
+  });
+
+  it('should apply a hit size set before attaching the root', () => {
+    const input = new InputManager(makeBus(), makeOptions());
+    const root = new Container();
+
+    input.setSize(931, 330);
+    input.setUIRoot(root);
+
+    expect(hitOf(root).hitArea).toMatchObject({ width: 931, height: 330 });
+  });
+
+  it('should ignore an invalid hit size', () => {
+    const input = new InputManager(makeBus(), makeOptions());
+    const root = new Container();
+    input.setUIRoot(root);
+
+    input.setSize(0, Number.NaN);
+
+    expect(hitOf(root).hitArea).toMatchObject({ width: 800, height: 600 });
+  });
+
+  it('should clamp mapped coordinates to the scene bounds', () => {
+    const bus = makeBus();
+    const click = listen(bus, 'input:click');
+    const hover = listen(bus, 'input:hover');
+    const root = new Container();
+    const input = new InputManager(bus, makeOptions());
+    input.setUIRoot(root);
+
+    tap(hitOf(root), 500, 400);
+    hitOf(root).emit('pointermove', {
+      global: { x: -10, y: -10 },
+    } as unknown as FederatedPointerEvent);
+
+    expect(click).toHaveBeenCalledWith({ x: 800, y: 600 });
+    expect(hover).toHaveBeenCalledWith({ x: 0, y: 0 });
+  });
+
   it('should replace the previous hit container when re-attached', () => {
     const bus = makeBus();
     const root = new Container();

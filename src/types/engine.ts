@@ -162,6 +162,8 @@ export interface IAudioManager {
 // 输入子系统契约（见架构文档 §8.3）：pixi Federated Pointer Events → EventBus
 export interface IInputManager {
   setUIRoot(root: Container): void;
+  /** 命中层尺寸（UI 虚拟坐标）；视口变化时由 Game 更新 */
+  setSize(width: number, height: number): void;
   destroy(): void;
 }
 
