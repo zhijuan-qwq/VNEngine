@@ -66,6 +66,19 @@ describe('ScrollView', () => {
     expect(view.scrollTop).toBe(20);
   });
 
+  it('should resize the viewport and re-clamp the offset', () => {
+    const view = makeView(500);
+    view.setScroll(400);
+
+    view.resize(300, 200);
+    expect(view.maxScroll).toBe(300);
+    expect(view.scrollTop).toBe(300);
+
+    view.resize(300, 600);
+    expect(view.maxScroll).toBe(0);
+    expect(view.scrollTop).toBe(0);
+  });
+
   it('should ignore a non-finite content height', () => {
     const view = makeView(500);
     view.setContentHeight(Number.NaN);

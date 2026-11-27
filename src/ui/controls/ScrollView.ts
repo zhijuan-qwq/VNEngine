@@ -14,8 +14,8 @@ export class ScrollView extends UIComponent {
   public readonly content: Container;
   private readonly viewport: Container;
   private readonly maskShape: Graphics;
-  private readonly viewWidth: number;
-  private readonly viewHeight: number;
+  private viewWidth: number;
+  private viewHeight: number;
   private readonly step: number;
   private contentHeight = 0;
   private offset = 0;
@@ -46,6 +46,17 @@ export class ScrollView extends UIComponent {
       event.stopPropagation();
       this.scrollBy(delta > 0 ? this.step : -this.step);
     });
+  }
+
+  /** 视口变化时重画裁剪框并重新钳制偏移 */
+  public resize(width: number, height: number): void {
+    this.viewWidth = width;
+    this.viewHeight = height;
+    this.maskShape.clear();
+    this.maskShape.rect(0, 0, width, height);
+    this.maskShape.fill(0xffffff, 1);
+    this.hitArea = new Rectangle(0, 0, width, height);
+    this.applyOffset(this.offset);
   }
 
   public get scrollTop(): number {
