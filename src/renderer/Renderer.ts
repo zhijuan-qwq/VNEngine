@@ -37,6 +37,8 @@ export class Renderer implements IRenderer {
   public readonly backgrounds: BackgroundManager;
   public readonly effects: EffectManager;
   private readonly size: Size;
+  /** pixi 根容器；整屏抓帧（含场景与 UI）以它为 target */
+  private readonly stage: Container;
   /** 场景根：ScaleManager 的缩放/居中目标，只包含随画面缩放的内容 */
   private readonly sceneRoot: Container;
   /** 固定逻辑尺寸的视口容器：遮罩不随 shake 移动，只由 ScaleManager 缩放 */
@@ -50,6 +52,7 @@ export class Renderer implements IRenderer {
     this.size = { width: options.width, height: options.height };
     this.tweens = new TweenEngine();
     this.layers = new LayerStack();
+    this.stage = options.stage;
 
     this.sceneRoot = new Container();
     this.sceneRoot.label = 'scene-root';
@@ -128,6 +131,10 @@ export class Renderer implements IRenderer {
 
   public getSceneRoot(): Container {
     return this.layers;
+  }
+
+  public getCaptureTarget(): Container {
+    return this.stage;
   }
 
   public toLogical(point: PointData): { x: number; y: number } {

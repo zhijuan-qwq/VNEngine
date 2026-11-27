@@ -112,6 +112,15 @@ describe('Renderer', () => {
       );
     });
 
+    it('should capture from the full stage including the UI layer', () => {
+      const { renderer, stage } = createRenderer();
+
+      expect(renderer.getCaptureTarget()).toBe(stage);
+      expect(renderer.getCaptureTarget().children).toContain(
+        renderer.getUILayer(),
+      );
+    });
+
     it('should resize the scene root without transforming the stage', () => {
       const { renderer, stage } = createRenderer({
         width: 400,

@@ -102,13 +102,14 @@ const defaultFactories: GameFactories = {
         onSave: (slot, thumbnail) => engine.saveGame(slot, thumbnail),
         onLoad: (slot) => engine.loadGame(slot),
       },
-      // 打开存档页前由 UIManager 调用；失败时返回空串，卡片降级为无图
+      // 打开存档页前由 UIManager 调用；失败时返回空串，卡片降级为无图。
+      // UI 已是屏幕空间，必须从整屏抓帧才能保留对话框与快捷栏
       captureThumbnail: () =>
         captureThumbnail(
           engine.app,
-          engine.renderer.getSceneRoot(),
-          config.width,
-          config.height,
+          engine.renderer.getCaptureTarget(),
+          engine.app.screen.width,
+          engine.app.screen.height,
         ),
     }),
   createSave: () => new SaveManager({ storage: new LocalStorageProvider() }),

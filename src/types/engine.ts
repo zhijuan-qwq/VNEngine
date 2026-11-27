@@ -136,8 +136,10 @@ export interface IRenderer {
   resize(size: { width: number; height: number }): void;
   /** 屏幕空间 UI 层（不随场景缩放），供 §8 的 UI 子系统挂载 */
   getUILayer(): Container;
-  /** 场景根容器（bg/chara/effect 图层的父级），供截图等场景整体操作 */
+  /** 场景根容器（bg/chara/effect 图层的父级），供场景整体操作 */
   getSceneRoot(): Container;
+  /** 整屏抓帧根容器（含场景与屏幕空间 UI），供存档缩略图等使用 */
+  getCaptureTarget(): Container;
   /** 屏幕坐标 → 逻辑坐标，供输入层复用渲染的同一换算（见架构文档 §4.8） */
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
