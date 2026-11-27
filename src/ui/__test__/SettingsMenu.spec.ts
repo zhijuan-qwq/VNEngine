@@ -30,6 +30,7 @@ describe('SettingsMenu', () => {
     expect(DEFAULT_SETTINGS.masterVolume).toBe(1);
     expect(DEFAULT_SETTINGS.textSpeed).toBe(25);
     expect(DEFAULT_SETTINGS.skipMode).toBe('read');
+    expect(DEFAULT_SETTINGS.fontSize).toBe(16);
   });
 
   it('should start hidden', () => {

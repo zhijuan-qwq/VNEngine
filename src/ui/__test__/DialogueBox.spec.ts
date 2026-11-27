@@ -237,6 +237,25 @@ describe('DialogueBox', () => {
     expect(body.style.fontSize).toBe(40);
   });
 
+  it('should keep an explicit fontSize over the setting broadcast', () => {
+    const bus = new EventBus<EngineEvents>();
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      fontSize: 22,
+      eventBus: bus,
+    });
+    box.show('Hero', 'Fixed size', 1);
+    box.complete();
+
+    bus.emit('game:settings', { key: 'fontSize', value: 40 });
+
+    const speaker = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hero',
+    ) as unknown as { style: { fontSize?: number } };
+    expect(speaker.style.fontSize).toBe(22);
+  });
+
   it('should ignore non-numeric textSpeed and fontSize settings', () => {
     const bus = new EventBus<EngineEvents>();
     const box = new DialogueBox({ width: 600, height: 180, eventBus: bus });

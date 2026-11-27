@@ -65,6 +65,7 @@ export class DialogueBox extends UIComponent {
   private blockHeight: number;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
+  private readonly fontSizeExplicit: boolean;
   private lineHeight: number;
   private defaultSpeed: number;
 
@@ -93,6 +94,7 @@ export class DialogueBox extends UIComponent {
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
+    this.fontSizeExplicit = options.fontSize !== undefined;
     this.fontSize = options.fontSize ?? this.theme.typography.sizes.base;
     this.lineHeight =
       options.lineHeight ??
@@ -371,6 +373,8 @@ export class DialogueBox extends UIComponent {
       return;
     }
     if (payload.key === 'fontSize') {
+      // 调用方显式指定的字号优先，启动 emitAll 不应覆盖
+      if (this.fontSizeExplicit) return;
       if (typeof payload.value !== 'number') return;
       this.fontSize = payload.value;
       this.lineHeight = Math.round(
