@@ -89,6 +89,20 @@ describe('SettingsMenu', () => {
     expect(() => menu.getToggle('fullscreen')?.toggle()).not.toThrow();
   });
 
+  it('should rebuild controls and resync values on resize', () => {
+    const { controller } = makeController({
+      masterVolume: 0.4,
+      fullscreen: true,
+    });
+    const menu = makeMenu(controller);
+    menu.show();
+
+    menu.resize(1000, 700);
+
+    expect(menu.getSlider('masterVolume')?.value).toBe(0.4);
+    expect(menu.getToggle('fullscreen')?.value).toBe(true);
+  });
+
   it('should forward the page back button to onClose', () => {
     const onClose = vi.fn();
     const menu = new SettingsMenu({ width: 800, height: 600, onClose });

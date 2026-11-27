@@ -61,6 +61,17 @@ function findText(
 }
 
 describe('SaveLoadMenu', () => {
+  it('should relayout the page and rebuild cards on resize', () => {
+    const menu = makeMenu();
+    menu.show('load');
+
+    menu.resize(1000, 700);
+
+    const page = menu.children[0] as PagePanel;
+    expect(page.contentWidth).toBe(1000 - 48);
+    expect(menu.buttons).toHaveLength(3);
+  });
+
   it('should start hidden in load mode', () => {
     const menu = makeMenu();
     expect(menu.visible).toBe(false);

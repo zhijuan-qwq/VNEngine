@@ -15,6 +15,21 @@ function entry(speaker: string, text: string): DialogueEntry {
 }
 
 describe('HistoryView', () => {
+  it('should relayout the page and rebuild rows on resize', () => {
+    const view = new HistoryView({
+      width: 800,
+      height: 600,
+      getEntries: () => [entry('Hero', 'Hi')],
+    });
+    view.show();
+
+    view.resize(1000, 700);
+
+    const page = view.children[0] as PagePanel;
+    expect(page.contentWidth).toBe(1000 - 48);
+    expect(view.rowCount).toBe(1);
+  });
+
   it('should start hidden', () => {
     const view = new HistoryView({ width: 800, height: 600 });
     expect(view.visible).toBe(false);

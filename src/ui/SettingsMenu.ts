@@ -71,6 +71,42 @@ export class SettingsMenu extends UIComponent {
     });
     this.addChild(this.page);
 
+    this.buildContent();
+    this.hide();
+  }
+
+  /** 视口变化时重排页面骨架并按新尺寸重建控件 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    this.page.relayout(width, height);
+    this.buildContent();
+    this.syncValues();
+  }
+
+  public override show(): void {
+    this.syncValues();
+    super.show();
+  }
+
+  private syncValues(): void {
+    const settings = this.opts.controller?.get() ?? DEFAULT_SETTINGS;
+    this.syncing = true;
+    for (const [key, slider] of Object.entries(this.sliders)) {
+      slider.setValue(settings[key as keyof Settings] as number);
+    }
+    this.toggles.skipMode.setValue(settings.skipMode === 'all');
+    this.toggles.fullscreen.setValue(settings.fullscreen);
+    this.syncing = false;
+  }
+
+  private buildContent(): void {
+    for (const child of this.page.content.children.slice()) {
+      child.destroy({ children: true });
+    }
+    for (const key of Object.keys(this.sliders)) delete this.sliders[key];
+    for (const key of Object.keys(this.toggles)) delete this.toggles[key];
+
     const columnGap = this.theme.spacing.s48;
     const columnWidth = (this.page.contentWidth - columnGap) / 2;
     const audio = new Container();
@@ -141,20 +177,6 @@ export class SettingsMenu extends UIComponent {
     displayY = addSlider(display, 'textSpeed', '文字速度', 5, 100, 5, displayY);
     displayY = addToggle(display, 'skipMode', '跳过已读', displayY);
     addToggle(display, 'fullscreen', '全屏', displayY);
-
-    this.hide();
-  }
-
-  public override show(): void {
-    const settings = this.opts.controller?.get() ?? DEFAULT_SETTINGS;
-    this.syncing = true;
-    for (const [key, slider] of Object.entries(this.sliders)) {
-      slider.setValue(settings[key as keyof Settings] as number);
-    }
-    this.toggles.skipMode.setValue(settings.skipMode === 'all');
-    this.toggles.fullscreen.setValue(settings.fullscreen);
-    this.syncing = false;
-    super.show();
   }
 
   /** 测试/调试用：按 Settings 键取得对应滑条 */

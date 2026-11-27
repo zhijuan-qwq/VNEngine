@@ -58,7 +58,7 @@ export class SaveLoadMenu extends UIComponent {
   private readonly theme: UITheme;
   private readonly page: PagePanel;
   private readonly scroll: ScrollView;
-  private readonly contentWidth: number;
+  private contentWidth: number;
   private slotCards: SlotCard[] = [];
   private readonly thumbnailImages = new Map<string, HTMLImageElement>();
   private readonly thumbnailTextures = new Map<string, Texture>();
@@ -119,6 +119,18 @@ export class SaveLoadMenu extends UIComponent {
 
   /** 存档写入完成后刷新卡片（缩略图/时间） */
   public refresh(): void {
+    if (this.visible) {
+      this.rebuild();
+    }
+  }
+
+  /** 视口变化时重排页面与滚动区；可见时按新宽度重建卡片 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    this.page.relayout(width, height);
+    this.contentWidth = this.page.contentWidth;
+    this.scroll.resize(this.contentWidth, this.page.contentHeight);
     if (this.visible) {
       this.rebuild();
     }
