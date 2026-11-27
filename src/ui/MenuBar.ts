@@ -150,14 +150,14 @@ export class MenuBar extends UIComponent {
       y: options.y,
       buttonWidth: options.buttonWidth,
       buttonHeight: options.buttonHeight ?? this.theme.sizes.quickBarHeight,
-      gap: options.gap ?? this.theme.spacing.s24,
+      gap: options.gap ?? this.theme.spacing.s16,
       fontSize: options.fontSize ?? this.theme.typography.sizes.sm,
-      margin: options.margin ?? this.theme.spacing.s16,
+      margin: options.margin ?? this.theme.spacing.s12,
     };
 
     const iconSize = this.theme.sizes.quickBarIcon;
-    const iconGap = this.theme.spacing.s8;
-    const paddingX = this.theme.spacing.s8;
+    const iconGap = this.theme.spacing.s4;
+    const paddingX = this.theme.spacing.s4;
     const itemHeight = this.opts.buttonHeight;
 
     interface BuiltItem {

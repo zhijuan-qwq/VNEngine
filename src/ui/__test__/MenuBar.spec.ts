@@ -84,9 +84,9 @@ describe('MenuBar', () => {
     const { bar } = makeBar();
     const last = bar.buttons[3];
     const lastWidth = (last.hitArea as unknown as { width: number }).width;
-    expect(last.x + lastWidth).toBeLessThanOrEqual(800 - 16);
-    // 快捷栏高 32、贴边留白 16：600 - 32 - 16
-    expect(bar.buttons[0].y).toBe(552);
+    expect(last.x + lastWidth).toBeLessThanOrEqual(800 - 12);
+    // 快捷栏高 26、贴边留白 12：600 - 26 - 12
+    expect(bar.buttons[0].y).toBe(562);
   });
 
   it('should honor an explicit position', () => {
@@ -100,13 +100,13 @@ describe('MenuBar', () => {
     bar.resize(1000, 700);
     const last = bar.buttons[3];
     const lastWidth = (last.hitArea as unknown as { width: number }).width;
-    expect(bar.buttons[0].y).toBe(652);
-    expect(last.x + lastWidth).toBeCloseTo(1000 - 16);
+    expect(bar.buttons[0].y).toBe(662);
+    expect(last.x + lastWidth).toBeCloseTo(1000 - 12);
   });
 
   it('should clamp to the left margin on narrow screens', () => {
     const { bar } = makeBar();
-    bar.resize(350, 900);
-    expect(bar.buttons[0].x).toBe(16);
+    bar.resize(300, 900);
+    expect(bar.buttons[0].x).toBe(12);
   });
 });

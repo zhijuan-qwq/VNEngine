@@ -378,8 +378,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     toggleHeight: 32,
     scrollStep: 40,
     dialogueBottomReserve: 80,
-    quickBarHeight: 32,
-    quickBarIcon: 14,
+    quickBarHeight: 26,
+    quickBarIcon: 12,
   },
 };
 

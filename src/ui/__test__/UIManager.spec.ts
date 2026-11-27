@@ -59,7 +59,7 @@ describe('UIManager', () => {
     expect(virtual.width).toBeCloseTo(745 / 0.8);
     expect(virtual.height).toBeCloseTo(264 / 0.8);
     expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 120);
-    expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 48);
+    expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 38);
   });
 
   it('should align the ui width to the scene frame', () => {
@@ -76,7 +76,7 @@ describe('UIManager', () => {
     expect(virtual.height).toBeCloseTo(264 / 0.8);
     const last = ui.menuBar.buttons[3];
     const lastWidth = (last.hitArea as unknown as { width: number }).width;
-    expect(last.x + lastWidth).toBeCloseTo(virtual.width - 16);
+    expect(last.x + lastWidth).toBeCloseTo(virtual.width - 12);
   });
 
   it('should fall back to the viewport when the frame is invalid', () => {
