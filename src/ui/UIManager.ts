@@ -335,9 +335,10 @@ export class UIManager {
     this.dialogueBox.x = this.dialogueXOverride ?? 0;
     this.dialogueBox.y = this.dialogueYOverride ?? height - dialogueHeight;
     this.dialogueBox.resize(dialogueWidth, dialogueHeight);
-    this.choicePanel.resize(width, height);
-    // UI 缩放落到最小档说明是窄屏移动端，快捷栏用紧凑尺寸
-    this.menuBar.resize(width, height, scale <= UI_MIN_SCALE + 0.0001);
+    // UI 缩放落到最小档说明是窄屏移动端，选项与快捷栏用紧凑尺寸
+    const compact = scale <= UI_MIN_SCALE + 0.0001;
+    this.choicePanel.resize(width, height, compact);
+    this.menuBar.resize(width, height, compact);
     this.confirmDialog.resize(width, height);
     this.saveLoadMenu.resize(width, height);
     this.settingsMenu.resize(width, height);

@@ -99,6 +99,27 @@ describe('ChoicePanel', () => {
     expect(panel.buttons[0].y).toBeCloseTo(startY);
   });
 
+  it('should shrink the visible buttons in compact mode', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const defaultWidth = (
+      panel.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+
+    panel.resize(1000, 600, true);
+
+    expect(panel.buttons).toHaveLength(2);
+    const compactWidth = (
+      panel.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+    expect(compactWidth).toBeLessThan(defaultWidth);
+    expect(panel.buttons[0].x).toBeCloseTo((1000 - compactWidth) / 2);
+    const label = panel.buttons[0].children[1] as unknown as {
+      style: { fontSize: number };
+    };
+    expect(label.style.fontSize).toBe(15);
+  });
+
   it('should not create buttons on resize while hidden', () => {
     const panel = makePanel();
     panel.resize(800, 600);

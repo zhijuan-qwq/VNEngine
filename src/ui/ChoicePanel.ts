@@ -11,7 +11,7 @@ export interface ChoicePanelOptions {
   height?: number;
   x?: number;
   y?: number;
-  /** 选项按钮宽度；缺省取 72% 画面宽与主题最大宽（560px）的较小者 */
+  /** 选项按钮宽度；缺省取 64% 画面宽与主题最大宽（500px）的较小者 */
   buttonWidth?: number;
   buttonHeight?: number;
   buttonGap?: number;
@@ -29,9 +29,6 @@ interface ResolvedOptions {
   height: number | null;
   x: number;
   y: number;
-  buttonWidth: number;
-  buttonHeight: number;
-  buttonGap: number;
   fontSize: number;
   fontFamily: string | string[];
   backgroundColor?: number;
@@ -39,6 +36,18 @@ interface ResolvedOptions {
   disabledColor?: number;
   onSelect?: (label: string) => void;
 }
+
+interface ChoiceMetrics {
+  buttonWidth: number;
+  buttonHeight: number;
+  buttonGap: number;
+  fontSize: number;
+}
+
+/** 移动端紧凑模式的整体缩放 */
+const COMPACT_SCALE = 0.85;
+/** 紧凑模式下字号的下限，避免小屏上不可读 */
+const COMPACT_MIN_FONT = 14;
 
 export class ChoicePanel extends UIComponent {
   private readonly opts: ResolvedOptions;
@@ -48,6 +57,8 @@ export class ChoicePanel extends UIComponent {
   private readonly buttonGapOverride?: number;
   private choiceButtons: Container[] = [];
   private currentChoices: Choice[] | null = null;
+  private compact = false;
+  private metrics: ChoiceMetrics;
 
   constructor(options: ChoicePanelOptions) {
     super({ id: 'choice-panel' });
@@ -60,14 +71,6 @@ export class ChoicePanel extends UIComponent {
       height: options.height ?? null,
       x: options.x ?? 0,
       y: options.y ?? 0,
-      buttonWidth:
-        options.buttonWidth ??
-        Math.min(
-          options.width * this.theme.sizes.choiceWidthRatio,
-          this.theme.sizes.choiceMaxWidth,
-        ),
-      buttonHeight: options.buttonHeight ?? this.theme.sizes.choiceHeight,
-      buttonGap: options.buttonGap ?? this.theme.sizes.choiceGap,
       fontSize: options.fontSize ?? this.theme.typography.sizes.md,
       fontFamily: options.fontFamily ?? this.theme.typography.fontFamilyBody,
       backgroundColor: options.backgroundColor,
@@ -75,6 +78,7 @@ export class ChoicePanel extends UIComponent {
       disabledColor: options.disabledColor,
       onSelect: options.onSelect,
     };
+    this.metrics = this.resolveMetrics();
     this.x = this.opts.x;
     this.y = this.opts.y;
     this.hide();
@@ -87,29 +91,43 @@ export class ChoicePanel extends UIComponent {
   }
 
   /** 视口变化时按新尺寸重新居中；已显示的选项会重建按钮 */
-  public resize(width: number, height: number): void {
+  public resize(width: number, height: number, compact = this.compact): void {
     this.opts.width = width;
     this.opts.height = height;
-    this.opts.buttonWidth =
-      this.buttonWidthOverride ??
-      Math.min(
-        width * this.theme.sizes.choiceWidthRatio,
-        this.theme.sizes.choiceMaxWidth,
-      );
-    this.opts.buttonHeight =
-      this.buttonHeightOverride ?? this.theme.sizes.choiceHeight;
-    this.opts.buttonGap = this.buttonGapOverride ?? this.theme.sizes.choiceGap;
+    this.compact = compact;
+    this.metrics = this.resolveMetrics();
     if (this.currentChoices) {
       this.layoutButtons();
     }
   }
 
+  private resolveMetrics(): ChoiceMetrics {
+    const factor = this.compact ? COMPACT_SCALE : 1;
+    const width =
+      this.buttonWidthOverride ??
+      Math.min(
+        this.opts.width * this.theme.sizes.choiceWidthRatio,
+        this.theme.sizes.choiceMaxWidth,
+      );
+    const height = this.buttonHeightOverride ?? this.theme.sizes.choiceHeight;
+    const gap = this.buttonGapOverride ?? this.theme.sizes.choiceGap;
+    return {
+      buttonWidth: Math.round(width * factor),
+      buttonHeight: Math.round(height * factor),
+      buttonGap: Math.round(gap * factor),
+      fontSize: this.compact
+        ? Math.max(COMPACT_MIN_FONT, Math.round(this.opts.fontSize * factor))
+        : this.opts.fontSize,
+    };
+  }
+
   private layoutButtons(): void {
     this.clearButtons();
+    this.metrics = this.resolveMetrics();
     const choices = this.currentChoices ?? [];
+    const { buttonWidth, buttonHeight, buttonGap } = this.metrics;
     const total =
-      choices.length * this.opts.buttonHeight +
-      (choices.length - 1) * this.opts.buttonGap;
+      choices.length * buttonHeight + (choices.length - 1) * buttonGap;
     // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白。
     // 0.8 让块中心落在画面约 40% 处，比原先的 0.66（33%）略低。
     const areaHeight = this.opts.height
@@ -118,13 +136,12 @@ export class ChoicePanel extends UIComponent {
     const startY = this.opts.height
       ? Math.max(this.opts.height * 0.08, (areaHeight - total) / 2)
       : 0;
-    const startX = (this.opts.width - this.opts.buttonWidth) / 2;
+    const startX = (this.opts.width - buttonWidth) / 2;
 
     for (let index = 0; index < choices.length; index += 1) {
       const button = this.createButton(choices[index]);
       button.x = startX;
-      button.y =
-        startY + index * (this.opts.buttonHeight + this.opts.buttonGap);
+      button.y = startY + index * (buttonHeight + buttonGap);
       this.choiceButtons.push(button);
       this.addChild(button);
     }
@@ -139,10 +156,10 @@ export class ChoicePanel extends UIComponent {
   private createButton(choice: Choice): Container {
     const disabled = choice.enabled === false;
     return createButton({
-      width: this.opts.buttonWidth,
-      height: this.opts.buttonHeight,
+      width: this.metrics.buttonWidth,
+      height: this.metrics.buttonHeight,
       label: choice.text,
-      fontSize: this.opts.fontSize,
+      fontSize: this.metrics.fontSize,
       fontFamily: this.opts.fontFamily,
       backgroundColor: this.opts.backgroundColor,
       textColor: this.opts.textColor,
