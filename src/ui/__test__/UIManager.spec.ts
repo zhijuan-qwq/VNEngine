@@ -62,6 +62,35 @@ describe('UIManager', () => {
     expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 48);
   });
 
+  it('should align the ui width to the scene frame', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    expect(ui.root.scale.x).toBeCloseTo(0.8);
+    expect(ui.root.x).toBeCloseTo(138);
+    expect(virtual.width).toBeCloseTo(469 / 0.8);
+    expect(virtual.height).toBeCloseTo(264 / 0.8);
+    const last = ui.menuBar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(last.x + lastWidth).toBeCloseTo(virtual.width - 16);
+  });
+
+  it('should fall back to the viewport when the frame is invalid', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 0, height: 0 },
+    );
+
+    expect(ui.root.x).toBe(0);
+    expect(virtual.width).toBeCloseTo(745 / 0.8);
+  });
+
   it('should skip relayout when the viewport is unchanged', () => {
     const { ui } = makeManager();
     ui.resize({ width: 745, height: 264 });

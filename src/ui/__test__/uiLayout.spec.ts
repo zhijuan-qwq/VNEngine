@@ -1,9 +1,24 @@
 import {
   computeUiLayout,
+  computeUiScale,
   UI_DESIGN_WIDTH,
   UI_MAX_SCALE,
   UI_MIN_SCALE,
 } from '../uiLayout';
+
+describe('computeUiScale', () => {
+  it('should follow the viewport width within the clamp range', () => {
+    expect(computeUiScale(745)).toBe(UI_MIN_SCALE);
+    expect(computeUiScale(1280)).toBe(1);
+    expect(computeUiScale(1920)).toBe(1.5);
+    expect(computeUiScale(3840)).toBe(UI_MAX_SCALE);
+  });
+
+  it('should fall back to 1 for an invalid width', () => {
+    expect(computeUiScale(0)).toBe(1);
+    expect(computeUiScale(Number.NaN)).toBe(1);
+  });
+});
 
 describe('computeUiLayout', () => {
   it('should pin small landscape screens to the minimum scale', () => {

@@ -123,7 +123,8 @@ uninitialized ──(init)──→ ready ──(start)──→ running
    → renderer.getUILayer().addChild(ui.root) // UI 根挂到屏幕空间 uiLayer
    → input.setUIRoot(ui.root)                 // 命中层作为 ui.root 的首个子节点（最底层）
    → 若 responsive 且已测得视口：syncUILayout(lastViewport)
-     // ui.resize(viewport) 返回 UI 虚拟尺寸，再 input.setSize(虚拟宽, 虚拟高)
+     // renderer.getSceneFrame() 给画面矩形；ui.resize(viewport, frame) 返回虚拟尺寸，
+     // 再 input.setSize(虚拟宽, 虚拟高)
 11. 创建 ScriptEngine(eventBus, variableStore)
 12. 创建 PluginManager(eventBus)
 13. 注册 config.plugins → PluginManager.loadAll()
@@ -287,6 +288,7 @@ Renderer（依赖经构造函数注入）
 ├── getUILayer(): Container          // 屏幕空间 UI 层（恒存在）
 ├── getSceneRoot(): Container        // 场景 LayerStack（不含 UI）
 ├── getCaptureTarget(): Container    // app.stage，整屏抓帧（含场景与 UI）
+├── getSceneFrame(): SceneFrame      // 场景画面在屏幕上的矩形（缩放/居中后）
 └── destroy(): void                  // 退订事件、销毁 sceneRoot 与 uiLayer
 ```
 
@@ -501,7 +503,7 @@ ScaleManager（构造注入 target: Container，即 sceneRoot）
 └── toLogical(global: Point): Point      // 屏幕坐标 → 场景逻辑坐标（供输入层）
 ```
 
-实现要点：`sceneRoot.scale` 统一缩放 + 居中偏移（letterbox），`app.stage` 保持单位变换；`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `sceneRoot.toLocal(e.global)` 得到场景逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR / fullscreenchange）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发场景缩放；随后 `ui.resize(viewport)` 重排屏幕空间 UI，并把返回的虚拟尺寸交给 `input.setSize`。尺寸与 DPR 均未变化时跳过。多个事件经 `requestAnimationFrame` 合并，每帧最多应用一次；`fullscreenchange` 也调度一次重测。测量顺序为 canvas 宿主 → `documentElement` → `visualViewport` → 窗口，宿主依赖 `100dvh`，全屏切换瞬间为 0 时有兜底；尺寸取整。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。场景逻辑分辨率运行期不变，因此场景只改变 `sceneRoot` 变换；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为，UI 也不做屏幕空间重排。
+实现要点：`sceneRoot.scale` 统一缩放 + 居中偏移（letterbox），`app.stage` 保持单位变换；`app.screen` 取实际容器（canvas CSS）尺寸；输入层用 `sceneRoot.toLocal(e.global)` 得到场景逻辑坐标，逻辑与渲染共享同一换算。构造时会先按逻辑分辨率做一次 `update`。Game 在视口变化（window resize / orientationchange / load / pageshow / ResizeObserver / visualViewport / DPR / fullscreenchange）时先调用 `app.renderer.resize(cssW, cssH, dpr)`——PixiJS v8 中一次调用同时更新 backing store、canvas 内联尺寸与 `app.screen`——再调用 `renderer.resize({ width, height })` 触发场景缩放；随后 `ui.resize(viewport, sceneFrame)` 重排屏幕空间 UI（宽度对齐画面），并把返回的虚拟尺寸交给 `input.setSize`。尺寸与 DPR 均未变化时跳过。多个事件经 `requestAnimationFrame` 合并，每帧最多应用一次；`fullscreenchange` 也调度一次重测。测量顺序为 canvas 宿主 → `documentElement` → `visualViewport` → 窗口，宿主依赖 `100dvh`，全屏切换瞬间为 0 时有兜底；尺寸取整。`load`/`pageshow` 用于移动端：布局和动态视口可能在 init 之后才稳定，且不一定伴随 resize。场景逻辑分辨率运行期不变，因此场景只改变 `sceneRoot` 变换；场景另由 viewport 上的逻辑尺寸遮罩裁剪（见 §4.1），保证溢出内容不进入 letterbox 黑边。`config.responsive === false` 时不建立任何监听，保持固定画布行为，UI 也不做屏幕空间重排。
 
 **UI 屏幕空间缩放（与场景解耦）：** UIManager 自管一套变换，规则见 `src/ui/uiLayout.ts`：
 
@@ -511,7 +513,9 @@ virtualW = viewportWidth  / uiScale
 virtualH = viewportHeight / uiScale
 ```
 
-只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放会让 UI 忽大忽小。手机横屏 745/785 宽都低于 `1280×0.8`，`uiScale` 固定 0.8，UI 物理尺寸在工具栏/全屏切换时完全稳定；虚拟高度随可用高度变化，底部控件贴虚拟底边即贴屏幕底边。桌面 1280/1920 宽分别为 1.0/1.5，虚拟宽恒为 1280。UI 的 `root.scale` 由 `UIManager.resize` 设置，`root.position` 使用调用方传入的 x/y（虚拟单位）。
+只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放会让 UI 忽大忽小。手机横屏 745/785 宽都低于 `1280×0.8`，`uiScale` 固定 0.8，UI 物理尺寸在工具栏/全屏切换时完全稳定；虚拟高度随可用高度变化，底部控件贴虚拟底边即贴屏幕底边。桌面 1280/1920 宽分别为 1.0/1.5。
+
+**UI 水平范围对齐场景画面：** `UIManager.resize(viewport, frame?)` 的第二个参数是 `renderer.getSceneFrame()`——场景画面在屏幕上的矩形（已应用 fit 缩放与居中）。UI 的虚拟宽度取 `frame.width / uiScale`，`root.position.x = frame.x`，因此 UI 不会覆盖两侧 letterbox 黑边；高度仍取 `viewport.height / uiScale`，对话框仍贴屏幕底边。未传入/无效 frame 时退回视口宽度。命中层尺寸同步为 UI 虚拟尺寸，黑边不参与 UI 命中。
 
 ### 4.9 画面特效（EffectManager）
 
@@ -1057,7 +1061,7 @@ UI 全部由 pixi 显示对象绘制，不依赖 DOM。UI 组件是 pixi `Contai
 **UIManager（UI 门面）** 持有全部 UI 组件并对外提供统一入口：
 
 - 持有 `root: Container`（挂到 `uiLayer` 的根）、`dialogueBox`、`choicePanel`、`menuBar` 与三个全屏页（§8.2）；确认弹窗 `ConfirmDialog` 独立存在；
-- `resize(viewport)` 按 §4.8 的规则设置 `root.scale`，并把虚拟尺寸传给各组件：对话框/快捷栏/选项/确认框增量 resize（保留打字机进度、当前选项与未决 Promise），三个整页 `relayout` 页面骨架并按需重建内容，`transitionShield` 命中矩形同步；尺寸未变化时直接返回缓存；
+- `resize(viewport, frame?)` 按 §4.8 的规则设置 `root.scale`，并用场景画面矩形 `frame` 限制 UI 宽度（`root.x = frame.x`，不覆盖两侧黑边）；虚拟尺寸传给各组件：对话框/快捷栏/选项/确认框增量 resize（保留打字机进度、当前选项与未决 Promise），三个整页 `relayout` 页面骨架并按需重建内容，`transitionShield` 命中矩形同步；尺寸未变化时直接返回缓存；
 - 订阅脚本事件（`script:say` / `script:clear` / `script:choice` / `script:end`）驱动对话核心；
 - 订阅 `ui:open` / `ui:close` 事件，并暴露 `open(panel)` / `close()` / `confirm(request)` 方法供脚本命令层调用；页面互斥（打开一个先关掉其它），开关带约 150ms 淡入淡出，引擎暂停时立即完成过渡；
 - 页面过渡期间由 `transitionShield`（覆盖 UI 根的全屏命中层，位于页面之上、确认框之下）屏蔽输入，结束后关闭；
@@ -1114,7 +1118,7 @@ class UIComponent extends Container {
 
 ### 8.3 输入事件分发
 
-InputManager 由 Game 持有，在 init 时创建（Renderer 之后、UIManager 之前）。它把 UI 根的第一个子节点占为全屏命中层（最底层），事件源为 **pixi Federated Pointer Events**。命中层尺寸是 UI 虚拟尺寸（由 `setSize` 随 `UIManager.resize` 更新），铺满缩放后的物理屏幕，因此黑边点击也会命中。
+InputManager 由 Game 持有，在 init 时创建（Renderer 之后、UIManager 之前）。它把 UI 根的第一个子节点占为命中层（最底层），事件源为 **pixi Federated Pointer Events**。命中层尺寸是 UI 虚拟尺寸（由 `setSize` 随 `UIManager.resize` 更新），缩放后恰好覆盖场景画面宽度、不覆盖两侧黑边；黑边区域不参与 UI 命中。脚本坐标仍 clamp 到场景逻辑范围。
 
 ```
 pixi Federated Events → InputManager 路由
@@ -1685,6 +1689,8 @@ interface IRenderer {
   getSceneRoot(): Container;
   // 整屏抓帧根（含场景与 UI），供存档缩略图（见 §9.3）
   getCaptureTarget(): Container;
+  // 场景画面在屏幕上的矩形（缩放/居中后），供 UI 对齐画面宽度（见 §4.8/§8.1）
+  getSceneFrame(): SceneFrame;
   // 屏幕坐标 → 场景逻辑坐标，复用渲染的同一换算（见 §4.8）；供 InputManager 使用（§8.3）
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;

@@ -725,8 +725,29 @@ describe('Game', () => {
       await h.game.init(h.config);
 
       expect(ui.resize).toHaveBeenCalledTimes(1);
-      expect(ui.resize).toHaveBeenCalledWith({ width: 745, height: 264 });
+      expect(ui.resize).toHaveBeenCalledWith(
+        { width: 745, height: 264 },
+        { x: 0, y: 0, width: 0, height: 0 },
+      );
       expect(setSize).toHaveBeenCalledWith(745, 264);
+    });
+
+    it('should align the ui with the scene frame', async () => {
+      const ui = makeFakeUI();
+      const h = makeHarness({ ui });
+      const frame = { x: 138, y: 0, width: 469, height: 264 };
+      vi.spyOn(h.renderer, 'getSceneFrame').mockReturnValue(frame);
+      vi.spyOn(APIHelper, 'getViewportSize').mockReturnValue({
+        width: 745,
+        height: 264,
+      });
+
+      await h.game.init(h.config);
+
+      expect(ui.resize).toHaveBeenCalledWith(
+        { width: 745, height: 264 },
+        frame,
+      );
     });
 
     it('should relayout the ui when the viewport changes', async () => {
@@ -750,10 +771,10 @@ describe('Game', () => {
       size.mockReturnValue({ width: 745, height: 264 });
       notify();
 
-      expect(ui.resize).toHaveBeenLastCalledWith({
-        width: 745,
-        height: 264,
-      });
+      expect(ui.resize).toHaveBeenLastCalledWith(
+        { width: 745, height: 264 },
+        { x: 0, y: 0, width: 0, height: 0 },
+      );
       expect(setSize).toHaveBeenLastCalledWith(745, 264);
     });
 

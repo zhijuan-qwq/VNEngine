@@ -1,6 +1,7 @@
 import { Container, Rectangle } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
 import type { EventBus } from '@/core/EventBus';
+import type { SceneFrame } from '@/types/engine';
 import type { EngineEvents, UiPanel } from '@/types/events';
 import type { VarResolver } from '@/types/text';
 import { DialogueBox } from './DialogueBox';
@@ -23,7 +24,7 @@ import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
-import { computeUiLayout } from './uiLayout';
+import { computeUiScale } from './uiLayout';
 import type { UiLayout } from './uiLayout';
 
 /** 对话框最小虚拟高度：短横屏下 30% 比例会低于两行正文 */
@@ -88,6 +89,9 @@ export class UIManager {
   private readonly dialogueWidthOverride?: number;
   private readonly dialogueHeightOverride?: number;
   private layout: UiLayout;
+  /** UI 根的水平/垂直偏移（屏幕 CSS px），水平对齐场景画面 */
+  private frameX = 0;
+  private frameY = 0;
   private rafId: number | null = null;
   private lastTime = 0;
   private pendingThumbnail = '';
@@ -229,26 +233,42 @@ export class UIManager {
   }
 
   /**
-   * 按视口尺寸重排屏幕空间 UI：只跟随宽度缩放，返回虚拟尺寸供输入命中层使用。
+   * 按视口尺寸重排屏幕空间 UI，返回虚拟尺寸供输入命中层使用。
+   *
+   * 缩放只跟随视口宽度；传入 `frame`（场景画面在屏幕上的矩形）时，
+   * UI 的水平范围对齐画面、不覆盖两侧黑边，高度仍铺满屏幕。
    * 尺寸未变化时直接返回缓存，避免桌面拖拽窗口时每帧重建文本。
    */
-  public resize(viewport: { width: number; height: number }): {
-    width: number;
-    height: number;
-  } {
+  public resize(
+    viewport: { width: number; height: number },
+    frame?: SceneFrame,
+  ): { width: number; height: number } {
     const current = this.layout;
     if (!(viewport.width > 0) || !(viewport.height > 0)) {
       return { width: current.width, height: current.height };
     }
-    const next = computeUiLayout(viewport.width, viewport.height);
+    const scale = computeUiScale(viewport.width);
+    const hasFrame = frame !== undefined && frame.width > 0;
+    const frameWidth = hasFrame ? frame.width : viewport.width;
+    const next: UiLayout = {
+      scale,
+      width: frameWidth / scale,
+      height: viewport.height / scale,
+    };
+    const frameX = hasFrame && Number.isFinite(frame.x) ? frame.x : 0;
+    const frameY = 0;
     if (
       Math.abs(next.scale - current.scale) < 0.0001 &&
       Math.abs(next.width - current.width) < 0.5 &&
-      Math.abs(next.height - current.height) < 0.5
+      Math.abs(next.height - current.height) < 0.5 &&
+      Math.abs(frameX - this.frameX) < 0.5 &&
+      Math.abs(frameY - this.frameY) < 0.5
     ) {
       return { width: current.width, height: current.height };
     }
     this.layout = next;
+    this.frameX = frameX;
+    this.frameY = frameY;
     this.applyLayout();
     return { width: next.width, height: next.height };
   }
@@ -304,7 +324,10 @@ export class UIManager {
   private applyLayout(): void {
     const { scale, width, height } = this.layout;
     this.root.scale.set(scale);
-    this.root.position.set(this.originX, this.originY);
+    this.root.position.set(
+      this.originX + this.frameX,
+      this.originY + this.frameY,
+    );
 
     const dialogueWidth = this.dialogueWidthOverride ?? width;
     const dialogueHeight =

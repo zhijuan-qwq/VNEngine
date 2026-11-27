@@ -21,21 +21,26 @@ function positiveOr(value: number, fallback: number): number {
 }
 
 /**
- * 由视口尺寸计算 UI 的屏幕空间布局。
+ * UI 的物理缩放：只跟随视口宽度。
  *
- * 只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，
- * 若把高度纳入缩放会让 UI 忽大忽小。窄屏统一压到 `UI_MIN_SCALE`，
- * 虚拟高度随视口高度变化，底部控件贴虚拟底边即贴屏幕底边。
+ * 横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放
+ * 会让 UI 忽大忽小。窄屏统一压到 `UI_MIN_SCALE`。
  */
+export function computeUiScale(viewportWidth: number): number {
+  const width = positiveOr(viewportWidth, UI_DESIGN_WIDTH);
+  return Math.min(
+    UI_MAX_SCALE,
+    Math.max(UI_MIN_SCALE, width / UI_DESIGN_WIDTH),
+  );
+}
+
+/** 由视口尺寸计算 UI 的屏幕空间布局（未传入场景画面时的缺省行为） */
 export function computeUiLayout(
   viewportWidth: number,
   viewportHeight: number,
 ): UiLayout {
   const width = positiveOr(viewportWidth, UI_DESIGN_WIDTH);
   const height = positiveOr(viewportHeight, DESIGN_HEIGHT);
-  const scale = Math.min(
-    UI_MAX_SCALE,
-    Math.max(UI_MIN_SCALE, width / UI_DESIGN_WIDTH),
-  );
+  const scale = computeUiScale(width);
   return { scale, width: width / scale, height: height / scale };
 }

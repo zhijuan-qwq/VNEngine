@@ -428,7 +428,7 @@ class Game {
   /** UI 屏幕空间布局与命中层同帧更新；UI 未创建时为空操作 */
   private syncUILayout(size: { width: number; height: number }): void {
     if (!this.ui) return;
-    const virtual = this.ui.resize(size);
+    const virtual = this.ui.resize(size, this.renderer.getSceneFrame());
     this.input?.setSize(virtual.width, virtual.height);
   }
 
