@@ -57,6 +57,7 @@ export class DialogueBox extends UIComponent {
   private bodyTexts: Text[] = [];
   /** 每个 bodyText 当前应用的段落样式引用，样式变化时才重建 Text.style */
   private bodyStyles: (TextStyle | null)[] = [];
+  private backdrop: Graphics | Sprite | null = null;
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
@@ -102,9 +103,9 @@ export class DialogueBox extends UIComponent {
     this.x = this.opts.x;
     this.y = this.opts.y;
 
-    const backdrop = this.createBackdrop();
-    if (backdrop) {
-      this.addChild(backdrop);
+    this.backdrop = this.createBackdrop();
+    if (this.backdrop) {
+      this.addChild(this.backdrop);
     }
 
     this.speakerText = new Text({
@@ -206,6 +207,18 @@ export class DialogueBox extends UIComponent {
     return this.typewriter !== null && !this.typewriter.isComplete;
   }
 
+  /** 视口变化时更新尺寸并重排；当前文本与打字机进度保持不变 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    this.resizeBackdrop();
+    const indicatorSize = Math.round(this.fontSize * 0.8);
+    this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
+    this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
+    this.recomputeBlockHeight();
+    this.relayout();
+  }
+
   public get currentText(): string {
     return this.bodyTexts.map((text) => text.text).join('');
   }
@@ -251,6 +264,31 @@ export class DialogueBox extends UIComponent {
       alpha: this.theme.colors.borderSubtleAlpha,
     });
     return bg;
+  }
+
+  private resizeBackdrop(): void {
+    const bg = this.backdrop;
+    if (!bg) return;
+    if (bg instanceof Graphics) {
+      bg.clear();
+      bg.roundRect(
+        0,
+        0,
+        this.opts.width,
+        this.opts.height,
+        this.theme.radius.lg,
+      );
+      bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+      bg.stroke({
+        width: this.theme.border.thin,
+        color: this.theme.colors.borderSubtle,
+        alpha: this.theme.colors.borderSubtleAlpha,
+      });
+      return;
+    }
+    // 渐隐纹理按行烘焙，拉伸即可保持同样的顶部渐隐比例
+    bg.width = this.opts.width;
+    bg.height = this.opts.height;
   }
 
   /**

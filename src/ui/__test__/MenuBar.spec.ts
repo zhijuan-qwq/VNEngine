@@ -94,4 +94,19 @@ describe('MenuBar', () => {
     expect(bar.buttons[0].x).toBe(30);
     expect(bar.buttons[0].y).toBe(40);
   });
+
+  it('should follow the bottom right corner on resize', () => {
+    const { bar } = makeBar();
+    bar.resize(1000, 700);
+    const last = bar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(bar.buttons[0].y).toBe(652);
+    expect(last.x + lastWidth).toBeCloseTo(1000 - 16);
+  });
+
+  it('should clamp to the left margin on narrow screens', () => {
+    const { bar } = makeBar();
+    bar.resize(350, 900);
+    expect(bar.buttons[0].x).toBe(16);
+  });
 });

@@ -1,6 +1,6 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Rectangle, Text } from 'pixi.js';
 import { UIComponent } from './UIComponent';
-import { createBackdrop, createButton, createPanelBox } from './overlay';
+import { createBackdrop, createButton } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 
@@ -48,12 +48,16 @@ export class ConfirmDialog extends UIComponent {
   private readonly title: Text;
   private readonly message: Text;
   private readonly buttonArea: Container;
+  private readonly boxWidthExplicit: boolean;
+  private readonly backdrop: Graphics;
+  private readonly box: Graphics;
   private buttonList: Container[] = [];
   private resolver: ((confirmed: boolean) => void) | null = null;
 
   constructor(options: ConfirmDialogOptions) {
     super({ id: 'confirm-dialog' });
     this.theme = resolveTheme(options.theme);
+    this.boxWidthExplicit = options.boxWidth !== undefined;
     this.opts = {
       width: options.width,
       height: options.height,
@@ -74,23 +78,15 @@ export class ConfirmDialog extends UIComponent {
       titleColor: options.titleColor ?? this.theme.colors.accent,
     };
 
-    this.addChild(
-      createBackdrop(this.opts.width, this.opts.height, {
-        theme: this.theme,
-      }),
-    );
+    this.backdrop = createBackdrop(this.opts.width, this.opts.height, {
+      theme: this.theme,
+    });
+    this.addChild(this.backdrop);
+
+    this.box = new Graphics();
+    this.addChild(this.box);
 
     const padding = this.theme.spacing.s24;
-    const boxX = (this.opts.width - this.opts.boxWidth) / 2;
-    const boxY = (this.opts.height - this.opts.boxHeight) / 2;
-    const box = createPanelBox(this.opts.boxWidth, this.opts.boxHeight, {
-      theme: this.theme,
-      color: this.opts.panelColor,
-    });
-    box.x = boxX;
-    box.y = boxY;
-    this.addChild(box);
-
     const contentWidth = this.opts.boxWidth - padding * 2;
 
     this.title = new Text({
@@ -102,8 +98,6 @@ export class ConfirmDialog extends UIComponent {
         fill: this.opts.titleColor,
       },
     });
-    this.title.x = boxX + padding;
-    this.title.y = boxY + padding;
     this.title.visible = false;
     this.addChild(this.title);
 
@@ -120,16 +114,93 @@ export class ConfirmDialog extends UIComponent {
         ),
       },
     });
-    this.message.x = boxX + padding;
-    this.message.y = boxY + padding + this.opts.titleFontSize * 1.5;
     this.addChild(this.message);
 
     this.buttonArea = new Container();
-    this.buttonArea.y =
-      boxY + this.opts.boxHeight - padding - this.opts.buttonHeight;
     this.addChild(this.buttonArea);
 
+    this.layout();
     this.hide();
+  }
+
+  /** 视口变化时重算遮罩、盒子与按钮位置；未决请求保持不变 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    if (!this.boxWidthExplicit) {
+      this.opts.boxWidth = Math.min(
+        width * this.theme.sizes.confirmWidthRatio,
+        this.theme.sizes.confirmMaxWidth,
+      );
+    }
+    this.drawBackdrop();
+    this.layout();
+  }
+
+  private drawBackdrop(): void {
+    this.backdrop.clear();
+    this.backdrop.rect(0, 0, this.opts.width, this.opts.height);
+    this.backdrop.fill(
+      this.theme.colors.backdrop,
+      this.theme.colors.backdropAlpha,
+    );
+    this.backdrop.hitArea = new Rectangle(
+      0,
+      0,
+      this.opts.width,
+      this.opts.height,
+    );
+  }
+
+  private layout(): void {
+    const padding = this.theme.spacing.s24;
+    const boxX = (this.opts.width - this.opts.boxWidth) / 2;
+    const boxY = (this.opts.height - this.opts.boxHeight) / 2;
+    this.drawBox();
+    this.box.x = boxX;
+    this.box.y = boxY;
+
+    const contentWidth = this.opts.boxWidth - padding * 2;
+    this.title.x = boxX + padding;
+    this.title.y = boxY + padding;
+    this.message.x = boxX + padding;
+    this.message.y = boxY + padding + this.opts.titleFontSize * 1.5;
+    this.message.style.wordWrapWidth = contentWidth;
+    this.buttonArea.y =
+      boxY + this.opts.boxHeight - padding - this.opts.buttonHeight;
+    this.layoutButtons();
+  }
+
+  private drawBox(): void {
+    const borderWidth = this.theme.border.thin;
+    this.box.clear();
+    this.box.roundRect(
+      0,
+      0,
+      this.opts.boxWidth,
+      this.opts.boxHeight,
+      this.theme.radius.lg,
+    );
+    this.box.fill(
+      this.opts.panelColor ?? this.theme.colors.surfacePanel,
+      this.theme.colors.surfacePanelAlpha,
+    );
+    if (borderWidth > 0) {
+      this.box.stroke({
+        width: borderWidth,
+        color: this.theme.colors.borderSubtle,
+        alpha: this.theme.colors.borderSubtleAlpha,
+      });
+    }
+  }
+
+  private layoutButtons(): void {
+    if (this.buttonList.length < 2) return;
+    const gap = this.theme.spacing.s16;
+    const total = this.opts.buttonWidth * 2 + gap;
+    const startX = (this.opts.width - total) / 2;
+    this.buttonList[0].x = startX;
+    this.buttonList[1].x = startX + this.opts.buttonWidth + gap;
   }
 
   /** 打开确认框；返回用户是否确认。已有未决请求时，先以 false 结束它 */
@@ -168,9 +239,6 @@ export class ConfirmDialog extends UIComponent {
 
   private rebuildButtons(cancelText: string, confirmText: string): void {
     this.clearButtons();
-    const gap = this.theme.spacing.s16;
-    const total = this.opts.buttonWidth * 2 + gap;
-    const startX = (this.opts.width - total) / 2;
 
     const cancel = createButton({
       width: this.opts.buttonWidth,
@@ -183,7 +251,6 @@ export class ConfirmDialog extends UIComponent {
       theme: this.theme,
       onTap: () => this.settle(false),
     });
-    cancel.x = startX;
     this.buttonList.push(cancel);
     this.buttonArea.addChild(cancel);
 
@@ -198,9 +265,9 @@ export class ConfirmDialog extends UIComponent {
       theme: this.theme,
       onTap: () => this.settle(true),
     });
-    confirm.x = startX + this.opts.buttonWidth + gap;
     this.buttonList.push(confirm);
     this.buttonArea.addChild(confirm);
+    this.layoutButtons();
   }
 
   private settle(confirmed: boolean): void {

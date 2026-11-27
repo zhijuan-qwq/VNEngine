@@ -138,6 +138,7 @@ export class MenuBar extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly menuButtons: Container[] = [];
+  private readonly itemWidths: number[] = [];
 
   constructor(bus: EventBus<EngineEvents>, options: MenuBarOptions) {
     super({ id: 'menu-bar' });
@@ -232,21 +233,41 @@ export class MenuBar extends UIComponent {
       return { container, width };
     });
 
+    for (const item of items) {
+      this.menuButtons.push(item.container);
+      this.itemWidths.push(item.width);
+      this.addChild(item.container);
+    }
+    this.layout();
+  }
+
+  /** 视口变化时重算右下角位置，按钮本身不重建 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    this.layout();
+  }
+
+  private layout(): void {
     const totalWidth =
-      items.reduce((sum, item) => sum + item.width, 0) +
-      this.opts.gap * (items.length - 1);
+      this.itemWidths.reduce((sum, width) => sum + width, 0) +
+      this.opts.gap * Math.max(this.itemWidths.length - 1, 0);
     const startX =
-      this.opts.x ?? this.opts.width - totalWidth - this.opts.margin;
+      this.opts.x ??
+      Math.max(
+        this.opts.margin,
+        this.opts.width - totalWidth - this.opts.margin,
+      );
     const startY =
-      this.opts.y ?? this.opts.height - itemHeight - this.opts.margin;
+      this.opts.y ??
+      this.opts.height - this.opts.buttonHeight - this.opts.margin;
 
     let x = startX;
-    for (const item of items) {
-      item.container.x = x;
-      item.container.y = startY;
-      this.menuButtons.push(item.container);
-      this.addChild(item.container);
-      x += item.width + this.opts.gap;
+    for (let index = 0; index < this.menuButtons.length; index += 1) {
+      const button = this.menuButtons[index];
+      button.x = x;
+      button.y = startY;
+      x += this.itemWidths[index] + this.opts.gap;
     }
   }
 

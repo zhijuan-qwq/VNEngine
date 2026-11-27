@@ -155,6 +155,19 @@ describe('DialogueBox', () => {
     expect(box.children.some((child) => child instanceof Sprite)).toBe(false);
   });
 
+  it('should resize the backdrop without losing the current text', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+    box.complete();
+
+    box.resize(1000, 240);
+
+    const bg = box.children[0] as unknown as Sprite;
+    expect(bg.width).toBe(1000);
+    expect(bg.height).toBe(240);
+    expect(box.currentText).toBe('Hello world');
+  });
+
   it('should left-align subtitle text with a small margin', () => {
     const box = makeBox();
     box.show('Hero', 'Hello world', 100);

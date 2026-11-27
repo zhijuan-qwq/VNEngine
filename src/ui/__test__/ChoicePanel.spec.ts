@@ -84,6 +84,28 @@ describe('ChoicePanel', () => {
     expect(panel.visible).toBe(true);
   });
 
+  it('should recenter the visible buttons on resize', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    panel.resize(800, 500);
+    const { sizes } = DEFAULT_UI_THEME;
+    const buttonWidth = Math.min(
+      800 * sizes.choiceWidthRatio,
+      sizes.choiceMaxWidth,
+    );
+    const total = 2 * sizes.choiceHeight + sizes.choiceGap;
+    const startY = Math.max(500 * 0.08, (500 * 0.8 - total) / 2);
+    expect(panel.buttons[0].x).toBeCloseTo((800 - buttonWidth) / 2);
+    expect(panel.buttons[0].y).toBeCloseTo(startY);
+  });
+
+  it('should not create buttons on resize while hidden', () => {
+    const panel = makePanel();
+    panel.resize(800, 600);
+    expect(panel.visible).toBe(false);
+    expect(panel.buttons).toHaveLength(0);
+  });
+
   it('should center a width-capped button block above the dialogue area', () => {
     const panel = new ChoicePanel({ width: 1000, height: 600 });
     panel.show(choices, 'adv');

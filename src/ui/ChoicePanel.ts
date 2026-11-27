@@ -43,11 +43,18 @@ interface ResolvedOptions {
 export class ChoicePanel extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
+  private readonly buttonWidthOverride?: number;
+  private readonly buttonHeightOverride?: number;
+  private readonly buttonGapOverride?: number;
   private choiceButtons: Container[] = [];
+  private currentChoices: Choice[] | null = null;
 
   constructor(options: ChoicePanelOptions) {
     super({ id: 'choice-panel' });
     this.theme = resolveTheme(options.theme);
+    this.buttonWidthOverride = options.buttonWidth;
+    this.buttonHeightOverride = options.buttonHeight;
+    this.buttonGapOverride = options.buttonGap;
     this.opts = {
       width: options.width,
       height: options.height ?? null,
@@ -74,7 +81,32 @@ export class ChoicePanel extends UIComponent {
   }
 
   public show(choices: Choice[], _mode: 'adv' | 'nvl'): void {
+    this.currentChoices = choices;
+    this.layoutButtons();
+    this.visible = true;
+  }
+
+  /** 视口变化时按新尺寸重新居中；已显示的选项会重建按钮 */
+  public resize(width: number, height: number): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    this.opts.buttonWidth =
+      this.buttonWidthOverride ??
+      Math.min(
+        width * this.theme.sizes.choiceWidthRatio,
+        this.theme.sizes.choiceMaxWidth,
+      );
+    this.opts.buttonHeight =
+      this.buttonHeightOverride ?? this.theme.sizes.choiceHeight;
+    this.opts.buttonGap = this.buttonGapOverride ?? this.theme.sizes.choiceGap;
+    if (this.currentChoices) {
+      this.layoutButtons();
+    }
+  }
+
+  private layoutButtons(): void {
     this.clearButtons();
+    const choices = this.currentChoices ?? [];
     const total =
       choices.length * this.opts.buttonHeight +
       (choices.length - 1) * this.opts.buttonGap;
@@ -96,10 +128,10 @@ export class ChoicePanel extends UIComponent {
       this.choiceButtons.push(button);
       this.addChild(button);
     }
-    this.visible = true;
   }
 
   public hide(): void {
+    this.currentChoices = null;
     this.clearButtons();
     this.visible = false;
   }
