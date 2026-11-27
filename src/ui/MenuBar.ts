@@ -130,18 +130,36 @@ function drawIcon(
   }
 }
 
+/** 移动端紧凑模式的整体缩放 */
+const COMPACT_SCALE = 0.8;
+/** 紧凑模式下字号的下限，避免小屏上不可读 */
+const COMPACT_MIN_FONT = 12;
+
+interface LayoutMetrics {
+  itemHeight: number;
+  gap: number;
+  margin: number;
+}
+
 /**
  * 右下角快捷栏：图标 + 大写标签，覆盖在画面上方。
  * 点击任一按钮在 EventBus 上 emit `ui:open`，作为设置/保存/读取/历史四个页面的入口。
+ *
+ * 移动端（UI 缩放落在最小档）可开启紧凑模式，按钮按 `COMPACT_SCALE` 收缩；
+ * 桌面保持原尺寸。
  */
 export class MenuBar extends UIComponent {
+  private readonly bus: EventBus<EngineEvents>;
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly menuButtons: Container[] = [];
   private readonly itemWidths: number[] = [];
+  private metrics: LayoutMetrics = { itemHeight: 0, gap: 0, margin: 0 };
+  private compact = false;
 
   constructor(bus: EventBus<EngineEvents>, options: MenuBarOptions) {
     super({ id: 'menu-bar' });
+    this.bus = bus;
     this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
@@ -155,10 +173,42 @@ export class MenuBar extends UIComponent {
       margin: options.margin ?? this.theme.spacing.s12,
     };
 
-    const iconSize = this.theme.sizes.quickBarIcon;
-    const iconGap = this.theme.spacing.s4;
-    const paddingX = this.theme.spacing.s4;
-    const itemHeight = this.opts.buttonHeight;
+    this.build();
+    this.layout();
+  }
+
+  /** 视口变化时重算位置；紧凑状态切换时重建按钮尺寸 */
+  public resize(width: number, height: number, compact = this.compact): void {
+    this.opts.width = width;
+    this.opts.height = height;
+    if (compact !== this.compact) {
+      this.compact = compact;
+      this.build();
+    }
+    this.layout();
+  }
+
+  private build(): void {
+    for (const child of this.children.slice()) {
+      child.destroy({ children: true });
+    }
+    this.menuButtons.length = 0;
+    this.itemWidths.length = 0;
+
+    const factor = this.compact ? COMPACT_SCALE : 1;
+    const scaled = (value: number): number => Math.round(value * factor);
+    const itemHeight = Math.max(1, scaled(this.opts.buttonHeight));
+    const fontSize = this.compact
+      ? Math.max(COMPACT_MIN_FONT, scaled(this.opts.fontSize))
+      : this.opts.fontSize;
+    const iconSize = Math.max(1, scaled(this.theme.sizes.quickBarIcon));
+    const iconGap = Math.max(0, scaled(this.theme.spacing.s4));
+    const paddingX = Math.max(0, scaled(this.theme.spacing.s4));
+    this.metrics = {
+      itemHeight,
+      gap: Math.max(0, scaled(this.opts.gap)),
+      margin: Math.max(0, scaled(this.opts.margin)),
+    };
 
     interface BuiltItem {
       container: Container;
@@ -170,7 +220,7 @@ export class MenuBar extends UIComponent {
         text: entry.label,
         style: {
           fontFamily: this.theme.typography.fontFamilyBody,
-          fontSize: this.opts.fontSize,
+          fontSize,
           fontWeight: this.theme.typography.weights.semibold,
           letterSpacing: 0.5,
           fill: this.theme.colors.quickBarText,
@@ -193,7 +243,7 @@ export class MenuBar extends UIComponent {
       /** 先描一层深色底再画线条；Graphics 无阴影，用更粗的暗色描边代替 */
       const paintIcon = (color: number): void => {
         drawIcon(icon, entry.panel, this.theme.colors.textShadow, iconSize, {
-          width: 3,
+          width: Math.max(1, scaled(3)),
           alpha: this.theme.colors.textShadowAlpha,
         });
         drawIcon(icon, entry.panel, color, iconSize, { clear: false });
@@ -227,7 +277,7 @@ export class MenuBar extends UIComponent {
       });
       container.on('pointertap', (event) => {
         event.stopPropagation();
-        bus.emit('ui:open', { panel: entry.panel });
+        this.bus.emit('ui:open', { panel: entry.panel });
       });
 
       return { container, width };
@@ -238,36 +288,23 @@ export class MenuBar extends UIComponent {
       this.itemWidths.push(item.width);
       this.addChild(item.container);
     }
-    this.layout();
-  }
-
-  /** 视口变化时重算右下角位置，按钮本身不重建 */
-  public resize(width: number, height: number): void {
-    this.opts.width = width;
-    this.opts.height = height;
-    this.layout();
   }
 
   private layout(): void {
+    const { itemHeight, gap, margin } = this.metrics;
     const totalWidth =
       this.itemWidths.reduce((sum, width) => sum + width, 0) +
-      this.opts.gap * Math.max(this.itemWidths.length - 1, 0);
+      gap * Math.max(this.itemWidths.length - 1, 0);
     const startX =
-      this.opts.x ??
-      Math.max(
-        this.opts.margin,
-        this.opts.width - totalWidth - this.opts.margin,
-      );
-    const startY =
-      this.opts.y ??
-      this.opts.height - this.opts.buttonHeight - this.opts.margin;
+      this.opts.x ?? Math.max(margin, this.opts.width - totalWidth - margin);
+    const startY = this.opts.y ?? this.opts.height - itemHeight - margin;
 
     let x = startX;
     for (let index = 0; index < this.menuButtons.length; index += 1) {
       const button = this.menuButtons[index];
       button.x = x;
       button.y = startY;
-      x += this.itemWidths[index] + this.opts.gap;
+      x += this.itemWidths[index] + gap;
     }
   }
 

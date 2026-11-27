@@ -24,7 +24,7 @@ import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
-import { computeUiScale } from './uiLayout';
+import { computeUiScale, UI_MIN_SCALE } from './uiLayout';
 import type { UiLayout } from './uiLayout';
 
 /** 对话框最小虚拟高度：短横屏下 30% 比例会低于两行正文 */
@@ -336,7 +336,8 @@ export class UIManager {
     this.dialogueBox.y = this.dialogueYOverride ?? height - dialogueHeight;
     this.dialogueBox.resize(dialogueWidth, dialogueHeight);
     this.choicePanel.resize(width, height);
-    this.menuBar.resize(width, height);
+    // UI 缩放落到最小档说明是窄屏移动端，快捷栏用紧凑尺寸
+    this.menuBar.resize(width, height, scale <= UI_MIN_SCALE + 0.0001);
     this.confirmDialog.resize(width, height);
     this.saveLoadMenu.resize(width, height);
     this.settingsMenu.resize(width, height);

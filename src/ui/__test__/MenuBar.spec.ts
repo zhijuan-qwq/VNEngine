@@ -109,4 +109,34 @@ describe('MenuBar', () => {
     bar.resize(300, 900);
     expect(bar.buttons[0].x).toBe(12);
   });
+
+  it('should shrink the buttons in compact mode', () => {
+    const { bar } = makeBar();
+    const defaultWidth = (
+      bar.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+
+    bar.resize(800, 600, true);
+
+    // 26*0.8=20.8→21；12*0.8=9.6→10
+    expect(bar.buttons[0].y).toBe(600 - 21 - 10);
+    const compactWidth = (
+      bar.buttons[0].hitArea as unknown as {
+        width: number;
+      }
+    ).width;
+    expect(compactWidth).toBeLessThan(defaultWidth);
+    const last = bar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(last.x + lastWidth).toBeCloseTo(800 - 10);
+  });
+
+  it('should restore the desktop size when compact turns off', () => {
+    const { bar } = makeBar();
+    bar.resize(800, 600, true);
+
+    bar.resize(800, 600, false);
+
+    expect(bar.buttons[0].y).toBe(562);
+  });
 });
