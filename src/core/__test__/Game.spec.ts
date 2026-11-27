@@ -822,18 +822,86 @@ describe('Game', () => {
       expect(h.renderer.resize).not.toHaveBeenCalled();
     });
 
-    it('should skip when the host exists but has zero size', async () => {
+    it('should fall back to the document size when the host reports zero', async () => {
       const h = makeHarness({});
       vi.spyOn(APIHelper, 'getParentElement').mockReturnValue(
         {} as HTMLElement,
       );
       vi.spyOn(APIHelper, 'getElementSize').mockReturnValue(null);
-      const windowSize = vi.spyOn(APIHelper, 'getViewportSize');
+      vi.spyOn(APIHelper, 'getDocumentSize').mockReturnValue({
+        width: 1000,
+        height: 500,
+      });
 
       await h.game.init(h.config);
 
-      expect(windowSize).not.toHaveBeenCalled();
-      expect(h.app.renderer.resize).not.toHaveBeenCalled();
+      expect(h.app.renderer.resize).toHaveBeenCalledWith(1000, 500, 1);
+    });
+
+    it('should coalesce viewport events into one frame', async () => {
+      const h = makeHarness({});
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeViewport').mockImplementation(
+        (_target, onChange) => {
+          notify = onChange;
+          return () => {};
+        },
+      );
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal(
+        'requestAnimationFrame',
+        (callback: FrameRequestCallback) => {
+          frames.push(callback);
+          return frames.length;
+        },
+      );
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+      try {
+        await h.game.init(h.config);
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+        notify();
+        size.mockReturnValue({ width: 1200, height: 600 });
+        notify();
+
+        expect(frames).toHaveLength(1);
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+        frames[0](0);
+
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(2);
+        expect(h.app.renderer.resize).toHaveBeenLastCalledWith(1200, 600, 1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('should remeasure the viewport after fullscreen changes', async () => {
+      const h = makeHarness({});
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeFullscreen').mockImplementation(
+        (callback) => {
+          notify = callback;
+          return () => {};
+        },
+      );
+      vi.spyOn(APIHelper, 'isFullscreen').mockReturnValue(false);
+
+      await h.game.init(h.config);
+      expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+      size.mockReturnValue({ width: 1200, height: 600 });
+      notify();
+
+      expect(h.app.renderer.resize).toHaveBeenLastCalledWith(1200, 600, 1);
+      expect(h.app.renderer.resize).toHaveBeenCalledTimes(2);
     });
 
     it('should detach the viewport listener on destroy', async () => {

@@ -15,14 +15,17 @@ import SaveManager from '@/save/SaveManager';
 import { LocalStorageProvider } from '@/save/SaveStorage';
 import {
   getDevicePixelRatio,
+  getDocumentSize,
   getElementById,
   getElementSize,
   getParentElement,
   getStorage,
   getViewportSize,
+  getVisualViewportSize,
   isFullscreen,
   observeFullscreen,
   observeViewport,
+  scheduleFrame,
   setFullscreen,
 } from '@/utils/APIHelper';
 import type { EngineEvents } from '@/types/events';
@@ -150,6 +153,10 @@ class Game {
   private lastViewport = { width: 0, height: 0, dpr: 0 };
   /** 解除 fullscreenchange 订阅；未初始化/已销毁时为 null */
   private fullscreenCleanup: (() => void) | null = null;
+  /** 取消待执行的视口应用帧；合并同一帧内的多次 resize 事件 */
+  private viewportFrame: (() => void) | null = null;
+  /** 是否已排入一帧；无 rAF 环境会同步执行，不能只靠取消句柄判重 */
+  private viewportScheduled = false;
   /** app 是否已创建且尚未销毁；init 失败后 destroy 也要释放画布 */
   private appLive = false;
 
@@ -172,6 +179,8 @@ class Game {
     if (!isFullscreen() && this.settings.get().fullscreen) {
       this.settings.onChange({ fullscreen: false });
     }
+    // 部分平台进入/退出全屏不一定派发 resize；强制在下一帧重测一次
+    this.scheduleViewportApply();
   };
 
   constructor(factories: Partial<GameFactories> = {}) {
@@ -378,8 +387,19 @@ class Game {
     this.applyViewport();
     this.viewportCleanup = observeViewport(
       getParentElement(this.app.canvas),
-      () => this.applyViewport(),
+      () => this.scheduleViewportApply(),
     );
+  }
+
+  /** 合并同一帧内的多次视口事件，最多应用一次 */
+  private scheduleViewportApply(): void {
+    if (!this.viewportActive || this.viewportScheduled) return;
+    this.viewportScheduled = true;
+    this.viewportFrame = scheduleFrame(() => {
+      this.viewportScheduled = false;
+      this.viewportFrame = null;
+      this.applyViewport();
+    });
   }
 
   /** 画布铺满宿主；逻辑分辨率不变，由 ScaleManager 负责缩放/居中 */
@@ -413,19 +433,38 @@ class Game {
   }
 
   /**
-   * 优先测量 canvas 宿主；宿主存在但尺寸为 0（隐藏）时跳过，
-   * 只有完全无宿主（embedder 的游离 canvas）才退回窗口尺寸。
+   * 依次测量：canvas 宿主 → documentElement → visualViewport → 窗口。
+   * 移动端宿主依赖 `100dvh`，全屏切换瞬间可能暂时为 0，需要后退兜底。
    */
   private measureViewport(): { width: number; height: number } | null {
     const host = getParentElement(this.app.canvas);
-    if (host) return getElementSize(host);
+    const hostSize = host ? getElementSize(host) : null;
+    const size =
+      hostSize ??
+      this.firstMeasured([
+        getDocumentSize,
+        getVisualViewportSize,
+        getViewportSize,
+      ]);
+    if (!size) return null;
+    return { width: Math.round(size.width), height: Math.round(size.height) };
+  }
 
-    const viewport = getViewportSize();
-    return viewport.width > 0 && viewport.height > 0 ? viewport : null;
+  private firstMeasured(
+    candidates: Array<() => { width: number; height: number }>,
+  ): { width: number; height: number } | null {
+    for (const candidate of candidates) {
+      const size = candidate();
+      if (size.width > 0 && size.height > 0) return size;
+    }
+    return null;
   }
 
   private stopViewport(): void {
     this.viewportActive = false;
+    this.viewportScheduled = false;
+    this.viewportFrame?.();
+    this.viewportFrame = null;
     this.viewportCleanup?.();
     this.viewportCleanup = null;
     this.lastViewport = { width: 0, height: 0, dpr: 0 };
