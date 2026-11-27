@@ -226,10 +226,10 @@ class Game {
     this.audio = this.factories.createAudio(this.engine);
     this.save = this.factories.createSave(this.engine);
 
-    // UI 挂到渲染器预建的 ui 图层，并把命中层交给输入子系统
+    // UI 挂到渲染器的屏幕空间层，并把命中层交给输入子系统
     this.ui = this.factories.createUI(this.engine, config);
     if (this.ui) {
-      this.renderer.getUILayer()?.addChild(this.ui.root);
+      this.renderer.getUILayer().addChild(this.ui.root);
       this.input?.setUIRoot(this.ui.root);
     }
 

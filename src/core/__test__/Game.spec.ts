@@ -47,7 +47,7 @@ function makeTicker() {
   };
 }
 
-function makeRenderer(uiLayer: Container | null = null): IRenderer {
+function makeRenderer(uiLayer: Container = new Container()): IRenderer {
   return {
     update: vi.fn(),
     getState: vi.fn(),
@@ -129,7 +129,7 @@ function makeHarness(options: {
     renderer: { resize: appResize },
     destroy: appDestroy,
   };
-  const renderer = makeRenderer(options.uiLayer ?? null);
+  const renderer = makeRenderer(options.uiLayer ?? new Container());
   const audio = makeAudio();
   const factories: Partial<GameFactories> = {
     createApplication: async () => app as unknown as Application,
@@ -248,7 +248,7 @@ describe('Game', () => {
       // 缺省 createUI → 走真实工厂以验证 settingsMenu.controller 接线
       const game = new Game({
         createApplication: async () => app as unknown as Application,
-        createRenderer: () => makeRenderer(null),
+        createRenderer: () => makeRenderer(),
         createAudio: () => makeAudio(),
         createInput: () => null,
         createSave: () => null,
@@ -311,7 +311,7 @@ describe('Game', () => {
       const app = { stage: {}, canvas: {}, ticker, destroy: vi.fn() };
       const game = new Game({
         createApplication: async () => app as unknown as Application,
-        createRenderer: () => makeRenderer(null),
+        createRenderer: () => makeRenderer(),
         createAudio: () => makeAudio(),
         createInput: () => null,
         createUI: () => null,
@@ -650,7 +650,7 @@ describe('Game', () => {
       const { ticker } = makeTicker();
       const appResize = vi.fn();
       const order: string[] = [];
-      const renderer = makeRenderer(null);
+      const renderer = makeRenderer();
       let inputConfig: GameConfig | undefined;
       const config: GameConfig = {
         width: 1280,
