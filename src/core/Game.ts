@@ -232,6 +232,14 @@ class Game {
     if (this.ui) {
       this.renderer.getUILayer().addChild(this.ui.root);
       this.input?.setUIRoot(this.ui.root);
+      // UI 晚于 startViewport 创建，用上次测得的尺寸补一次布局，
+      // 否则 lastViewport 去重会让 UI 永远停在构造尺寸
+      if (responsive && this.lastViewport.width > 0) {
+        this.syncUILayout({
+          width: this.lastViewport.width,
+          height: this.lastViewport.height,
+        });
+      }
     }
 
     this.script = new ScriptEngine(this.engine, this.variableStore);
@@ -392,8 +400,16 @@ class Game {
 
     this.app.renderer.resize(size.width, size.height, dpr);
     this.renderer.resize(size);
+    this.syncUILayout(size);
     // 应用成功后才记录，避免 resize 抛错后被误判为已处理
     this.lastViewport = { width: size.width, height: size.height, dpr };
+  }
+
+  /** UI 屏幕空间布局与命中层同帧更新；UI 未创建时为空操作 */
+  private syncUILayout(size: { width: number; height: number }): void {
+    if (!this.ui) return;
+    const virtual = this.ui.resize(size);
+    this.input?.setSize(virtual.width, virtual.height);
   }
 
   /**

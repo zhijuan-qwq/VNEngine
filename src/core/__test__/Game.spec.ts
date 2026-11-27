@@ -66,6 +66,10 @@ function makeFakeUI(): UIManager {
     root: new Container(),
     update: vi.fn(),
     isBusy: vi.fn(() => false),
+    resize: vi.fn((size: { width: number; height: number }) => ({
+      width: size.width,
+      height: size.height,
+    })),
     destroy: vi.fn(),
   } as unknown as UIManager;
 }
@@ -73,13 +77,16 @@ function makeFakeUI(): UIManager {
 function makeFakeInput(): {
   input: IInputManager;
   setUIRoot: ReturnType<typeof vi.fn>;
+  setSize: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
 } {
   const setUIRoot = vi.fn();
+  const setSize = vi.fn();
   const destroy = vi.fn();
   return {
-    input: { setUIRoot, destroy } as unknown as IInputManager,
+    input: { setUIRoot, setSize, destroy } as unknown as IInputManager,
     setUIRoot,
+    setSize,
     destroy,
   };
 }
@@ -703,6 +710,59 @@ describe('Game', () => {
       });
       expect(order).toEqual(['resize', 'input']);
       expect(inputConfig).toBe(config);
+    });
+
+    it('should lay out the ui with the first measured viewport', async () => {
+      const ui = makeFakeUI();
+      const { input, setSize } = makeFakeInput();
+      const h = makeHarness({ ui, input });
+      vi.spyOn(APIHelper, 'getViewportSize').mockReturnValue({
+        width: 745,
+        height: 264,
+      });
+
+      await h.game.init(h.config);
+
+      expect(ui.resize).toHaveBeenCalledTimes(1);
+      expect(ui.resize).toHaveBeenCalledWith({ width: 745, height: 264 });
+      expect(setSize).toHaveBeenCalledWith(745, 264);
+    });
+
+    it('should relayout the ui when the viewport changes', async () => {
+      const ui = makeFakeUI();
+      const { input, setSize } = makeFakeInput();
+      const h = makeHarness({ ui, input });
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeViewport').mockImplementation(
+        (_target, onChange) => {
+          notify = onChange;
+          return () => {};
+        },
+      );
+
+      await h.game.init(h.config);
+      expect(ui.resize).toHaveBeenCalledTimes(1);
+
+      size.mockReturnValue({ width: 745, height: 264 });
+      notify();
+
+      expect(ui.resize).toHaveBeenLastCalledWith({
+        width: 745,
+        height: 264,
+      });
+      expect(setSize).toHaveBeenLastCalledWith(745, 264);
+    });
+
+    it('should not lay out the ui when responsive is disabled', async () => {
+      const ui = makeFakeUI();
+      const h = makeHarness({ ui });
+
+      await h.game.init({ ...h.config, responsive: false });
+
+      expect(ui.resize).not.toHaveBeenCalled();
     });
 
     it('should fall back to the window size when the canvas has no host', async () => {
