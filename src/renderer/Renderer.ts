@@ -1,7 +1,12 @@
 import { Container, Graphics } from 'pixi.js';
 import type { PointData } from 'pixi.js';
 import type EventBus from '@/core/EventBus';
-import type { IRenderer, RendererState, ScaleMode } from '@/types/engine';
+import type {
+  IRenderer,
+  RendererState,
+  ScaleMode,
+  SceneFrame,
+} from '@/types/engine';
 import type { EngineEvents } from '@/types/events';
 import BackgroundManager from './BackgroundManager';
 import CharacterRegistry from './CharacterRegistry';
@@ -135,6 +140,15 @@ export class Renderer implements IRenderer {
 
   public getCaptureTarget(): Container {
     return this.stage;
+  }
+
+  public getSceneFrame(): SceneFrame {
+    return {
+      x: this.sceneRoot.position.x,
+      y: this.sceneRoot.position.y,
+      width: this.size.width * this.sceneRoot.scale.x,
+      height: this.size.height * this.sceneRoot.scale.y,
+    };
   }
 
   public toLogical(point: PointData): { x: number; y: number } {

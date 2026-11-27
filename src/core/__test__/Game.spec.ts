@@ -56,6 +56,7 @@ function makeRenderer(uiLayer: Container = new Container()): IRenderer {
     getUILayer: vi.fn(() => uiLayer),
     getSceneRoot: vi.fn(() => new Container()),
     getCaptureTarget: vi.fn(() => new Container()),
+    getSceneFrame: vi.fn(() => ({ x: 0, y: 0, width: 0, height: 0 })),
     toLogical: vi.fn((point: { x: number; y: number }) => point),
     destroy: vi.fn(),
   };

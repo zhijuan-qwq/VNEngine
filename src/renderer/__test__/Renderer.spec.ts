@@ -136,6 +136,23 @@ describe('Renderer', () => {
       expect(stage.scale.x).toBe(1);
       expect(stage.position.x).toBe(0);
     });
+
+    it('should report the letterbox scene frame on screen', () => {
+      const { renderer } = createRenderer({
+        width: 640,
+        height: 360,
+        scaleMode: 'fit',
+      });
+
+      renderer.resize({ width: 745, height: 264 });
+
+      const scale = 264 / 360;
+      const frame = renderer.getSceneFrame();
+      expect(frame.width).toBeCloseTo(640 * scale);
+      expect(frame.height).toBeCloseTo(264);
+      expect(frame.x).toBeCloseTo((745 - 640 * scale) / 2);
+      expect(frame.y).toBeCloseTo(0);
+    });
   });
 
   describe('event routing', () => {
