@@ -10,6 +10,7 @@ import type { TextLayoutItem } from './textLayout';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite } from './uiLayout';
 
 export interface DialogueBoxOptions {
   width: number;
@@ -199,6 +200,7 @@ export class DialogueBox extends UIComponent {
   public clear(): void {
     this.typewriter = null;
     this.parsed = null;
+    this.blockHeight = this.lineHeight;
     this.speakerText.text = '';
     this.indicator.visible = false;
     this.clearBodyTexts();
@@ -211,6 +213,9 @@ export class DialogueBox extends UIComponent {
 
   /** 视口变化时更新尺寸并重排；当前文本与打字机进度保持不变 */
   public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
     this.resizeBackdrop();
@@ -219,6 +224,26 @@ export class DialogueBox extends UIComponent {
     this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
     this.recomputeBlockHeight();
     this.relayout();
+  }
+
+  /**
+   * 完整显示当前文本所需的对话框高度（含内边距、说话人与底部保留）。
+   * 无文本时返回 0，由调用方回落到基准高度。
+   */
+  public preferredHeight(): number {
+    if (!this.parsed) {
+      return 0;
+    }
+    const speakerVisible = this.speakerText.text.length > 0;
+    const speakerHeight = speakerVisible
+      ? this.speakerText.height + this.theme.spacing.s8
+      : 0;
+    return (
+      this.opts.padding * 2 +
+      speakerHeight +
+      this.blockHeight +
+      this.theme.sizes.dialogueBottomReserve
+    );
   }
 
   public get currentText(): string {

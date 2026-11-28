@@ -168,6 +168,28 @@ describe('DialogueBox', () => {
     expect(box.currentText).toBe('Hello world');
   });
 
+  it('should report the height needed by the current text', () => {
+    const box = makeBox();
+    expect(box.preferredHeight()).toBe(0);
+
+    box.show('Hero', 'Hello world', 100);
+    expect(box.preferredHeight()).toBeGreaterThan(0);
+
+    box.clear();
+    expect(box.preferredHeight()).toBe(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+
+    box.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    const bg = box.children[0] as unknown as Sprite;
+    expect(bg.width).toBe(600);
+    expect(bg.height).toBe(180);
+  });
+
   it('should left-align subtitle text with a small margin', () => {
     const box = makeBox();
     box.show('Hero', 'Hello world', 100);
