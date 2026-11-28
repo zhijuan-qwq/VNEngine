@@ -111,7 +111,8 @@ export class ScrollView extends UIComponent {
       return;
     }
     this.dragPointer = event.pointerId;
-    this.dragStartY = event.global.y;
+    // 指针是屏幕 CSS px，换算到 UI 本地坐标后才能和滚动偏移（虚拟 px）比较
+    this.dragStartY = this.toLocal(event.global).y;
     this.dragStartOffset = this.offset;
     this.dragging = false;
   };
@@ -120,7 +121,7 @@ export class ScrollView extends UIComponent {
     if (this.dragPointer !== event.pointerId) {
       return;
     }
-    const delta = event.global.y - this.dragStartY;
+    const delta = this.toLocal(event.global).y - this.dragStartY;
     if (!this.dragging) {
       if (Math.abs(delta) < DRAG_THRESHOLD) {
         return;

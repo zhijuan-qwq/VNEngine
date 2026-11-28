@@ -1,3 +1,4 @@
+import { Container } from 'pixi.js';
 import type { FederatedPointerEvent, FederatedWheelEvent } from 'pixi.js';
 import { ScrollView } from '../controls/ScrollView';
 
@@ -143,6 +144,19 @@ describe('ScrollView', () => {
     pointer(view, 'pointermove', 47);
 
     expect(view.scrollTop).toBe(0);
+  });
+
+  it('should convert the drag distance through the parent scale', () => {
+    const view = makeView(500);
+    const parent = new Container();
+    parent.scale.set(0.8);
+    parent.addChild(view);
+
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 10);
+
+    // 屏幕位移 40 CSS px ÷ 0.8 = 50 虚拟 px
+    expect(view.scrollTop).toBe(50);
   });
 
   it('should leave drags that start on a child to the child', () => {
