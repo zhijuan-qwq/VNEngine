@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
 import { SettingsMenu } from '../SettingsMenu';
 import type { SettingsController } from '../SettingsMenu';
 import { PagePanel } from '../PagePanel';
+import { ScrollView } from '../controls/ScrollView';
 
 vi.mock('pixi.js', async (importOriginal) => {
   const pixi = (await importOriginal()) as typeof import('pixi.js');
@@ -102,6 +103,33 @@ describe('SettingsMenu', () => {
 
     expect(menu.getSlider('masterVolume')?.value).toBe(0.4);
     expect(menu.getToggle('fullscreen')?.value).toBe(true);
+  });
+
+  it('should scroll the controls when the page is shorter than the content', () => {
+    const menu = new SettingsMenu({ width: 586, height: 330 });
+    menu.show();
+    const page = menu.children[0] as PagePanel;
+    const scroll = page.content.children[0] as ScrollView;
+
+    expect(scroll.maxScroll).toBeGreaterThan(0);
+  });
+
+  it('should defer rebuilding while hidden and refresh on show', () => {
+    const menu = makeMenu();
+    const before = menu.getSlider('masterVolume');
+    menu.resize(900, 500);
+    expect(menu.getSlider('masterVolume')).toBe(before);
+
+    menu.show();
+    expect(menu.getSlider('masterVolume')).not.toBe(before);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const menu = makeMenu();
+    menu.show();
+    expect(() =>
+      menu.resize(Number.NaN, Number.POSITIVE_INFINITY),
+    ).not.toThrow();
   });
 
   it('should forward the page back button to onClose', () => {
