@@ -159,6 +159,19 @@ describe('ScrollView', () => {
     expect(view.scrollTop).toBe(50);
   });
 
+  it('should slow the drag down when the ui is upscaled', () => {
+    const view = makeView(500);
+    const parent = new Container();
+    parent.scale.set(1.5);
+    parent.addChild(view);
+
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 10);
+
+    // 屏幕位移 40 CSS px ÷ 1.5 ≈ 26.67 虚拟 px
+    expect(view.scrollTop).toBeCloseTo(40 / 1.5);
+  });
+
   it('should leave drags that start on a child to the child', () => {
     const view = makeView(500);
     pointer(view, 'pointerdown', 50, {});
