@@ -4,6 +4,7 @@ import type { EngineEvents, UiPanel } from '@/types/events';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite, UI_MIN_SCALE } from './uiLayout';
 
 export interface MenuBarOptions {
   /** 屏幕逻辑宽度；用于缺省时把快捷栏贴到右下角 */
@@ -132,8 +133,8 @@ function drawIcon(
 
 /** 移动端紧凑模式的整体缩放 */
 const COMPACT_SCALE = 0.8;
-/** 紧凑模式下字号的下限，避免小屏上不可读 */
-const COMPACT_MIN_FONT = 12;
+/** 紧凑模式字号下限按物理像素反推：最差缩放档下仍不小于 11 CSS px */
+const COMPACT_MIN_FONT = Math.ceil(11 / UI_MIN_SCALE);
 
 interface LayoutMetrics {
   itemHeight: number;
@@ -155,7 +156,9 @@ export class MenuBar extends UIComponent {
   private readonly menuButtons: Container[] = [];
   private readonly itemWidths: number[] = [];
   private metrics: LayoutMetrics = { itemHeight: 0, gap: 0, margin: 0 };
-  private compact = false;
+  /** 0 为正常尺寸，1 为完全紧凑；中间值随视口宽度线性过渡 */
+  private compactAmount = 0;
+  private buildKey = '';
 
   constructor(bus: EventBus<EngineEvents>, options: MenuBarOptions) {
     super({ id: 'menu-bar' });
@@ -177,38 +180,55 @@ export class MenuBar extends UIComponent {
     this.layout();
   }
 
-  /** 视口变化时重算位置；紧凑状态切换时重建按钮尺寸 */
-  public resize(width: number, height: number, compact = this.compact): void {
+  /**
+   * 视口变化时重算尺寸与位置。
+   * `compactAmount` 为 0–1 的连续值，只有取整后的尺寸变化时才重建按钮。
+   */
+  public resize(
+    width: number,
+    height: number,
+    compactAmount = this.compactAmount,
+  ): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
-    if (compact !== this.compact) {
-      this.compact = compact;
-      this.build();
+    if (Number.isFinite(compactAmount)) {
+      this.compactAmount = Math.min(Math.max(compactAmount, 0), 1);
     }
+    this.build();
     this.layout();
   }
 
   private build(): void {
+    const factor = 1 - (1 - COMPACT_SCALE) * this.compactAmount;
+    const scaled = (value: number): number => Math.round(value * factor);
+    const itemHeight = Math.max(1, scaled(this.opts.buttonHeight));
+    // 自定义小字号不被紧凑缩放继续压低，也不被下限强行放大
+    const fontFloor = Math.min(COMPACT_MIN_FONT, this.opts.fontSize);
+    const fontSize = Math.max(fontFloor, scaled(this.opts.fontSize));
+    const iconSize = Math.max(1, scaled(this.theme.sizes.quickBarIcon));
+    const iconGap = Math.max(0, scaled(this.theme.spacing.s4));
+    const paddingX = Math.max(0, scaled(this.theme.spacing.s4));
+    const metrics: LayoutMetrics = {
+      itemHeight,
+      gap: Math.max(0, scaled(this.opts.gap)),
+      margin: Math.max(0, scaled(this.opts.margin)),
+    };
+
+    const key = `${itemHeight}/${fontSize}/${iconSize}/${iconGap}/${paddingX}/${metrics.gap}/${metrics.margin}`;
+    this.metrics = metrics;
+    if (key === this.buildKey && this.menuButtons.length === ENTRIES.length) {
+      return;
+    }
+    this.buildKey = key;
+
     for (const child of this.children.slice()) {
       child.destroy({ children: true });
     }
     this.menuButtons.length = 0;
     this.itemWidths.length = 0;
-
-    const factor = this.compact ? COMPACT_SCALE : 1;
-    const scaled = (value: number): number => Math.round(value * factor);
-    const itemHeight = Math.max(1, scaled(this.opts.buttonHeight));
-    const fontSize = this.compact
-      ? Math.max(COMPACT_MIN_FONT, scaled(this.opts.fontSize))
-      : this.opts.fontSize;
-    const iconSize = Math.max(1, scaled(this.theme.sizes.quickBarIcon));
-    const iconGap = Math.max(0, scaled(this.theme.spacing.s4));
-    const paddingX = Math.max(0, scaled(this.theme.spacing.s4));
-    this.metrics = {
-      itemHeight,
-      gap: Math.max(0, scaled(this.opts.gap)),
-      margin: Math.max(0, scaled(this.opts.margin)),
-    };
 
     interface BuiltItem {
       container: Container;

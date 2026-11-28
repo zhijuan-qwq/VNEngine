@@ -116,7 +116,7 @@ describe('MenuBar', () => {
       bar.buttons[0].hitArea as unknown as { width: number }
     ).width;
 
-    bar.resize(800, 600, true);
+    bar.resize(800, 600, 1);
 
     // 26*0.8=20.8→21；12*0.8=9.6→10
     expect(bar.buttons[0].y).toBe(600 - 21 - 10);
@@ -133,10 +133,27 @@ describe('MenuBar', () => {
 
   it('should restore the desktop size when compact turns off', () => {
     const { bar } = makeBar();
-    bar.resize(800, 600, true);
+    bar.resize(800, 600, 1);
 
-    bar.resize(800, 600, false);
+    bar.resize(800, 600, 0);
 
     expect(bar.buttons[0].y).toBe(562);
+  });
+
+  it('should interpolate sizes for a partial compact amount', () => {
+    const { bar } = makeBar();
+    bar.resize(900, 600, 0.484375);
+
+    // factor = 1 - 0.2*0.484375 ≈ 0.903；26*factor≈23，12*factor≈11
+    expect(bar.buttons[0].y).toBe(600 - 23 - 11);
+  });
+
+  it('should ignore invalid sizes and out-of-range compact amounts', () => {
+    const { bar } = makeBar();
+    bar.resize(800, 600, 1);
+    const before = bar.buttons[0].y;
+
+    bar.resize(Number.NaN, Number.POSITIVE_INFINITY);
+    expect(bar.buttons[0].y).toBe(before);
   });
 });

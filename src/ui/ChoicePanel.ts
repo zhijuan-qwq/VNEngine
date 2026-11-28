@@ -2,8 +2,10 @@ import type { Container } from 'pixi.js';
 import type { Choice } from '@/types/script';
 import { UIComponent } from './UIComponent';
 import { createButton } from './overlay';
+import type { UIButton } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite, UI_MIN_SCALE } from './uiLayout';
 
 export interface ChoicePanelOptions {
   width: number;
@@ -46,8 +48,8 @@ interface ChoiceMetrics {
 
 /** 移动端紧凑模式的整体缩放 */
 const COMPACT_SCALE = 0.85;
-/** 紧凑模式下字号的下限，避免小屏上不可读 */
-const COMPACT_MIN_FONT = 14;
+/** 紧凑模式字号下限按物理像素反推：最差缩放档下仍不小于 11 CSS px */
+const COMPACT_MIN_FONT = Math.ceil(11 / UI_MIN_SCALE);
 
 export class ChoicePanel extends UIComponent {
   private readonly opts: ResolvedOptions;
@@ -55,9 +57,10 @@ export class ChoicePanel extends UIComponent {
   private readonly buttonWidthOverride?: number;
   private readonly buttonHeightOverride?: number;
   private readonly buttonGapOverride?: number;
-  private choiceButtons: Container[] = [];
+  private choiceButtons: UIButton[] = [];
   private currentChoices: Choice[] | null = null;
-  private compact = false;
+  /** 0 为正常尺寸，1 为完全紧凑；中间值随视口宽度线性过渡 */
+  private compactAmount = 0;
   private metrics: ChoiceMetrics;
 
   constructor(options: ChoicePanelOptions) {
@@ -86,23 +89,41 @@ export class ChoicePanel extends UIComponent {
 
   public show(choices: Choice[], _mode: 'adv' | 'nvl'): void {
     this.currentChoices = choices;
+    this.metrics = this.resolveMetrics();
     this.layoutButtons();
     this.visible = true;
   }
 
-  /** 视口变化时按新尺寸重新居中；已显示的选项会重建按钮 */
-  public resize(width: number, height: number, compact = this.compact): void {
+  /**
+   * 视口变化时重新居中；选项数量不变时原地更新按钮尺寸，
+   * 保留 hover / pressed 状态与进行中的按压。
+   */
+  public resize(
+    width: number,
+    height: number,
+    compactAmount = this.compactAmount,
+  ): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
-    this.compact = compact;
+    if (Number.isFinite(compactAmount)) {
+      this.compactAmount = Math.min(Math.max(compactAmount, 0), 1);
+    }
     this.metrics = this.resolveMetrics();
-    if (this.currentChoices) {
+    if (!this.currentChoices) {
+      return;
+    }
+    if (this.choiceButtons.length === this.currentChoices.length) {
+      this.updateButtons();
+    } else {
       this.layoutButtons();
     }
   }
 
   private resolveMetrics(): ChoiceMetrics {
-    const factor = this.compact ? COMPACT_SCALE : 1;
+    const factor = 1 - (1 - COMPACT_SCALE) * this.compactAmount;
     const width =
       this.buttonWidthOverride ??
       Math.min(
@@ -115,19 +136,16 @@ export class ChoicePanel extends UIComponent {
       buttonWidth: Math.round(width * factor),
       buttonHeight: Math.round(height * factor),
       buttonGap: Math.round(gap * factor),
-      fontSize: this.compact
-        ? Math.max(COMPACT_MIN_FONT, Math.round(this.opts.fontSize * factor))
-        : this.opts.fontSize,
+      fontSize: Math.max(
+        Math.min(COMPACT_MIN_FONT, this.opts.fontSize),
+        Math.round(this.opts.fontSize * factor),
+      ),
     };
   }
 
-  private layoutButtons(): void {
-    this.clearButtons();
-    this.metrics = this.resolveMetrics();
-    const choices = this.currentChoices ?? [];
+  private blockOrigin(count: number): { startX: number; startY: number } {
     const { buttonWidth, buttonHeight, buttonGap } = this.metrics;
-    const total =
-      choices.length * buttonHeight + (choices.length - 1) * buttonGap;
+    const total = count * buttonHeight + (count - 1) * buttonGap;
     // 选项块在对话框（底部约 30%）以上的区域居中；块过高时贴顶留白。
     // 0.8 让块中心落在画面约 40% 处，比原先的 0.66（33%）略低。
     const areaHeight = this.opts.height
@@ -137,6 +155,14 @@ export class ChoicePanel extends UIComponent {
       ? Math.max(this.opts.height * 0.08, (areaHeight - total) / 2)
       : 0;
     const startX = (this.opts.width - buttonWidth) / 2;
+    return { startX, startY };
+  }
+
+  private layoutButtons(): void {
+    this.clearButtons();
+    const choices = this.currentChoices ?? [];
+    const { buttonHeight, buttonGap } = this.metrics;
+    const { startX, startY } = this.blockOrigin(choices.length);
 
     for (let index = 0; index < choices.length; index += 1) {
       const button = this.createButton(choices[index]);
@@ -147,13 +173,25 @@ export class ChoicePanel extends UIComponent {
     }
   }
 
+  private updateButtons(): void {
+    const choices = this.currentChoices ?? [];
+    const { buttonWidth, buttonHeight, buttonGap, fontSize } = this.metrics;
+    const { startX, startY } = this.blockOrigin(choices.length);
+    for (let index = 0; index < this.choiceButtons.length; index += 1) {
+      const button = this.choiceButtons[index];
+      button.setLayout(buttonWidth, buttonHeight, fontSize);
+      button.x = startX;
+      button.y = startY + index * (buttonHeight + buttonGap);
+    }
+  }
+
   public hide(): void {
     this.currentChoices = null;
     this.clearButtons();
     this.visible = false;
   }
 
-  private createButton(choice: Choice): Container {
+  private createButton(choice: Choice): UIButton {
     const disabled = choice.enabled === false;
     return createButton({
       width: this.metrics.buttonWidth,

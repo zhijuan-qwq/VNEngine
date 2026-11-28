@@ -63,6 +63,36 @@ describe('UIManager', () => {
     expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 31);
   });
 
+  it('should grow the dialogue box to fit long text on short screens', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '长'.repeat(200),
+      mode: 'adv',
+    });
+
+    const cap = Math.round(virtual.height * 0.7);
+    expect(ui.dialogueBox.y).toBeLessThan(virtual.height - 120);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(virtual.height - cap);
+
+    bus.emit('script:clear', {});
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 120);
+  });
+
+  it('should ignore a non-finite viewport size', () => {
+    const { ui } = makeManager();
+    const before = ui.resize({ width: 745, height: 264 });
+
+    const after = ui.resize({
+      width: Number.POSITIVE_INFINITY,
+      height: Number.NaN,
+    });
+
+    expect(after).toEqual(before);
+  });
+
   it('should align the ui width to the scene frame', () => {
     const { ui } = makeManager();
 

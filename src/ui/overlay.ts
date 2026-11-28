@@ -203,9 +203,10 @@ export class UIButton extends Container {
   private readonly bg: Graphics;
   private readonly theme: UITheme;
   private readonly variant: ButtonVariant;
-  private readonly widthValue: number;
-  private readonly heightValue: number;
-  private readonly fontSize: number;
+  private widthValue: number;
+  private heightValue: number;
+  private fontSize: number;
+  private readonly alignValue: ButtonAlign;
   private readonly fontFamily: string | string[];
   /** 显式颜色覆盖需在每次重绘时复用，否则一次 hover 就会回落到主题色 */
   private readonly backgroundOverride?: number;
@@ -219,6 +220,7 @@ export class UIButton extends Container {
     super();
     this.theme = resolveTheme(options.theme);
     this.variant = options.variant ?? 'secondary';
+    this.alignValue = options.align ?? 'left';
     this.widthValue = options.width;
     this.heightValue = options.height;
     this.backgroundOverride = options.backgroundColor;
@@ -249,7 +251,7 @@ export class UIButton extends Container {
     this.labelText.y = (options.height - this.labelText.height) / 2;
     this.addChild(this.labelText);
 
-    this.layoutLabel(options.align ?? 'left');
+    this.layoutLabel(this.alignValue);
     this.redraw();
     if (!this.enabledValue) {
       this.applyEnabledVisual();
@@ -274,6 +276,34 @@ export class UIButton extends Container {
 
   public get state(): ButtonState {
     return this.stateValue;
+  }
+
+  /**
+   * 原地调整尺寸与字号（选项面板随视口重排时复用），保留 hover/pressed 状态。
+   * 非法尺寸直接忽略，避免 Infinity 写入 hitArea。
+   */
+  public setLayout(
+    width: number,
+    height: number,
+    fontSize = this.fontSize,
+  ): void {
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0 ||
+      !Number.isFinite(fontSize) ||
+      fontSize <= 0
+    ) {
+      return;
+    }
+    this.widthValue = width;
+    this.heightValue = height;
+    this.fontSize = fontSize;
+    this.hitArea = new Rectangle(0, 0, width, height);
+    this.redraw();
+    this.labelText.y = (height - this.labelText.height) / 2;
+    this.layoutLabel(this.alignValue);
   }
 
   /** 运行时切换可用状态（SaveLoadMenu 的读档空槽、ChoicePanel 的禁用选项） */

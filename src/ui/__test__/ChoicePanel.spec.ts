@@ -106,7 +106,7 @@ describe('ChoicePanel', () => {
       panel.buttons[0].hitArea as unknown as { width: number }
     ).width;
 
-    panel.resize(1000, 600, true);
+    panel.resize(1000, 600, 1);
 
     expect(panel.buttons).toHaveLength(2);
     const compactWidth = (
@@ -120,11 +120,48 @@ describe('ChoicePanel', () => {
     expect(label.style.fontSize).toBe(15);
   });
 
+  it('should resize the visible buttons in place and keep their state', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const button = panel.buttons[0];
+    button.emit('pointerover', tapEvent());
+
+    panel.resize(800, 500, 1);
+
+    expect(panel.buttons[0]).toBe(button);
+    expect((button as unknown as { state: string }).state).toBe('hover');
+  });
+
+  it('should interpolate button sizes for a partial compact amount', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const full = (panel.buttons[0].hitArea as unknown as { height: number })
+      .height;
+
+    panel.resize(1000, 600, 0.5);
+
+    const partial = (panel.buttons[0].hitArea as unknown as { height: number })
+      .height;
+    const { sizes } = DEFAULT_UI_THEME;
+    expect(partial).toBe(Math.round(sizes.choiceHeight * 0.925));
+    expect(partial).toBeLessThan(full);
+  });
+
   it('should not create buttons on resize while hidden', () => {
     const panel = makePanel();
     panel.resize(800, 600);
     expect(panel.visible).toBe(false);
     expect(panel.buttons).toHaveLength(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const before = panel.buttons[0].x;
+
+    panel.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(panel.buttons[0].x).toBe(before);
   });
 
   it('should center a width-capped button block above the dialogue area', () => {

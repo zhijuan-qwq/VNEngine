@@ -24,11 +24,17 @@ import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
-import { computeUiScale, UI_MIN_SCALE } from './uiLayout';
+import {
+  computeCompactAmount,
+  computeUiLayout,
+  isPositiveFinite,
+} from './uiLayout';
 import type { UiLayout } from './uiLayout';
 
 /** 对话框最小虚拟高度：短横屏下 30% 比例会低于两行正文 */
 const MIN_DIALOGUE_HEIGHT = 120;
+/** 对话框自适应高度的上限（占虚拟高度比例），避免长文本吃满整屏 */
+const MAX_DIALOGUE_HEIGHT_RATIO = 0.7;
 
 export interface UIManagerOptions {
   width: number;
@@ -89,6 +95,8 @@ export class UIManager {
   private readonly dialogueWidthOverride?: number;
   private readonly dialogueHeightOverride?: number;
   private layout: UiLayout;
+  /** 紧凑尺寸占比（0 正常，1 完全紧凑），随视口宽度线性过渡 */
+  private compactAmount = 0;
   /** UI 根的水平/垂直偏移（屏幕 CSS px），水平对齐场景画面 */
   private frameX = 0;
   private frameY = 0;
@@ -244,18 +252,20 @@ export class UIManager {
     frame?: SceneFrame,
   ): { width: number; height: number } {
     const current = this.layout;
-    if (!(viewport.width > 0) || !(viewport.height > 0)) {
+    if (
+      !isPositiveFinite(viewport.width) ||
+      !isPositiveFinite(viewport.height)
+    ) {
       return { width: current.width, height: current.height };
     }
-    const scale = computeUiScale(viewport.width);
-    const hasFrame = frame !== undefined && frame.width > 0;
-    const frameWidth = hasFrame ? frame.width : viewport.width;
-    const next: UiLayout = {
-      scale,
-      width: frameWidth / scale,
-      height: viewport.height / scale,
-    };
-    const frameX = hasFrame && Number.isFinite(frame.x) ? frame.x : 0;
+    const hasFrame = frame !== undefined && isPositiveFinite(frame.width);
+    const next = computeUiLayout(
+      viewport.width,
+      viewport.height,
+      hasFrame ? frame : undefined,
+    );
+    const frameX =
+      hasFrame && Number.isFinite(frame.x) ? (frame.x as number) : 0;
     const frameY = 0;
     if (
       Math.abs(next.scale - current.scale) < 0.0001 &&
@@ -267,6 +277,7 @@ export class UIManager {
       return { width: current.width, height: current.height };
     }
     this.layout = next;
+    this.compactAmount = computeCompactAmount(viewport.width);
     this.frameX = frameX;
     this.frameY = frameY;
     this.applyLayout();
@@ -329,21 +340,43 @@ export class UIManager {
       this.originY + this.frameY,
     );
 
-    const dialogueWidth = this.dialogueWidthOverride ?? width;
-    const dialogueHeight =
-      this.dialogueHeightOverride ?? this.dialogueHeight(height);
-    this.dialogueBox.x = this.dialogueXOverride ?? 0;
-    this.dialogueBox.y = this.dialogueYOverride ?? height - dialogueHeight;
-    this.dialogueBox.resize(dialogueWidth, dialogueHeight);
-    // UI 缩放落到最小档说明是窄屏移动端，选项与快捷栏用紧凑尺寸
-    const compact = scale <= UI_MIN_SCALE + 0.0001;
-    this.choicePanel.resize(width, height, compact);
-    this.menuBar.resize(width, height, compact);
+    this.layoutDialogue();
+    this.choicePanel.resize(width, height, this.compactAmount);
+    this.menuBar.resize(width, height, this.compactAmount);
     this.confirmDialog.resize(width, height);
     this.saveLoadMenu.resize(width, height);
     this.settingsMenu.resize(width, height);
     this.historyView.resize(width, height);
     this.transitionShield.hitArea = new Rectangle(0, 0, width, height);
+  }
+
+  /**
+   * 对话框贴底并按当前文本自适应高度：短横屏下 30% 高度装不下说话人 + 多行正文，
+   * 固定高度会让 `minTop` 把正文推到快捷栏下方。显式高度覆盖时不参与自适应。
+   */
+  private layoutDialogue(): void {
+    const { width, height } = this.layout;
+    const dialogueWidth = this.dialogueWidthOverride ?? width;
+    this.dialogueBox.x = this.dialogueXOverride ?? 0;
+
+    const base = this.dialogueHeightOverride ?? this.dialogueHeight(height);
+    // 先按基准尺寸重排一次，让 blockHeight 按新宽度重算
+    this.dialogueBox.resize(dialogueWidth, base);
+    if (this.dialogueHeightOverride !== undefined) {
+      this.dialogueBox.y = this.dialogueYOverride ?? height - base;
+      return;
+    }
+
+    const maxHeight = Math.max(
+      base,
+      Math.round(height * MAX_DIALOGUE_HEIGHT_RATIO),
+    );
+    const desired = Math.min(
+      Math.max(base, this.dialogueBox.preferredHeight()),
+      maxHeight,
+    );
+    this.dialogueBox.y = this.dialogueYOverride ?? height - desired;
+    this.dialogueBox.resize(dialogueWidth, desired);
   }
 
   private dialogueHeight(virtualHeight: number): number {
@@ -379,11 +412,13 @@ export class UIManager {
 
   private readonly handleSay = (payload: EngineEvents['script:say']): void => {
     this.dialogueBox.show(payload.speaker, payload.text, payload.speed);
+    this.layoutDialogue();
     this.choicePanel.hide();
   };
 
   private readonly handleClear = (): void => {
     this.dialogueBox.clear();
+    this.layoutDialogue();
   };
 
   private readonly handleChoice = (
@@ -394,6 +429,7 @@ export class UIManager {
 
   private readonly handleEnd = (): void => {
     this.dialogueBox.clear();
+    this.layoutDialogue();
     this.choicePanel.hide();
   };
 
