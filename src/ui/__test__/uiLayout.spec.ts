@@ -1,6 +1,10 @@
 import {
+  computeCompactAmount,
   computeUiLayout,
   computeUiScale,
+  isPositiveFinite,
+  UI_COMPACT_FULL_WIDTH,
+  UI_COMPACT_WIDTH,
   UI_DESIGN_WIDTH,
   UI_MAX_SCALE,
   UI_MIN_SCALE,
@@ -72,5 +76,57 @@ describe('computeUiLayout', () => {
       width: UI_DESIGN_WIDTH,
       height: 720,
     });
+  });
+
+  it('should align the virtual width to the scene frame when provided', () => {
+    const layout = computeUiLayout(745, 264, { width: 469 });
+
+    expect(layout.scale).toBe(UI_MIN_SCALE);
+    expect(layout.width).toBeCloseTo(469 / UI_MIN_SCALE);
+    expect(layout.height).toBeCloseTo(264 / UI_MIN_SCALE);
+  });
+
+  it('should fall back to the viewport when the frame width is invalid', () => {
+    expect(computeUiLayout(745, 264, { width: 0 }).width).toBeCloseTo(
+      745 / UI_MIN_SCALE,
+    );
+    expect(
+      computeUiLayout(745, 264, { width: Number.POSITIVE_INFINITY }).width,
+    ).toBeCloseTo(745 / UI_MIN_SCALE);
+  });
+});
+
+describe('computeCompactAmount', () => {
+  it('should be fully compact at or below the compact width', () => {
+    expect(computeCompactAmount(UI_COMPACT_WIDTH)).toBe(1);
+    expect(computeCompactAmount(745)).toBe(1);
+  });
+
+  it('should be off at or above the full width', () => {
+    expect(computeCompactAmount(UI_COMPACT_FULL_WIDTH)).toBe(0);
+    expect(computeCompactAmount(1920)).toBe(0);
+  });
+
+  it('should interpolate between the two widths', () => {
+    expect(computeCompactAmount(896)).toBeCloseTo(0.5);
+  });
+
+  it('should fall back to desktop for an invalid width', () => {
+    expect(computeCompactAmount(0)).toBe(0);
+    expect(computeCompactAmount(Number.NaN)).toBe(0);
+  });
+});
+
+describe('isPositiveFinite', () => {
+  it('should accept finite positive sizes', () => {
+    expect(isPositiveFinite(1)).toBe(true);
+    expect(isPositiveFinite(0.5)).toBe(true);
+  });
+
+  it('should reject zero, negatives and non-finite values', () => {
+    expect(isPositiveFinite(0)).toBe(false);
+    expect(isPositiveFinite(-1)).toBe(false);
+    expect(isPositiveFinite(Number.NaN)).toBe(false);
+    expect(isPositiveFinite(Number.POSITIVE_INFINITY)).toBe(false);
   });
 });

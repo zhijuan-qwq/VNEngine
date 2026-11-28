@@ -4,6 +4,10 @@ export const UI_DESIGN_WIDTH = 1280;
 export const UI_MIN_SCALE = 0.8;
 /** 大屏最大物理缩放：避免 4K 屏 UI 过度放大 */
 export const UI_MAX_SCALE = 2;
+/** 视口宽度不高于此值时完全启用紧凑尺寸 */
+export const UI_COMPACT_WIDTH = 768;
+/** 视口宽度不低于此值时不启用紧凑尺寸，中间线性过渡 */
+export const UI_COMPACT_FULL_WIDTH = 1024;
 
 export interface UiLayout {
   /** UI 物理缩放（虚拟坐标 → CSS px） */
@@ -20,6 +24,11 @@ function positiveOr(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** 尺寸入参是否为正的有限数；NaN / Infinity / 非正数一律拒绝 */
+export function isPositiveFinite(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
 /**
  * UI 的物理缩放：只跟随视口宽度。
  *
@@ -34,13 +43,36 @@ export function computeUiScale(viewportWidth: number): number {
   );
 }
 
-/** 由视口尺寸计算 UI 的屏幕空间布局（未传入场景画面时的缺省行为） */
+/**
+ * 紧凑尺寸占比：1 为完全紧凑，0 为正常尺寸。
+ *
+ * 在 `UI_COMPACT_WIDTH`–`UI_COMPACT_FULL_WIDTH` 之间线性过渡，避免窄窗口
+ * 跨过缩放钳制点时快捷栏/选项突然跳变。桌面宽度保持 0。
+ */
+export function computeCompactAmount(viewportWidth: number): number {
+  const width = positiveOr(viewportWidth, UI_DESIGN_WIDTH);
+  if (width <= UI_COMPACT_WIDTH) return 1;
+  if (width >= UI_COMPACT_FULL_WIDTH) return 0;
+  return (
+    (UI_COMPACT_FULL_WIDTH - width) / (UI_COMPACT_FULL_WIDTH - UI_COMPACT_WIDTH)
+  );
+}
+
+/**
+ * 由视口尺寸计算 UI 的屏幕空间布局。
+ *
+ * 传入 `frame`（场景画面在屏幕上的矩形）时，虚拟宽度对齐画面、不覆盖
+ * 两侧黑边；未传入或无效时退回视口宽度。高度始终取视口高度。
+ */
 export function computeUiLayout(
   viewportWidth: number,
   viewportHeight: number,
+  frame?: { width: number },
 ): UiLayout {
-  const width = positiveOr(viewportWidth, UI_DESIGN_WIDTH);
+  const viewWidth = positiveOr(viewportWidth, UI_DESIGN_WIDTH);
   const height = positiveOr(viewportHeight, DESIGN_HEIGHT);
-  const scale = computeUiScale(width);
+  const width =
+    frame && isPositiveFinite(frame.width) ? frame.width : viewWidth;
+  const scale = computeUiScale(viewWidth);
   return { scale, width: width / scale, height: height / scale };
 }
