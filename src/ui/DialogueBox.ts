@@ -238,6 +238,11 @@ export class DialogueBox extends UIComponent {
     return this.opts.padding + speakerHeight + this.blockHeight;
   }
 
+  /** 保证文本完整落在对话框内的最小高度；无文本时为 0 */
+  public contentHeight(): number {
+    return this.parsed ? this.textBottomOffset() + this.opts.padding : 0;
+  }
+
   /**
    * 完整显示当前文本所需的对话框高度（含内边距、说话人与底部保留）。
    * 无文本时返回 0，由调用方回落到基准高度。
@@ -246,11 +251,7 @@ export class DialogueBox extends UIComponent {
     if (!this.parsed) {
       return 0;
     }
-    return (
-      this.opts.padding +
-      this.textBottomOffset() +
-      this.theme.sizes.dialogueBottomReserve
-    );
+    return this.contentHeight() + this.theme.sizes.dialogueBottomReserve;
   }
 
   public get currentText(): string {

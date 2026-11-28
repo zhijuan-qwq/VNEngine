@@ -95,6 +95,11 @@ describe('MenuBar', () => {
     expect(bar.buttons[0].y).toBe(40);
   });
 
+  it('should report no bottom reserve when positioned explicitly', () => {
+    expect(makeBar().bar.reserveHeight).toBe(26 + 12);
+    expect(makeBar({ y: 40 }).bar.reserveHeight).toBe(0);
+  });
+
   it('should follow the bottom right corner on resize', () => {
     const { bar } = makeBar();
     bar.resize(1000, 700);

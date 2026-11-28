@@ -148,7 +148,12 @@ export class UIManager {
       width: choice.width ?? options.width,
       height: choice.height ?? options.height,
       theme: themeFor(choice.theme),
-      onSelect: (label) => bus.emit('script:choice:selected', { label }),
+      onSelect: (label) => {
+        // 选择后立即收起选项并恢复被避让隐藏的对话框
+        this.choicePanel.hide();
+        this.layoutOverlays();
+        bus.emit('script:choice:selected', { label });
+      },
     });
 
     const size = { width: options.width, height: options.height };
@@ -351,55 +356,19 @@ export class UIManager {
   }
 
   private layoutOverlays(): void {
-    if (this.choicePanel.visible) {
-      this.layoutDialogueWithChoices(this.choicePanel.blockBottom());
-    } else {
-      this.layoutDialogue();
-    }
+    this.layoutDialogue(
+      this.choicePanel.visible ? this.choicePanel.blockBottom() : null,
+    );
   }
 
   /**
-   * 选项可见时让对话框避让：优先把对话框收在选项块下方；
-   * 放不下（短屏的 3 选项 + 多行文本）则隐藏对话框，避免盖住选项。
+   * 对话框贴底并按当前文本自适应高度；`choiceBottom` 非空时让对话框收在选项块下方。
+   *
+   * 短横屏下 30% 高度装不下说话人 + 多行正文，固定高度会让 `minTop` 把正文
+   * 推到快捷栏下方。选项可见时优先保留选项：放下不完整文本就隐藏对话框。
+   * 文本存在且没有选项时恢复可见（例如选择后或转屏）。
    */
-  private layoutDialogueWithChoices(choiceBottom: number): void {
-    const { width, height } = this.layout;
-    const dialogueWidth = this.dialogueWidthOverride ?? width;
-    this.dialogueBox.x = this.dialogueXOverride ?? 0;
-
-    const base = this.dialogueHeightOverride ?? this.dialogueHeight(height);
-    this.dialogueBox.resize(dialogueWidth, base);
-    const preferred = this.dialogueBox.preferredHeight();
-    if (preferred <= 0) {
-      return;
-    }
-    if (this.dialogueHeightOverride !== undefined) {
-      this.dialogueBox.y = this.dialogueYOverride ?? height - base;
-      return;
-    }
-
-    const topLimit = choiceBottom + this.theme.spacing.s8;
-    const available = height - topLimit;
-    const menuBarTop = height - this.menuBar.reserveHeight;
-    const fits =
-      available >= base &&
-      topLimit + this.dialogueBox.textBottomOffset() <= menuBarTop;
-    if (!fits) {
-      this.dialogueBox.hide();
-      return;
-    }
-
-    const desired = Math.max(base, Math.min(preferred, available));
-    this.dialogueBox.y = this.dialogueYOverride ?? height - desired;
-    this.dialogueBox.resize(dialogueWidth, desired);
-    this.dialogueBox.visible = true;
-  }
-
-  /**
-   * 对话框贴底并按当前文本自适应高度：短横屏下 30% 高度装不下说话人 + 多行正文，
-   * 固定高度会让 `minTop` 把正文推到快捷栏下方。显式高度覆盖时不参与自适应。
-   */
-  private layoutDialogue(): void {
+  private layoutDialogue(choiceBottom: number | null = null): void {
     const { width, height } = this.layout;
     const dialogueWidth = this.dialogueWidthOverride ?? width;
     this.dialogueBox.x = this.dialogueXOverride ?? 0;
@@ -407,21 +376,45 @@ export class UIManager {
     const base = this.dialogueHeightOverride ?? this.dialogueHeight(height);
     // 先按基准尺寸重排一次，让 blockHeight 按新宽度重算
     this.dialogueBox.resize(dialogueWidth, base);
-    if (this.dialogueHeightOverride !== undefined) {
+    const preferred = this.dialogueBox.preferredHeight();
+    if (preferred <= 0) {
+      // 无文本时只按基准尺寸贴底，保持当前显隐（clear 后应继续隐藏）
       this.dialogueBox.y = this.dialogueYOverride ?? height - base;
       return;
     }
 
-    const maxHeight = Math.max(
-      base,
-      Math.round(height * MAX_DIALOGUE_HEIGHT_RATIO),
-    );
-    const desired = Math.min(
-      Math.max(base, this.dialogueBox.preferredHeight()),
-      maxHeight,
-    );
-    this.dialogueBox.y = this.dialogueYOverride ?? height - desired;
+    const topLimit =
+      choiceBottom === null ? 0 : choiceBottom + this.theme.spacing.s8;
+    const available = height - topLimit;
+    const offset = this.dialogueBox.textBottomOffset();
+    const minHeight = this.dialogueBox.contentHeight();
+    const menuBarTop = height - this.menuBar.reserveHeight;
+
+    let desired: number;
+    if (this.dialogueHeightOverride !== undefined) {
+      desired = choiceBottom === null ? base : Math.min(base, available);
+    } else if (choiceBottom === null) {
+      const maxHeight = Math.max(
+        base,
+        Math.round(height * MAX_DIALOGUE_HEIGHT_RATIO),
+      );
+      desired = Math.min(Math.max(base, preferred), maxHeight);
+    } else {
+      desired = Math.min(Math.max(base, preferred), available);
+    }
+
+    const y = this.dialogueYOverride ?? height - desired;
+    if (
+      choiceBottom !== null &&
+      (desired < minHeight || y < topLimit || y + offset > menuBarTop)
+    ) {
+      this.dialogueBox.hide();
+      return;
+    }
+
+    this.dialogueBox.y = y;
     this.dialogueBox.resize(dialogueWidth, desired);
+    this.dialogueBox.visible = true;
   }
 
   private dialogueHeight(virtualHeight: number): number {

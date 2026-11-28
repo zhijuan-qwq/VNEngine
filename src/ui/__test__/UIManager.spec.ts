@@ -122,6 +122,92 @@ describe('UIManager', () => {
     expect(textBottom).toBeLessThanOrEqual(menuBarTop + 0.001);
   });
 
+  it('should keep a short dialogue below three choices when it fits', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(20),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(true);
+    expect(ui.choicePanel.buttons).toHaveLength(3);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(
+      ui.choicePanel.blockBottom() + 8 - 0.001,
+    );
+    expect(
+      ui.dialogueBox.y + ui.dialogueBox.textBottomOffset(),
+    ).toBeLessThanOrEqual(virtual.height - ui.menuBar.reserveHeight + 0.001);
+  });
+
+  it('should restore the dialogue after a choice is selected', () => {
+    const { bus, ui } = makeManager();
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+    expect(ui.dialogueBox.visible).toBe(false);
+
+    tapNode(ui.choicePanel.buttons[0]);
+
+    expect(ui.choicePanel.visible).toBe(false);
+    expect(ui.dialogueBox.visible).toBe(true);
+  });
+
+  it('should apply the choice avoidance to an explicit dialogue height', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(false);
+  });
+
   it('should hide the dialogue when choices leave no room above it', () => {
     const { bus, ui } = makeManager();
     ui.resize(

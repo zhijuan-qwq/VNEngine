@@ -311,13 +311,13 @@ export class MenuBar extends UIComponent {
   }
 
   private layout(): void {
-    const { itemHeight, gap, margin } = this.metrics;
+    const { gap, margin } = this.metrics;
     const totalWidth =
       this.itemWidths.reduce((sum, width) => sum + width, 0) +
       gap * Math.max(this.itemWidths.length - 1, 0);
     const startX =
       this.opts.x ?? Math.max(margin, this.opts.width - totalWidth - margin);
-    const startY = this.opts.y ?? this.opts.height - itemHeight - margin;
+    const startY = this.opts.y ?? this.opts.height - this.reserveHeight;
 
     let x = startX;
     for (let index = 0; index < this.menuButtons.length; index += 1) {
@@ -328,8 +328,14 @@ export class MenuBar extends UIComponent {
     }
   }
 
-  /** 快捷栏占用的底部高度（按钮高度 + 贴边留白） */
+  /**
+   * 快捷栏占用的底部高度（按钮高度 + 贴边留白）。
+   * 自定义 `y` 时不再贴底，返回 0，避免 UIManager 错误预留空间。
+   */
   get reserveHeight(): number {
+    if (this.opts.y !== undefined) {
+      return 0;
+    }
     return this.metrics.itemHeight + this.metrics.margin;
   }
 
