@@ -290,7 +290,7 @@ export class ConfirmDialog extends UIComponent {
   private clearButtons(): void {
     for (const button of this.buttonList) {
       button.removeAllListeners();
-      button.destroy();
+      button.destroy({ children: true });
     }
     this.buttonList = [];
   }

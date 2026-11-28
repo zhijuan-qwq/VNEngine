@@ -417,7 +417,7 @@ export class SaveLoadMenu extends UIComponent {
   private clearCards(): void {
     for (const child of this.scroll.content.children.slice()) {
       child.removeAllListeners();
-      child.destroy();
+      child.destroy({ children: true });
     }
     this.slotCards = [];
   }

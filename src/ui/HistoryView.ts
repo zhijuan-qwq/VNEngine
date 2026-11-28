@@ -198,7 +198,7 @@ export class HistoryView extends UIComponent {
 
   private clearCards(): void {
     for (const card of this.historyCards) {
-      card.node.destroy();
+      card.node.destroy({ children: true });
     }
     this.historyCards.length = 0;
   }
