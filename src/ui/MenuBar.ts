@@ -328,6 +328,11 @@ export class MenuBar extends UIComponent {
     }
   }
 
+  /** 快捷栏占用的底部高度（按钮高度 + 贴边留白） */
+  get reserveHeight(): number {
+    return this.metrics.itemHeight + this.metrics.margin;
+  }
+
   /** 测试/调试用：设置 / 存档 / 读档 / 历史 顺序的按钮 */
   get buttons(): Container[] {
     return this.menuButtons;

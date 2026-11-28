@@ -213,6 +213,17 @@ export class ChoicePanel extends UIComponent {
     });
   }
 
+  /** 选项块底边（虚拟坐标）；无选项时为 0，供对话框避让 */
+  public blockBottom(): number {
+    const count = this.currentChoices?.length ?? 0;
+    if (count === 0) {
+      return 0;
+    }
+    const { startY } = this.blockOrigin(count);
+    const { buttonHeight, buttonGap } = this.metrics;
+    return startY + count * buttonHeight + (count - 1) * buttonGap;
+  }
+
   get buttons(): Container[] {
     return this.choiceButtons;
   }
@@ -220,7 +231,7 @@ export class ChoicePanel extends UIComponent {
   private clearButtons(): void {
     for (const button of this.choiceButtons) {
       button.removeAllListeners();
-      button.destroy();
+      button.destroy({ children: true });
     }
     this.choiceButtons = [];
   }

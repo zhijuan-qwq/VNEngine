@@ -93,6 +93,59 @@ describe('UIManager', () => {
     expect(after).toEqual(before);
   });
 
+  it('should keep the dialogue above visible choices without overlap', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(70),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(true);
+    expect(ui.choicePanel.buttons).toHaveLength(2);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(
+      ui.choicePanel.blockBottom() + 8 - 0.001,
+    );
+    const textBottom = ui.dialogueBox.y + ui.dialogueBox.textBottomOffset();
+    const menuBarTop = virtual.height - ui.menuBar.reserveHeight;
+    expect(textBottom).toBeLessThanOrEqual(menuBarTop + 0.001);
+  });
+
+  it('should hide the dialogue when choices leave no room above it', () => {
+    const { bus, ui } = makeManager();
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(false);
+    expect(ui.choicePanel.buttons).toHaveLength(3);
+  });
+
   it('should align the ui width to the scene frame', () => {
     const { ui } = makeManager();
 

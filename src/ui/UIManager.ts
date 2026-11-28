@@ -340,14 +340,59 @@ export class UIManager {
       this.originY + this.frameY,
     );
 
-    this.layoutDialogue();
     this.choicePanel.resize(width, height, this.compactAmount);
     this.menuBar.resize(width, height, this.compactAmount);
+    this.layoutOverlays();
     this.confirmDialog.resize(width, height);
     this.saveLoadMenu.resize(width, height);
     this.settingsMenu.resize(width, height);
     this.historyView.resize(width, height);
     this.transitionShield.hitArea = new Rectangle(0, 0, width, height);
+  }
+
+  private layoutOverlays(): void {
+    if (this.choicePanel.visible) {
+      this.layoutDialogueWithChoices(this.choicePanel.blockBottom());
+    } else {
+      this.layoutDialogue();
+    }
+  }
+
+  /**
+   * 选项可见时让对话框避让：优先把对话框收在选项块下方；
+   * 放不下（短屏的 3 选项 + 多行文本）则隐藏对话框，避免盖住选项。
+   */
+  private layoutDialogueWithChoices(choiceBottom: number): void {
+    const { width, height } = this.layout;
+    const dialogueWidth = this.dialogueWidthOverride ?? width;
+    this.dialogueBox.x = this.dialogueXOverride ?? 0;
+
+    const base = this.dialogueHeightOverride ?? this.dialogueHeight(height);
+    this.dialogueBox.resize(dialogueWidth, base);
+    const preferred = this.dialogueBox.preferredHeight();
+    if (preferred <= 0) {
+      return;
+    }
+    if (this.dialogueHeightOverride !== undefined) {
+      this.dialogueBox.y = this.dialogueYOverride ?? height - base;
+      return;
+    }
+
+    const topLimit = choiceBottom + this.theme.spacing.s8;
+    const available = height - topLimit;
+    const menuBarTop = height - this.menuBar.reserveHeight;
+    const fits =
+      available >= base &&
+      topLimit + this.dialogueBox.textBottomOffset() <= menuBarTop;
+    if (!fits) {
+      this.dialogueBox.hide();
+      return;
+    }
+
+    const desired = Math.max(base, Math.min(preferred, available));
+    this.dialogueBox.y = this.dialogueYOverride ?? height - desired;
+    this.dialogueBox.resize(dialogueWidth, desired);
+    this.dialogueBox.visible = true;
   }
 
   /**
@@ -411,9 +456,9 @@ export class UIManager {
   }
 
   private readonly handleSay = (payload: EngineEvents['script:say']): void => {
+    this.choicePanel.hide();
     this.dialogueBox.show(payload.speaker, payload.text, payload.speed);
     this.layoutDialogue();
-    this.choicePanel.hide();
   };
 
   private readonly handleClear = (): void => {
@@ -425,12 +470,13 @@ export class UIManager {
     payload: EngineEvents['script:choice'],
   ): void => {
     this.choicePanel.show(payload.choices, payload.mode ?? 'adv');
+    this.layoutOverlays();
   };
 
   private readonly handleEnd = (): void => {
+    this.choicePanel.hide();
     this.dialogueBox.clear();
     this.layoutDialogue();
-    this.choicePanel.hide();
   };
 
   private readonly handleOpen = (payload: EngineEvents['ui:open']): void => {
