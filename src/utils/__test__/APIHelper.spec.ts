@@ -2,11 +2,13 @@ import {
   cancelFrame,
   createAudioContext,
   getDevicePixelRatio,
+  getDocumentSize,
   getElementById,
   getElementSize,
   getParentElement,
   getStorage,
   getViewportSize,
+  getVisualViewportSize,
   isFullscreen,
   isFullscreenSupported,
   matchesMediaQuery,
@@ -14,6 +16,7 @@ import {
   observeFullscreen,
   observeViewport,
   requestFrame,
+  scheduleFrame,
   setFullscreen,
 } from '../APIHelper';
 
@@ -210,6 +213,41 @@ describe('now', () => {
   });
 });
 
+describe('scheduleFrame', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('should defer to the next animation frame when available', () => {
+    const raf = vi.fn((_callback: FrameRequestCallback) => 9);
+    const cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', raf);
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    const callback = vi.fn();
+
+    const cancelScheduled = scheduleFrame(callback);
+    expect(raf).toHaveBeenCalledTimes(1);
+    expect(callback).not.toHaveBeenCalled();
+
+    raf.mock.calls[0][0](0);
+    expect(callback).toHaveBeenCalledOnce();
+
+    cancelScheduled();
+    expect(cancel).toHaveBeenCalledWith(9);
+  });
+
+  it('should run synchronously without requestAnimationFrame', () => {
+    vi.stubGlobal('requestAnimationFrame', undefined);
+    const callback = vi.fn();
+
+    const cancel = scheduleFrame(callback);
+
+    expect(callback).toHaveBeenCalledOnce();
+    expect(() => cancel()).not.toThrow();
+  });
+});
+
 describe('requestFrame / cancelFrame', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -402,6 +440,46 @@ describe('getViewportSize', () => {
     vi.stubGlobal('window', undefined);
 
     expect(getViewportSize()).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe('getDocumentSize', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('should return the documentElement client size', () => {
+    vi.stubGlobal('document', {
+      documentElement: { clientWidth: 1024, clientHeight: 768 },
+    });
+
+    expect(getDocumentSize()).toEqual({ width: 1024, height: 768 });
+  });
+
+  it('should return zeros when document is undefined', () => {
+    vi.stubGlobal('document', undefined);
+
+    expect(getDocumentSize()).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe('getVisualViewportSize', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('should return the visual viewport size', () => {
+    vi.stubGlobal('window', {
+      visualViewport: { width: 390, height: 844 },
+    });
+
+    expect(getVisualViewportSize()).toEqual({ width: 390, height: 844 });
+  });
+
+  it('should return zeros without a visual viewport', () => {
+    vi.stubGlobal('window', {});
+
+    expect(getVisualViewportSize()).toEqual({ width: 0, height: 0 });
   });
 });
 

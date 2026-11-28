@@ -84,14 +84,81 @@ describe('MenuBar', () => {
     const { bar } = makeBar();
     const last = bar.buttons[3];
     const lastWidth = (last.hitArea as unknown as { width: number }).width;
-    expect(last.x + lastWidth).toBeLessThanOrEqual(800 - 16);
-    // 快捷栏高 32、贴边留白 16：600 - 32 - 16
-    expect(bar.buttons[0].y).toBe(552);
+    expect(last.x + lastWidth).toBeLessThanOrEqual(800 - 12);
+    // 快捷栏高 26、贴边留白 12：600 - 26 - 12
+    expect(bar.buttons[0].y).toBe(562);
   });
 
   it('should honor an explicit position', () => {
     const { bar } = makeBar({ x: 30, y: 40 });
     expect(bar.buttons[0].x).toBe(30);
     expect(bar.buttons[0].y).toBe(40);
+  });
+
+  it('should report no bottom reserve when positioned explicitly', () => {
+    expect(makeBar().bar.reserveHeight).toBe(26 + 12);
+    expect(makeBar({ y: 40 }).bar.reserveHeight).toBe(0);
+  });
+
+  it('should follow the bottom right corner on resize', () => {
+    const { bar } = makeBar();
+    bar.resize(1000, 700);
+    const last = bar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(bar.buttons[0].y).toBe(662);
+    expect(last.x + lastWidth).toBeCloseTo(1000 - 12);
+  });
+
+  it('should clamp to the left margin on narrow screens', () => {
+    const { bar } = makeBar();
+    bar.resize(300, 900);
+    expect(bar.buttons[0].x).toBe(12);
+  });
+
+  it('should shrink the buttons in compact mode', () => {
+    const { bar } = makeBar();
+    const defaultWidth = (
+      bar.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+
+    bar.resize(800, 600, 1);
+
+    // 26*0.8=20.8→21；12*0.8=9.6→10
+    expect(bar.buttons[0].y).toBe(600 - 21 - 10);
+    const compactWidth = (
+      bar.buttons[0].hitArea as unknown as {
+        width: number;
+      }
+    ).width;
+    expect(compactWidth).toBeLessThan(defaultWidth);
+    const last = bar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(last.x + lastWidth).toBeCloseTo(800 - 10);
+  });
+
+  it('should restore the desktop size when compact turns off', () => {
+    const { bar } = makeBar();
+    bar.resize(800, 600, 1);
+
+    bar.resize(800, 600, 0);
+
+    expect(bar.buttons[0].y).toBe(562);
+  });
+
+  it('should interpolate sizes for a partial compact amount', () => {
+    const { bar } = makeBar();
+    bar.resize(900, 600, 0.484375);
+
+    // factor = 1 - 0.2*0.484375 ≈ 0.903；26*factor≈23，12*factor≈11
+    expect(bar.buttons[0].y).toBe(600 - 23 - 11);
+  });
+
+  it('should ignore invalid sizes and out-of-range compact amounts', () => {
+    const { bar } = makeBar();
+    bar.resize(800, 600, 1);
+    const before = bar.buttons[0].y;
+
+    bar.resize(Number.NaN, Number.POSITIVE_INFINITY);
+    expect(bar.buttons[0].y).toBe(before);
   });
 });

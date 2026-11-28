@@ -1,4 +1,5 @@
-import type { FederatedWheelEvent } from 'pixi.js';
+import { Container } from 'pixi.js';
+import type { FederatedPointerEvent, FederatedWheelEvent } from 'pixi.js';
 import { ScrollView } from '../controls/ScrollView';
 
 function makeView(contentHeight = 0): ScrollView {
@@ -13,6 +14,22 @@ function wheel(view: ScrollView, deltaY: number): void {
     deltaY,
     stopPropagation: vi.fn(),
   } as unknown as FederatedWheelEvent);
+}
+
+function pointer(
+  view: ScrollView,
+  type: string,
+  y: number,
+  target: unknown = view,
+): { stopPropagation: ReturnType<typeof vi.fn> } {
+  const event = {
+    target,
+    pointerId: 1,
+    global: { x: 0, y },
+    stopPropagation: vi.fn(),
+  };
+  view.emit(type, event as unknown as FederatedPointerEvent);
+  return event;
 }
 
 describe('ScrollView', () => {
@@ -66,6 +83,19 @@ describe('ScrollView', () => {
     expect(view.scrollTop).toBe(20);
   });
 
+  it('should resize the viewport and re-clamp the offset', () => {
+    const view = makeView(500);
+    view.setScroll(400);
+
+    view.resize(300, 200);
+    expect(view.maxScroll).toBe(300);
+    expect(view.scrollTop).toBe(300);
+
+    view.resize(300, 600);
+    expect(view.maxScroll).toBe(0);
+    expect(view.scrollTop).toBe(0);
+  });
+
   it('should ignore a non-finite content height', () => {
     const view = makeView(500);
     view.setContentHeight(Number.NaN);
@@ -95,5 +125,69 @@ describe('ScrollView', () => {
     const view = makeView(500);
     wheel(view, 0);
     expect(view.scrollTop).toBe(0);
+  });
+
+  it('should drag-scroll after the pointer moves past the threshold', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50);
+    const move = pointer(view, 'pointermove', 30);
+
+    expect(view.scrollTop).toBe(20);
+    expect(move.stopPropagation).toHaveBeenCalledOnce();
+
+    pointer(view, 'pointerup', 30);
+  });
+
+  it('should not scroll for a movement under the threshold', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 47);
+
+    expect(view.scrollTop).toBe(0);
+  });
+
+  it('should convert the drag distance through the parent scale', () => {
+    const view = makeView(500);
+    const parent = new Container();
+    parent.scale.set(0.8);
+    parent.addChild(view);
+
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 10);
+
+    // 屏幕位移 40 CSS px ÷ 0.8 = 50 虚拟 px
+    expect(view.scrollTop).toBe(50);
+  });
+
+  it('should slow the drag down when the ui is upscaled', () => {
+    const view = makeView(500);
+    const parent = new Container();
+    parent.scale.set(1.5);
+    parent.addChild(view);
+
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 10);
+
+    // 屏幕位移 40 CSS px ÷ 1.5 ≈ 26.67 虚拟 px
+    expect(view.scrollTop).toBeCloseTo(40 / 1.5);
+  });
+
+  it('should leave drags that start on a child to the child', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50, {});
+    pointer(view, 'pointermove', 20);
+
+    expect(view.scrollTop).toBe(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const view = makeView(500);
+    view.resize(300, 200);
+    view.setScroll(300);
+
+    view.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(view.maxScroll).toBe(300);
+    expect(view.scrollTop).toBe(300);
   });
 });

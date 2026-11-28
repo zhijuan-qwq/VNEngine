@@ -168,6 +168,26 @@ describe('createButton', () => {
     expect(onTap).toHaveBeenCalledOnce();
   });
 
+  it('should resize in place and keep the current state', () => {
+    const button = makeButton();
+    button.emit('pointerover', tapEvent());
+
+    button.setLayout(300, 60, 20);
+
+    expect((button.hitArea as unknown as { width: number }).width).toBe(300);
+    expect((button.hitArea as unknown as { height: number }).height).toBe(60);
+    expect((labelOf(button).style as { fontSize: number }).fontSize).toBe(20);
+    expect(button.state).toBe('hover');
+  });
+
+  it('should ignore invalid layout values', () => {
+    const button = makeButton();
+    button.setLayout(Number.NaN, Number.POSITIVE_INFINITY, -1);
+
+    expect((button.hitArea as unknown as { width: number }).width).toBe(200);
+    expect((button.hitArea as unknown as { height: number }).height).toBe(48);
+  });
+
   it('should stop tap propagation for enabled buttons', () => {
     const button = makeButton({ onTap: vi.fn() });
     const event = tapEvent();

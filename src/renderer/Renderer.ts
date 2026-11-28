@@ -1,7 +1,12 @@
 import { Container, Graphics } from 'pixi.js';
 import type { PointData } from 'pixi.js';
 import type EventBus from '@/core/EventBus';
-import type { IRenderer, RendererState, ScaleMode } from '@/types/engine';
+import type {
+  IRenderer,
+  RendererState,
+  ScaleMode,
+  SceneFrame,
+} from '@/types/engine';
 import type { EngineEvents } from '@/types/events';
 import BackgroundManager from './BackgroundManager';
 import CharacterRegistry from './CharacterRegistry';
@@ -16,7 +21,7 @@ import {
 import TweenEngine from './tween';
 
 export interface RendererOptions {
-  /** pixi 根容器（app.stage）；ScaleManager 直接作用于它 */
+  /** pixi 根容器（app.stage）；场景与屏幕空间 UI 都挂在它下面 */
   stage: Container;
   eventBus: EventBus<EngineEvents>;
   /** 资源访问面，ResourceManager 满足其结构 */
@@ -37,8 +42,14 @@ export class Renderer implements IRenderer {
   public readonly backgrounds: BackgroundManager;
   public readonly effects: EffectManager;
   private readonly size: Size;
+  /** pixi 根容器；整屏抓帧（含场景与 UI）以它为 target */
+  private readonly stage: Container;
+  /** 场景根：ScaleManager 的缩放/居中目标，只包含随画面缩放的内容 */
+  private readonly sceneRoot: Container;
   /** 固定逻辑尺寸的视口容器：遮罩不随 shake 移动，只由 ScaleManager 缩放 */
   private readonly viewport: Container;
+  /** 屏幕空间 UI 层：不受场景缩放与遮罩影响，渲染在场景之上 */
+  private readonly uiLayer: Container;
   private readonly unbinds: Array<() => void> = [];
   private destroyed = false;
 
@@ -46,6 +57,11 @@ export class Renderer implements IRenderer {
     this.size = { width: options.width, height: options.height };
     this.tweens = new TweenEngine();
     this.layers = new LayerStack();
+    this.stage = options.stage;
+
+    this.sceneRoot = new Container();
+    this.sceneRoot.label = 'scene-root';
+    options.stage.addChild(this.sceneRoot);
 
     // 画布可能大于逻辑画面（letterbox），必须在逻辑边界裁掉立绘/背景溢出，
     // 否则腿部和 cover 溢出的背景会露到黑边里；遮罩放在 viewport 上而非 layers 上，
@@ -59,9 +75,14 @@ export class Renderer implements IRenderer {
     mask.eventMode = 'none';
     this.viewport.addChild(this.layers, mask);
     this.viewport.mask = mask;
-    options.stage.addChild(this.viewport);
+    this.sceneRoot.addChild(this.viewport);
 
-    this.scale = new ScaleManager(options.stage, options.scaleMode, this.size);
+    this.scale = new ScaleManager(this.sceneRoot, options.scaleMode, this.size);
+
+    // UI 不参与场景缩放：单独一层，挂在 stage 上、位于 sceneRoot 之后
+    this.uiLayer = new Container();
+    this.uiLayer.label = 'ui-layer';
+    options.stage.addChild(this.uiLayer);
 
     this.backgrounds = new BackgroundManager({
       parent: this.layers.addLayer('bg', LAYER_Z_INDEX.bg),
@@ -84,9 +105,6 @@ export class Renderer implements IRenderer {
       tweens: this.tweens,
       size: this.size,
     });
-    // UI 图层由渲染器预建，供后续 UI 子系统挂载
-    this.layers.addLayer('ui', LAYER_Z_INDEX.ui);
-
     this.bind(options.eventBus);
   }
 
@@ -112,12 +130,25 @@ export class Renderer implements IRenderer {
     this.scale.update(containerSize);
   }
 
-  public getUILayer(): Container | null {
-    return this.layers.getLayer('ui');
+  public getUILayer(): Container {
+    return this.uiLayer;
   }
 
   public getSceneRoot(): Container {
     return this.layers;
+  }
+
+  public getCaptureTarget(): Container {
+    return this.stage;
+  }
+
+  public getSceneFrame(): SceneFrame {
+    return {
+      x: this.sceneRoot.position.x,
+      y: this.sceneRoot.position.y,
+      width: this.size.width * this.sceneRoot.scale.x,
+      height: this.size.height * this.sceneRoot.scale.y,
+    };
   }
 
   public toLogical(point: PointData): { x: number; y: number } {
@@ -135,7 +166,8 @@ export class Renderer implements IRenderer {
     this.tweens.cancelAll();
     // 先解绑遮罩再销毁，避免 mask effect 引用已销毁的 Graphics
     this.viewport.mask = null;
-    this.viewport.destroy({ children: true });
+    this.sceneRoot.destroy({ children: true });
+    this.uiLayer.destroy({ children: true });
   }
 
   private bind(eventBus: EventBus<EngineEvents>): void {

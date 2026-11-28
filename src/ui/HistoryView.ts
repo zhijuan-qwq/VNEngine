@@ -7,6 +7,7 @@ import { createPanelBox } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 import { parseRichText } from './richtext';
+import { isPositiveFinite } from './uiLayout';
 
 export interface HistoryViewOptions {
   width: number;
@@ -47,7 +48,7 @@ export class HistoryView extends UIComponent {
   private readonly theme: UITheme;
   private readonly page: PagePanel;
   private readonly scroll: ScrollView;
-  private readonly scrollWidth: number;
+  private scrollWidth: number;
   private readonly historyCards: HistoryCard[] = [];
 
   constructor(options: HistoryViewOptions) {
@@ -95,6 +96,21 @@ export class HistoryView extends UIComponent {
   public override show(): void {
     this.rebuild();
     super.show();
+  }
+
+  /** 视口变化时重排页面与滚动区；可见时按新宽度重建卡片 */
+  public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
+    this.opts.width = width;
+    this.opts.height = height;
+    this.page.relayout(width, height);
+    this.scrollWidth = this.page.contentWidth;
+    this.scroll.resize(this.scrollWidth, this.page.contentHeight);
+    if (this.visible) {
+      this.rebuild();
+    }
   }
 
   private rebuild(): void {
@@ -182,7 +198,7 @@ export class HistoryView extends UIComponent {
 
   private clearCards(): void {
     for (const card of this.historyCards) {
-      card.node.destroy();
+      card.node.destroy({ children: true });
     }
     this.historyCards.length = 0;
   }

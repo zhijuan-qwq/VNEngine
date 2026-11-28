@@ -65,28 +65,31 @@ function createRenderer(overrides: Partial<RendererOptions> = {}): Harness {
 
 describe('Renderer', () => {
   describe('layers', () => {
-    it('should mount the layer stack on the stage and pre-create the layers', () => {
+    it('should mount the scene and UI roots separately on the stage', () => {
       const { stage, renderer, layer } = createRenderer();
 
-      expect(stage.children).toHaveLength(1);
-      const viewport = stage.children[0] as Container;
+      expect(stage.children).toHaveLength(2);
+      const [sceneRoot, uiLayer] = stage.children as Container[];
+      expect(sceneRoot.label).toBe('scene-root');
+      expect(uiLayer.label).toBe('ui-layer');
+      const viewport = sceneRoot.children[0] as Container;
       expect(viewport.label).toBe('viewport');
       expect(viewport.children).toContain(renderer.layers);
+      expect(renderer.getUILayer()).toBe(uiLayer);
       expect(renderer.layers.children.map((child) => child.label)).toEqual([
         'bg',
         'chara',
         'effect',
-        'ui',
       ]);
       expect(layer('bg').zIndex).toBe(LAYER_Z_INDEX.bg);
       expect(layer('chara').zIndex).toBe(LAYER_Z_INDEX.chara);
       expect(layer('effect').zIndex).toBe(LAYER_Z_INDEX.effect);
-      expect(layer('ui').zIndex).toBe(LAYER_Z_INDEX.ui);
     });
 
     it('should clip the scene to the logical frame', () => {
       const { stage } = createRenderer();
-      const viewport = stage.children[0] as Container;
+      const sceneRoot = stage.children[0] as Container;
+      const viewport = sceneRoot.children[0] as Container;
       const mask = viewport.mask as Graphics;
 
       expect(mask).toBeInstanceOf(Graphics);
@@ -98,16 +101,27 @@ describe('Renderer', () => {
       });
     });
 
-    it('should expose the scene root for captures', () => {
+    it('should expose the scene root without the UI layer', () => {
       const { renderer, stage } = createRenderer();
 
       expect(renderer.getSceneRoot()).toBe(renderer.layers);
-      expect(renderer.getSceneRoot().parent).toBe(stage.children[0]);
-      // 场景根包含 UI 图层，截图即“所见即所得”
-      expect(renderer.getSceneRoot().children).toContain(renderer.getUILayer());
+      const sceneRoot = stage.children[0] as Container;
+      expect(renderer.getSceneRoot().parent).toBe(sceneRoot.children[0]);
+      expect(renderer.getSceneRoot().children).not.toContain(
+        renderer.getUILayer(),
+      );
     });
 
-    it('should resize through the ScaleManager', () => {
+    it('should capture from the full stage including the UI layer', () => {
+      const { renderer, stage } = createRenderer();
+
+      expect(renderer.getCaptureTarget()).toBe(stage);
+      expect(renderer.getCaptureTarget().children).toContain(
+        renderer.getUILayer(),
+      );
+    });
+
+    it('should resize the scene root without transforming the stage', () => {
       const { renderer, stage } = createRenderer({
         width: 400,
         height: 300,
@@ -116,8 +130,28 @@ describe('Renderer', () => {
 
       renderer.resize({ width: 800, height: 600 });
 
-      expect(stage.scale.x).toBe(2);
+      const sceneRoot = stage.children[0] as Container;
+      expect(sceneRoot.scale.x).toBe(2);
+      expect(sceneRoot.position.x).toBe(0);
+      expect(stage.scale.x).toBe(1);
       expect(stage.position.x).toBe(0);
+    });
+
+    it('should report the letterbox scene frame on screen', () => {
+      const { renderer } = createRenderer({
+        width: 640,
+        height: 360,
+        scaleMode: 'fit',
+      });
+
+      renderer.resize({ width: 745, height: 264 });
+
+      const scale = 264 / 360;
+      const frame = renderer.getSceneFrame();
+      expect(frame.width).toBeCloseTo(640 * scale);
+      expect(frame.height).toBeCloseTo(264);
+      expect(frame.x).toBeCloseTo((745 - 640 * scale) / 2);
+      expect(frame.y).toBeCloseTo(0);
     });
   });
 

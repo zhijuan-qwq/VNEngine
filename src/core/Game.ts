@@ -15,14 +15,17 @@ import SaveManager from '@/save/SaveManager';
 import { LocalStorageProvider } from '@/save/SaveStorage';
 import {
   getDevicePixelRatio,
+  getDocumentSize,
   getElementById,
   getElementSize,
   getParentElement,
   getStorage,
   getViewportSize,
+  getVisualViewportSize,
   isFullscreen,
   observeFullscreen,
   observeViewport,
+  scheduleFrame,
   setFullscreen,
 } from '@/utils/APIHelper';
 import type { EngineEvents } from '@/types/events';
@@ -80,7 +83,7 @@ const defaultFactories: GameFactories = {
     ),
   createInput: (engine, config) =>
     new InputManager(engine.eventBus, {
-      // 命中层使用逻辑分辨率：画布尺寸随视口变化，命中区域始终覆盖整个逻辑画面
+      // 初始尺寸；responsive 模式下随后由 UIManager.resize 的虚拟尺寸覆盖
       width: config.width,
       height: config.height,
       toLogical: (point) => engine.renderer.toLogical(point),
@@ -102,13 +105,14 @@ const defaultFactories: GameFactories = {
         onSave: (slot, thumbnail) => engine.saveGame(slot, thumbnail),
         onLoad: (slot) => engine.loadGame(slot),
       },
-      // 打开存档页前由 UIManager 调用；失败时返回空串，卡片降级为无图
+      // 打开存档页前由 UIManager 调用；失败时返回空串，卡片降级为无图。
+      // UI 已是屏幕空间，必须从整屏抓帧才能保留对话框与快捷栏
       captureThumbnail: () =>
         captureThumbnail(
           engine.app,
-          engine.renderer.getSceneRoot(),
-          config.width,
-          config.height,
+          engine.renderer.getCaptureTarget(),
+          engine.app.screen.width,
+          engine.app.screen.height,
         ),
     }),
   createSave: () => new SaveManager({ storage: new LocalStorageProvider() }),
@@ -149,6 +153,10 @@ class Game {
   private lastViewport = { width: 0, height: 0, dpr: 0 };
   /** 解除 fullscreenchange 订阅；未初始化/已销毁时为 null */
   private fullscreenCleanup: (() => void) | null = null;
+  /** 取消待执行的视口应用帧；合并同一帧内的多次 resize 事件 */
+  private viewportFrame: (() => void) | null = null;
+  /** 是否已排入一帧；无 rAF 环境会同步执行，不能只靠取消句柄判重 */
+  private viewportScheduled = false;
   /** app 是否已创建且尚未销毁；init 失败后 destroy 也要释放画布 */
   private appLive = false;
 
@@ -171,6 +179,8 @@ class Game {
     if (!isFullscreen() && this.settings.get().fullscreen) {
       this.settings.onChange({ fullscreen: false });
     }
+    // 部分平台进入/退出全屏不一定派发 resize；强制在下一帧重测一次
+    this.scheduleViewportApply();
   };
 
   constructor(factories: Partial<GameFactories> = {}) {
@@ -226,11 +236,19 @@ class Game {
     this.audio = this.factories.createAudio(this.engine);
     this.save = this.factories.createSave(this.engine);
 
-    // UI 挂到渲染器预建的 ui 图层，并把命中层交给输入子系统
+    // UI 挂到渲染器的屏幕空间层，并把命中层交给输入子系统
     this.ui = this.factories.createUI(this.engine, config);
     if (this.ui) {
-      this.renderer.getUILayer()?.addChild(this.ui.root);
+      this.renderer.getUILayer().addChild(this.ui.root);
       this.input?.setUIRoot(this.ui.root);
+      // UI 晚于 startViewport 创建，用上次测得的尺寸补一次布局，
+      // 否则 lastViewport 去重会让 UI 永远停在构造尺寸
+      if (responsive && this.lastViewport.width > 0) {
+        this.syncUILayout({
+          width: this.lastViewport.width,
+          height: this.lastViewport.height,
+        });
+      }
     }
 
     this.script = new ScriptEngine(this.engine, this.variableStore);
@@ -369,8 +387,19 @@ class Game {
     this.applyViewport();
     this.viewportCleanup = observeViewport(
       getParentElement(this.app.canvas),
-      () => this.applyViewport(),
+      () => this.scheduleViewportApply(),
     );
+  }
+
+  /** 合并同一帧内的多次视口事件，最多应用一次 */
+  private scheduleViewportApply(): void {
+    if (!this.viewportActive || this.viewportScheduled) return;
+    this.viewportScheduled = true;
+    this.viewportFrame = scheduleFrame(() => {
+      this.viewportScheduled = false;
+      this.viewportFrame = null;
+      this.applyViewport();
+    });
   }
 
   /** 画布铺满宿主；逻辑分辨率不变，由 ScaleManager 负责缩放/居中 */
@@ -391,24 +420,51 @@ class Game {
 
     this.app.renderer.resize(size.width, size.height, dpr);
     this.renderer.resize(size);
+    this.syncUILayout(size);
     // 应用成功后才记录，避免 resize 抛错后被误判为已处理
     this.lastViewport = { width: size.width, height: size.height, dpr };
   }
 
+  /** UI 屏幕空间布局与命中层同帧更新；UI 未创建时为空操作 */
+  private syncUILayout(size: { width: number; height: number }): void {
+    if (!this.ui) return;
+    const virtual = this.ui.resize(size, this.renderer.getSceneFrame());
+    this.input?.setSize(virtual.width, virtual.height);
+  }
+
   /**
-   * 优先测量 canvas 宿主；宿主存在但尺寸为 0（隐藏）时跳过，
-   * 只有完全无宿主（embedder 的游离 canvas）才退回窗口尺寸。
+   * 依次测量：canvas 宿主 → documentElement → visualViewport → 窗口。
+   * 移动端宿主依赖 `100dvh`，全屏切换瞬间可能暂时为 0，需要后退兜底。
    */
   private measureViewport(): { width: number; height: number } | null {
     const host = getParentElement(this.app.canvas);
-    if (host) return getElementSize(host);
+    const hostSize = host ? getElementSize(host) : null;
+    const size =
+      hostSize ??
+      this.firstMeasured([
+        getDocumentSize,
+        getVisualViewportSize,
+        getViewportSize,
+      ]);
+    if (!size) return null;
+    return { width: Math.round(size.width), height: Math.round(size.height) };
+  }
 
-    const viewport = getViewportSize();
-    return viewport.width > 0 && viewport.height > 0 ? viewport : null;
+  private firstMeasured(
+    candidates: Array<() => { width: number; height: number }>,
+  ): { width: number; height: number } | null {
+    for (const candidate of candidates) {
+      const size = candidate();
+      if (size.width > 0 && size.height > 0) return size;
+    }
+    return null;
   }
 
   private stopViewport(): void {
     this.viewportActive = false;
+    this.viewportScheduled = false;
+    this.viewportFrame?.();
+    this.viewportFrame = null;
     this.viewportCleanup?.();
     this.viewportCleanup = null;
     this.lastViewport = { width: 0, height: 0, dpr: 0 };

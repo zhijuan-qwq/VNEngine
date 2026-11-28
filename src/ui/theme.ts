@@ -365,8 +365,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     confirmMaxWidth: 560,
     confirmHeight: 220,
     dialogueHeightRatio: 0.3,
-    choiceWidthRatio: 0.72,
-    choiceMaxWidth: 560,
+    choiceWidthRatio: 0.64,
+    choiceMaxWidth: 500,
     choiceHeight: 52,
     choiceGap: 24,
     rowHeight: 56,
@@ -378,8 +378,8 @@ export const DEFAULT_UI_THEME: UITheme = {
     toggleHeight: 32,
     scrollStep: 40,
     dialogueBottomReserve: 80,
-    quickBarHeight: 32,
-    quickBarIcon: 14,
+    quickBarHeight: 26,
+    quickBarIcon: 12,
   },
 };
 

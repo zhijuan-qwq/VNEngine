@@ -51,6 +51,22 @@ export function getViewportSize(): ViewportSize {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
+/** 文档根视口（CSS px）；无 `document` 时返回全零，供宿主尺寸异常时兜底 */
+export function getDocumentSize(): ViewportSize {
+  if (typeof document === 'undefined') return { width: 0, height: 0 };
+  const root = document.documentElement;
+  if (!root) return { width: 0, height: 0 };
+  return { width: root.clientWidth, height: root.clientHeight };
+}
+
+/** 可视视口（CSS px，兼容缩放）；不可用时返回全零 */
+export function getVisualViewportSize(): ViewportSize {
+  if (typeof window === 'undefined') return { width: 0, height: 0 };
+  const visual = window.visualViewport;
+  if (!visual) return { width: 0, height: 0 };
+  return { width: visual.width, height: visual.height };
+}
+
 /** 取元素的父节点；非 DOM 节点或无父节点时返回 null */
 export function getParentElement(element: unknown): HTMLElement | null {
   if (!element || typeof element !== 'object') return null;
@@ -197,6 +213,19 @@ export function requestFrame(callback: FrameRequestCallback): number {
 export function cancelFrame(handle: number): void {
   if (typeof cancelAnimationFrame === 'undefined') return;
   cancelAnimationFrame(handle);
+}
+
+/**
+ * 下一帧执行一次。无 rAF 的环境（node 测试）同步执行并返回空取消，
+ * 与 `requestFrame` 的“无 rAF 抛错”不同：事件的合并逻辑在无帧环境下也要能跑。
+ */
+export function scheduleFrame(callback: FrameRequestCallback): () => void {
+  if (typeof requestAnimationFrame === 'undefined') {
+    callback(now());
+    return () => {};
+  }
+  const handle = requestAnimationFrame(callback);
+  return () => cancelAnimationFrame(handle);
 }
 
 /** 是否处于全屏；无 `document` 时视为否 */

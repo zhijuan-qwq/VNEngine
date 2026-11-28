@@ -4,12 +4,12 @@ import LayerStack, { LAYER_Z_INDEX } from '../LayerStack';
 describe('LayerStack', () => {
   it('should add layers ordered by zIndex', () => {
     const stack = new LayerStack();
-    const ui = stack.addLayer('ui', LAYER_Z_INDEX.ui);
+    const fore = stack.addLayer('fore', LAYER_Z_INDEX.fore);
     const bg = stack.addLayer('bg', LAYER_Z_INDEX.bg);
 
-    expect(stack.children.map((child) => child.label)).toEqual(['bg', 'ui']);
+    expect(stack.children.map((child) => child.label)).toEqual(['bg', 'fore']);
     expect(bg).toBe(stack.getLayer('bg'));
-    expect(ui).toBe(stack.getLayer('ui'));
+    expect(fore).toBe(stack.getLayer('fore'));
     expect(stack.getLayer('missing')).toBeNull();
   });
 
@@ -19,7 +19,6 @@ describe('LayerStack', () => {
     expect(LAYER_Z_INDEX.middle).toBeLessThan(LAYER_Z_INDEX.chara);
     expect(LAYER_Z_INDEX.chara).toBeLessThan(LAYER_Z_INDEX.fore);
     expect(LAYER_Z_INDEX.fore).toBeLessThan(LAYER_Z_INDEX.effect);
-    expect(LAYER_Z_INDEX.effect).toBeLessThan(LAYER_Z_INDEX.ui);
   });
 
   it('should return the existing layer and update its zIndex on a repeated add', () => {
@@ -35,13 +34,16 @@ describe('LayerStack', () => {
   it('should reorder layers when reorderLayer is called', () => {
     const stack = new LayerStack();
     const bg = stack.addLayer('bg', 0);
-    const ui = stack.addLayer('ui', 600);
+    const effect = stack.addLayer('effect', 500);
 
     stack.reorderLayer('bg', 700);
 
     expect(bg.zIndex).toBe(700);
-    expect(stack.children.map((child) => child.label)).toEqual(['ui', 'bg']);
-    expect(ui.zIndex).toBe(600);
+    expect(stack.children.map((child) => child.label)).toEqual([
+      'effect',
+      'bg',
+    ]);
+    expect(effect.zIndex).toBe(500);
   });
 
   it('should ignore reorderLayer and removeLayer for unknown ids', () => {

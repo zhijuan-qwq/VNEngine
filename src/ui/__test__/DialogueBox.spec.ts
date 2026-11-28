@@ -155,6 +155,41 @@ describe('DialogueBox', () => {
     expect(box.children.some((child) => child instanceof Sprite)).toBe(false);
   });
 
+  it('should resize the backdrop without losing the current text', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+    box.complete();
+
+    box.resize(1000, 240);
+
+    const bg = box.children[0] as unknown as Sprite;
+    expect(bg.width).toBe(1000);
+    expect(bg.height).toBe(240);
+    expect(box.currentText).toBe('Hello world');
+  });
+
+  it('should report the height needed by the current text', () => {
+    const box = makeBox();
+    expect(box.preferredHeight()).toBe(0);
+
+    box.show('Hero', 'Hello world', 100);
+    expect(box.preferredHeight()).toBeGreaterThan(0);
+
+    box.clear();
+    expect(box.preferredHeight()).toBe(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const box = makeBox();
+    box.show('Hero', 'Hello world', 100);
+
+    box.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    const bg = box.children[0] as unknown as Sprite;
+    expect(bg.width).toBe(600);
+    expect(bg.height).toBe(180);
+  });
+
   it('should left-align subtitle text with a small margin', () => {
     const box = makeBox();
     box.show('Hero', 'Hello world', 100);
@@ -222,6 +257,25 @@ describe('DialogueBox', () => {
       (child) => (child as { text?: string }).text === 'Resize me',
     ) as unknown as { style: { fontSize?: number } };
     expect(body.style.fontSize).toBe(40);
+  });
+
+  it('should keep an explicit fontSize over the setting broadcast', () => {
+    const bus = new EventBus<EngineEvents>();
+    const box = new DialogueBox({
+      width: 600,
+      height: 180,
+      fontSize: 22,
+      eventBus: bus,
+    });
+    box.show('Hero', 'Fixed size', 1);
+    box.complete();
+
+    bus.emit('game:settings', { key: 'fontSize', value: 40 });
+
+    const speaker = box.children.find(
+      (child) => (child as { text?: string }).text === 'Hero',
+    ) as unknown as { style: { fontSize?: number } };
+    expect(speaker.style.fontSize).toBe(22);
   });
 
   it('should ignore non-numeric textSpeed and fontSize settings', () => {

@@ -47,7 +47,7 @@ function makeTicker() {
   };
 }
 
-function makeRenderer(uiLayer: Container | null = null): IRenderer {
+function makeRenderer(uiLayer: Container = new Container()): IRenderer {
   return {
     update: vi.fn(),
     getState: vi.fn(),
@@ -55,6 +55,8 @@ function makeRenderer(uiLayer: Container | null = null): IRenderer {
     resize: vi.fn(),
     getUILayer: vi.fn(() => uiLayer),
     getSceneRoot: vi.fn(() => new Container()),
+    getCaptureTarget: vi.fn(() => new Container()),
+    getSceneFrame: vi.fn(() => ({ x: 0, y: 0, width: 0, height: 0 })),
     toLogical: vi.fn((point: { x: number; y: number }) => point),
     destroy: vi.fn(),
   };
@@ -65,6 +67,10 @@ function makeFakeUI(): UIManager {
     root: new Container(),
     update: vi.fn(),
     isBusy: vi.fn(() => false),
+    resize: vi.fn((size: { width: number; height: number }) => ({
+      width: size.width,
+      height: size.height,
+    })),
     destroy: vi.fn(),
   } as unknown as UIManager;
 }
@@ -72,13 +78,16 @@ function makeFakeUI(): UIManager {
 function makeFakeInput(): {
   input: IInputManager;
   setUIRoot: ReturnType<typeof vi.fn>;
+  setSize: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
 } {
   const setUIRoot = vi.fn();
+  const setSize = vi.fn();
   const destroy = vi.fn();
   return {
-    input: { setUIRoot, destroy } as unknown as IInputManager,
+    input: { setUIRoot, setSize, destroy } as unknown as IInputManager,
     setUIRoot,
+    setSize,
     destroy,
   };
 }
@@ -129,7 +138,7 @@ function makeHarness(options: {
     renderer: { resize: appResize },
     destroy: appDestroy,
   };
-  const renderer = makeRenderer(options.uiLayer ?? null);
+  const renderer = makeRenderer(options.uiLayer ?? new Container());
   const audio = makeAudio();
   const factories: Partial<GameFactories> = {
     createApplication: async () => app as unknown as Application,
@@ -248,7 +257,7 @@ describe('Game', () => {
       // 缺省 createUI → 走真实工厂以验证 settingsMenu.controller 接线
       const game = new Game({
         createApplication: async () => app as unknown as Application,
-        createRenderer: () => makeRenderer(null),
+        createRenderer: () => makeRenderer(),
         createAudio: () => makeAudio(),
         createInput: () => null,
         createSave: () => null,
@@ -311,7 +320,7 @@ describe('Game', () => {
       const app = { stage: {}, canvas: {}, ticker, destroy: vi.fn() };
       const game = new Game({
         createApplication: async () => app as unknown as Application,
-        createRenderer: () => makeRenderer(null),
+        createRenderer: () => makeRenderer(),
         createAudio: () => makeAudio(),
         createInput: () => null,
         createUI: () => null,
@@ -650,7 +659,7 @@ describe('Game', () => {
       const { ticker } = makeTicker();
       const appResize = vi.fn();
       const order: string[] = [];
-      const renderer = makeRenderer(null);
+      const renderer = makeRenderer();
       let inputConfig: GameConfig | undefined;
       const config: GameConfig = {
         width: 1280,
@@ -702,6 +711,80 @@ describe('Game', () => {
       });
       expect(order).toEqual(['resize', 'input']);
       expect(inputConfig).toBe(config);
+    });
+
+    it('should lay out the ui with the first measured viewport', async () => {
+      const ui = makeFakeUI();
+      const { input, setSize } = makeFakeInput();
+      const h = makeHarness({ ui, input });
+      vi.spyOn(APIHelper, 'getViewportSize').mockReturnValue({
+        width: 745,
+        height: 264,
+      });
+
+      await h.game.init(h.config);
+
+      expect(ui.resize).toHaveBeenCalledTimes(1);
+      expect(ui.resize).toHaveBeenCalledWith(
+        { width: 745, height: 264 },
+        { x: 0, y: 0, width: 0, height: 0 },
+      );
+      expect(setSize).toHaveBeenCalledWith(745, 264);
+    });
+
+    it('should align the ui with the scene frame', async () => {
+      const ui = makeFakeUI();
+      const h = makeHarness({ ui });
+      const frame = { x: 138, y: 0, width: 469, height: 264 };
+      vi.spyOn(h.renderer, 'getSceneFrame').mockReturnValue(frame);
+      vi.spyOn(APIHelper, 'getViewportSize').mockReturnValue({
+        width: 745,
+        height: 264,
+      });
+
+      await h.game.init(h.config);
+
+      expect(ui.resize).toHaveBeenCalledWith(
+        { width: 745, height: 264 },
+        frame,
+      );
+    });
+
+    it('should relayout the ui when the viewport changes', async () => {
+      const ui = makeFakeUI();
+      const { input, setSize } = makeFakeInput();
+      const h = makeHarness({ ui, input });
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeViewport').mockImplementation(
+        (_target, onChange) => {
+          notify = onChange;
+          return () => {};
+        },
+      );
+
+      await h.game.init(h.config);
+      expect(ui.resize).toHaveBeenCalledTimes(1);
+
+      size.mockReturnValue({ width: 745, height: 264 });
+      notify();
+
+      expect(ui.resize).toHaveBeenLastCalledWith(
+        { width: 745, height: 264 },
+        { x: 0, y: 0, width: 0, height: 0 },
+      );
+      expect(setSize).toHaveBeenLastCalledWith(745, 264);
+    });
+
+    it('should not lay out the ui when responsive is disabled', async () => {
+      const ui = makeFakeUI();
+      const h = makeHarness({ ui });
+
+      await h.game.init({ ...h.config, responsive: false });
+
+      expect(ui.resize).not.toHaveBeenCalled();
     });
 
     it('should fall back to the window size when the canvas has no host', async () => {
@@ -761,18 +844,86 @@ describe('Game', () => {
       expect(h.renderer.resize).not.toHaveBeenCalled();
     });
 
-    it('should skip when the host exists but has zero size', async () => {
+    it('should fall back to the document size when the host reports zero', async () => {
       const h = makeHarness({});
       vi.spyOn(APIHelper, 'getParentElement').mockReturnValue(
         {} as HTMLElement,
       );
       vi.spyOn(APIHelper, 'getElementSize').mockReturnValue(null);
-      const windowSize = vi.spyOn(APIHelper, 'getViewportSize');
+      vi.spyOn(APIHelper, 'getDocumentSize').mockReturnValue({
+        width: 1000,
+        height: 500,
+      });
 
       await h.game.init(h.config);
 
-      expect(windowSize).not.toHaveBeenCalled();
-      expect(h.app.renderer.resize).not.toHaveBeenCalled();
+      expect(h.app.renderer.resize).toHaveBeenCalledWith(1000, 500, 1);
+    });
+
+    it('should coalesce viewport events into one frame', async () => {
+      const h = makeHarness({});
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeViewport').mockImplementation(
+        (_target, onChange) => {
+          notify = onChange;
+          return () => {};
+        },
+      );
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal(
+        'requestAnimationFrame',
+        (callback: FrameRequestCallback) => {
+          frames.push(callback);
+          return frames.length;
+        },
+      );
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+      try {
+        await h.game.init(h.config);
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+        notify();
+        size.mockReturnValue({ width: 1200, height: 600 });
+        notify();
+
+        expect(frames).toHaveLength(1);
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+        frames[0](0);
+
+        expect(h.app.renderer.resize).toHaveBeenCalledTimes(2);
+        expect(h.app.renderer.resize).toHaveBeenLastCalledWith(1200, 600, 1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('should remeasure the viewport after fullscreen changes', async () => {
+      const h = makeHarness({});
+      const size = vi
+        .spyOn(APIHelper, 'getViewportSize')
+        .mockReturnValue({ width: 1000, height: 500 });
+      let notify: () => void = () => {};
+      vi.spyOn(APIHelper, 'observeFullscreen').mockImplementation(
+        (callback) => {
+          notify = callback;
+          return () => {};
+        },
+      );
+      vi.spyOn(APIHelper, 'isFullscreen').mockReturnValue(false);
+
+      await h.game.init(h.config);
+      expect(h.app.renderer.resize).toHaveBeenCalledTimes(1);
+
+      size.mockReturnValue({ width: 1200, height: 600 });
+      notify();
+
+      expect(h.app.renderer.resize).toHaveBeenLastCalledWith(1200, 600, 1);
+      expect(h.app.renderer.resize).toHaveBeenCalledTimes(2);
     });
 
     it('should detach the viewport listener on destroy', async () => {

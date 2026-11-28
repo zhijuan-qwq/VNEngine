@@ -127,6 +127,14 @@ export interface RendererState {
   characters: CharacterState[];
 }
 
+/** 场景画面在屏幕（canvas CSS px）上的矩形，供屏幕空间 UI 对齐 */
+export interface SceneFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 // 渲染子系统契约（见架构文档 §4）：持有 LayerStack，把 bg/character/effect 事件映射为 pixi 显示对象
 export interface IRenderer {
   update(dt: number): void;
@@ -134,10 +142,14 @@ export interface IRenderer {
   setState(state: RendererState): void;
   /** 画布尺寸变化时由 Game 调用，内部转发给 ScaleManager（见架构文档 §4.8） */
   resize(size: { width: number; height: number }): void;
-  /** UI 层容器，供 §8 的 UI 子系统挂载（Renderer 预建，可能为 null） */
-  getUILayer(): Container | null;
-  /** 场景根容器（bg/chara/effect/ui 图层的父级），供截图等整体操作 */
+  /** 屏幕空间 UI 层（不随场景缩放），供 §8 的 UI 子系统挂载 */
+  getUILayer(): Container;
+  /** 场景根容器（bg/chara/effect 图层的父级），供场景整体操作 */
   getSceneRoot(): Container;
+  /** 整屏抓帧根容器（含场景与屏幕空间 UI），供存档缩略图等使用 */
+  getCaptureTarget(): Container;
+  /** 场景画面在屏幕上的矩形（已应用 ScaleManager 缩放与居中），供 UI 对齐画面 */
+  getSceneFrame(): SceneFrame;
   /** 屏幕坐标 → 逻辑坐标，供输入层复用渲染的同一换算（见架构文档 §4.8） */
   toLogical(point: PointData): { x: number; y: number };
   destroy(): void;
@@ -160,6 +172,8 @@ export interface IAudioManager {
 // 输入子系统契约（见架构文档 §8.3）：pixi Federated Pointer Events → EventBus
 export interface IInputManager {
   setUIRoot(root: Container): void;
+  /** 命中层尺寸（UI 虚拟坐标）；视口变化时由 Game 更新 */
+  setSize(width: number, height: number): void;
   destroy(): void;
 }
 

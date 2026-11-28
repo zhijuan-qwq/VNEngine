@@ -10,6 +10,7 @@ import type { TextLayoutItem } from './textLayout';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite } from './uiLayout';
 
 export interface DialogueBoxOptions {
   width: number;
@@ -57,6 +58,7 @@ export class DialogueBox extends UIComponent {
   private bodyTexts: Text[] = [];
   /** 每个 bodyText 当前应用的段落样式引用，样式变化时才重建 Text.style */
   private bodyStyles: (TextStyle | null)[] = [];
+  private backdrop: Graphics | Sprite | null = null;
   private parsed: ParsedText | null = null;
   private typewriter: TypewriterState | null = null;
   private lastRevealed = 0;
@@ -64,6 +66,7 @@ export class DialogueBox extends UIComponent {
   private blockHeight: number;
   /** 字号与行距可随 `game:settings` 变更，故为可变字段而非 options 快照 */
   private fontSize: number;
+  private readonly fontSizeExplicit: boolean;
   private lineHeight: number;
   private defaultSpeed: number;
 
@@ -92,6 +95,7 @@ export class DialogueBox extends UIComponent {
       eventBus: options.eventBus,
       resolveVar: options.resolveVar,
     };
+    this.fontSizeExplicit = options.fontSize !== undefined;
     this.fontSize = options.fontSize ?? this.theme.typography.sizes.base;
     this.lineHeight =
       options.lineHeight ??
@@ -102,9 +106,9 @@ export class DialogueBox extends UIComponent {
     this.x = this.opts.x;
     this.y = this.opts.y;
 
-    const backdrop = this.createBackdrop();
-    if (backdrop) {
-      this.addChild(backdrop);
+    this.backdrop = this.createBackdrop();
+    if (this.backdrop) {
+      this.addChild(this.backdrop);
     }
 
     this.speakerText = new Text({
@@ -196,6 +200,7 @@ export class DialogueBox extends UIComponent {
   public clear(): void {
     this.typewriter = null;
     this.parsed = null;
+    this.blockHeight = this.lineHeight;
     this.speakerText.text = '';
     this.indicator.visible = false;
     this.clearBodyTexts();
@@ -204,6 +209,49 @@ export class DialogueBox extends UIComponent {
 
   public isBusy(): boolean {
     return this.typewriter !== null && !this.typewriter.isComplete;
+  }
+
+  /** 视口变化时更新尺寸并重排；当前文本与打字机进度保持不变 */
+  public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
+    this.opts.width = width;
+    this.opts.height = height;
+    this.resizeBackdrop();
+    const indicatorSize = Math.round(this.fontSize * 0.8);
+    this.indicator.x = this.opts.width - this.opts.padding - indicatorSize;
+    this.indicator.y = this.opts.height - this.opts.padding - indicatorSize;
+    this.recomputeBlockHeight();
+    this.relayout();
+  }
+
+  /** 文本块底边相对对话框顶边的最小偏移（含内边距；无文本时为 0） */
+  public textBottomOffset(): number {
+    if (!this.parsed) {
+      return 0;
+    }
+    const speakerVisible = this.speakerText.text.length > 0;
+    const speakerHeight = speakerVisible
+      ? this.speakerText.height + this.theme.spacing.s8
+      : 0;
+    return this.opts.padding + speakerHeight + this.blockHeight;
+  }
+
+  /** 保证文本完整落在对话框内的最小高度；无文本时为 0 */
+  public contentHeight(): number {
+    return this.parsed ? this.textBottomOffset() + this.opts.padding : 0;
+  }
+
+  /**
+   * 完整显示当前文本所需的对话框高度（含内边距、说话人与底部保留）。
+   * 无文本时返回 0，由调用方回落到基准高度。
+   */
+  public preferredHeight(): number {
+    if (!this.parsed) {
+      return 0;
+    }
+    return this.contentHeight() + this.theme.sizes.dialogueBottomReserve;
   }
 
   public get currentText(): string {
@@ -251,6 +299,31 @@ export class DialogueBox extends UIComponent {
       alpha: this.theme.colors.borderSubtleAlpha,
     });
     return bg;
+  }
+
+  private resizeBackdrop(): void {
+    const bg = this.backdrop;
+    if (!bg) return;
+    if (bg instanceof Graphics) {
+      bg.clear();
+      bg.roundRect(
+        0,
+        0,
+        this.opts.width,
+        this.opts.height,
+        this.theme.radius.lg,
+      );
+      bg.fill(this.opts.backgroundColor, this.opts.backgroundAlpha);
+      bg.stroke({
+        width: this.theme.border.thin,
+        color: this.theme.colors.borderSubtle,
+        alpha: this.theme.colors.borderSubtleAlpha,
+      });
+      return;
+    }
+    // 渐隐纹理按行烘焙，拉伸即可保持同样的顶部渐隐比例
+    bg.width = this.opts.width;
+    bg.height = this.opts.height;
   }
 
   /**
@@ -333,6 +406,8 @@ export class DialogueBox extends UIComponent {
       return;
     }
     if (payload.key === 'fontSize') {
+      // 调用方显式指定的字号优先，启动 emitAll 不应覆盖
+      if (this.fontSizeExplicit) return;
       if (typeof payload.value !== 'number') return;
       this.fontSize = payload.value;
       this.lineHeight = Math.round(

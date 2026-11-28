@@ -52,6 +52,28 @@ describe('PagePanel', () => {
     expect(panel.backButton.y).toBe(600 - padding - closeButtonHeight);
   });
 
+  it('should relayout the content and back button on resize', () => {
+    const panel = makePanel();
+    panel.relayout(1000, 700);
+    const { pageActionWidth, closeButtonHeight } = DEFAULT_UI_THEME.sizes;
+    const padding = DEFAULT_UI_THEME.spacing.s24;
+    expect(panel.contentWidth).toBe(1000 - padding * 2);
+    expect(panel.content.x).toBe(padding);
+    expect(panel.content.y).toBe(panel.contentTop);
+    expect(panel.backButton.x).toBe(1000 - padding - pageActionWidth);
+    expect(panel.backButton.y).toBe(700 - padding - closeButtonHeight);
+    expect(panel.contentHeight).toBeGreaterThan(0);
+  });
+
+  it('should ignore invalid sizes on relayout', () => {
+    const panel = makePanel();
+    const before = panel.contentWidth;
+
+    panel.relayout(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(panel.contentWidth).toBe(before);
+  });
+
   it('should forward back taps to onBack', () => {
     const onBack = vi.fn();
     const panel = makePanel({ onBack });

@@ -2,11 +2,13 @@ import { Container, Text } from 'pixi.js';
 import type { Settings } from '@/types/engine';
 import { DEFAULT_SETTINGS } from '@/settings/SettingsManager';
 import { PagePanel } from './PagePanel';
+import { ScrollView } from './controls/ScrollView';
 import { Slider } from './controls/Slider';
 import { Toggle } from './controls/Toggle';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite } from './uiLayout';
 
 export interface SettingsController {
   get(): Settings;
@@ -42,6 +44,7 @@ export class SettingsMenu extends UIComponent {
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly page: PagePanel;
+  private readonly scroll: ScrollView;
   private readonly sliders: Record<string, Slider> = {};
   private readonly toggles: Record<string, Toggle> = {};
   private syncing = false;
@@ -71,12 +74,67 @@ export class SettingsMenu extends UIComponent {
     });
     this.addChild(this.page);
 
+    this.scroll = new ScrollView({
+      width: Math.max(1, this.page.contentWidth),
+      height: Math.max(1, this.page.contentHeight),
+      step: this.theme.sizes.scrollStep,
+    });
+    this.page.content.addChild(this.scroll);
+
+    this.buildContent();
+    this.hide();
+  }
+
+  /**
+   * 视口变化时重排页面骨架；隐藏时只记录尺寸，避免拖拽窗口时每帧重建控件。
+   */
+  public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
+    this.opts.width = width;
+    this.opts.height = height;
+    this.page.relayout(width, height);
+    this.scroll.resize(
+      Math.max(1, this.page.contentWidth),
+      Math.max(1, this.page.contentHeight),
+    );
+    if (this.visible) {
+      this.buildContent();
+      this.syncValues();
+    }
+  }
+
+  public override show(): void {
+    this.buildContent();
+    this.syncValues();
+    super.show();
+  }
+
+  private syncValues(): void {
+    const settings = this.opts.controller?.get() ?? DEFAULT_SETTINGS;
+    this.syncing = true;
+    for (const [key, slider] of Object.entries(this.sliders)) {
+      slider.setValue(settings[key as keyof Settings] as number);
+    }
+    this.toggles.skipMode.setValue(settings.skipMode === 'all');
+    this.toggles.fullscreen.setValue(settings.fullscreen);
+    this.syncing = false;
+  }
+
+  private buildContent(): void {
+    for (const child of this.scroll.content.children.slice()) {
+      child.destroy({ children: true });
+    }
+    for (const key of Object.keys(this.sliders)) delete this.sliders[key];
+    for (const key of Object.keys(this.toggles)) delete this.toggles[key];
+
     const columnGap = this.theme.spacing.s48;
-    const columnWidth = (this.page.contentWidth - columnGap) / 2;
+    const columnWidth = Math.max(1, (this.page.contentWidth - columnGap) / 2);
     const audio = new Container();
     const display = new Container();
     display.x = columnWidth + columnGap;
-    this.page.content.addChild(audio, display);
+    this.scroll.content.addChild(audio, display);
 
     const audioHeading = this.addHeading('音频', audio);
     const displayHeading = this.addHeading('文字与显示', display);
@@ -136,25 +194,13 @@ export class SettingsMenu extends UIComponent {
     audioY = addSlider(audio, 'masterVolume', '主音量', 0, 1, 0.01, audioY);
     audioY = addSlider(audio, 'bgmVolume', '背景音乐', 0, 1, 0.01, audioY);
     audioY = addSlider(audio, 'seVolume', '音效', 0, 1, 0.01, audioY);
-    addSlider(audio, 'voiceVolume', '语音', 0, 1, 0.01, audioY);
+    audioY = addSlider(audio, 'voiceVolume', '语音', 0, 1, 0.01, audioY);
 
     displayY = addSlider(display, 'textSpeed', '文字速度', 5, 100, 5, displayY);
     displayY = addToggle(display, 'skipMode', '跳过已读', displayY);
-    addToggle(display, 'fullscreen', '全屏', displayY);
+    displayY = addToggle(display, 'fullscreen', '全屏', displayY);
 
-    this.hide();
-  }
-
-  public override show(): void {
-    const settings = this.opts.controller?.get() ?? DEFAULT_SETTINGS;
-    this.syncing = true;
-    for (const [key, slider] of Object.entries(this.sliders)) {
-      slider.setValue(settings[key as keyof Settings] as number);
-    }
-    this.toggles.skipMode.setValue(settings.skipMode === 'all');
-    this.toggles.fullscreen.setValue(settings.fullscreen);
-    this.syncing = false;
-    super.show();
+    this.scroll.setContentHeight(Math.max(audioY, displayY));
   }
 
   /** 测试/调试用：按 Settings 键取得对应滑条 */

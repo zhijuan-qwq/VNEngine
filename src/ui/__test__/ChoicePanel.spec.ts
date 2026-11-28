@@ -84,6 +84,86 @@ describe('ChoicePanel', () => {
     expect(panel.visible).toBe(true);
   });
 
+  it('should recenter the visible buttons on resize', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    panel.resize(800, 500);
+    const { sizes } = DEFAULT_UI_THEME;
+    const buttonWidth = Math.min(
+      800 * sizes.choiceWidthRatio,
+      sizes.choiceMaxWidth,
+    );
+    const total = 2 * sizes.choiceHeight + sizes.choiceGap;
+    const startY = Math.max(500 * 0.08, (500 * 0.8 - total) / 2);
+    expect(panel.buttons[0].x).toBeCloseTo((800 - buttonWidth) / 2);
+    expect(panel.buttons[0].y).toBeCloseTo(startY);
+  });
+
+  it('should shrink the visible buttons in compact mode', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const defaultWidth = (
+      panel.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+
+    panel.resize(1000, 600, 1);
+
+    expect(panel.buttons).toHaveLength(2);
+    const compactWidth = (
+      panel.buttons[0].hitArea as unknown as { width: number }
+    ).width;
+    expect(compactWidth).toBeLessThan(defaultWidth);
+    expect(panel.buttons[0].x).toBeCloseTo((1000 - compactWidth) / 2);
+    const label = panel.buttons[0].children[1] as unknown as {
+      style: { fontSize: number };
+    };
+    expect(label.style.fontSize).toBe(15);
+  });
+
+  it('should resize the visible buttons in place and keep their state', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const button = panel.buttons[0];
+    button.emit('pointerover', tapEvent());
+
+    panel.resize(800, 500, 1);
+
+    expect(panel.buttons[0]).toBe(button);
+    expect((button as unknown as { state: string }).state).toBe('hover');
+  });
+
+  it('should interpolate button sizes for a partial compact amount', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const full = (panel.buttons[0].hitArea as unknown as { height: number })
+      .height;
+
+    panel.resize(1000, 600, 0.5);
+
+    const partial = (panel.buttons[0].hitArea as unknown as { height: number })
+      .height;
+    const { sizes } = DEFAULT_UI_THEME;
+    expect(partial).toBe(Math.round(sizes.choiceHeight * 0.925));
+    expect(partial).toBeLessThan(full);
+  });
+
+  it('should not create buttons on resize while hidden', () => {
+    const panel = makePanel();
+    panel.resize(800, 600);
+    expect(panel.visible).toBe(false);
+    expect(panel.buttons).toHaveLength(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const panel = new ChoicePanel({ width: 1000, height: 600 });
+    panel.show(choices, 'adv');
+    const before = panel.buttons[0].x;
+
+    panel.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(panel.buttons[0].x).toBe(before);
+  });
+
   it('should center a width-capped button block above the dialogue area', () => {
     const panel = new ChoicePanel({ width: 1000, height: 600 });
     panel.show(choices, 'adv');

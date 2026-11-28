@@ -17,7 +17,8 @@ export const DEFAULT_SETTINGS: Settings = {
   skipMode: 'read',
   fullscreen: false,
   language: 'zh-CN',
-  fontSize: 20,
+  // 与主题 typography.sizes.base 对齐，避免启动 emitAll 把正文放大 25%
+  fontSize: 16,
 };
 
 /** 单个设置键的校验器：返回校验/钳制后的值，非法则返回 undefined（保留原值） */

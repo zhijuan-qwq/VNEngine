@@ -1,6 +1,7 @@
 import { Container, Rectangle } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
 import type { EventBus } from '@/core/EventBus';
+import type { SceneFrame } from '@/types/engine';
 import type { EngineEvents, UiPanel } from '@/types/events';
 import type { VarResolver } from '@/types/text';
 import { DialogueBox } from './DialogueBox';
@@ -23,6 +24,17 @@ import type { MenuBarOptions } from './MenuBar';
 import { cancelFrame, now, requestFrame } from '@/utils/APIHelper';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import {
+  computeCompactAmount,
+  computeUiLayout,
+  isPositiveFinite,
+} from './uiLayout';
+import type { UiLayout } from './uiLayout';
+
+/** 对话框最小虚拟高度：短横屏下 30% 比例会低于两行正文 */
+const MIN_DIALOGUE_HEIGHT = 120;
+/** 对话框自适应高度的上限（占虚拟高度比例），避免长文本吃满整屏 */
+const MAX_DIALOGUE_HEIGHT_RATIO = 0.7;
 
 export interface UIManagerOptions {
   width: number;
@@ -72,9 +84,22 @@ export class UIManager {
   readonly history: DialogueHistory;
 
   private readonly bus: EventBus<EngineEvents>;
+  private readonly theme: UITheme;
   private readonly captureThumbnail?: () => string;
   private readonly getSlots?: () => readonly SaveSlotInfo[];
   private readonly transitionShield: Container;
+  private readonly originX: number;
+  private readonly originY: number;
+  private readonly dialogueXOverride?: number;
+  private readonly dialogueYOverride?: number;
+  private readonly dialogueWidthOverride?: number;
+  private readonly dialogueHeightOverride?: number;
+  private layout: UiLayout;
+  /** 紧凑尺寸占比（0 正常，1 完全紧凑），随视口宽度线性过渡 */
+  private compactAmount = 0;
+  /** UI 根的水平/垂直偏移（屏幕 CSS px），水平对齐场景画面 */
+  private frameX = 0;
+  private frameY = 0;
   private rafId: number | null = null;
   private lastTime = 0;
   private pendingThumbnail = '';
@@ -84,16 +109,24 @@ export class UIManager {
 
   constructor(bus: EventBus<EngineEvents>, options: UIManagerOptions) {
     this.bus = bus;
-    const theme = resolveTheme(options.theme);
+    this.theme = resolveTheme(options.theme);
+    this.layout = { scale: 1, width: options.width, height: options.height };
+    this.originX = options.x ?? 0;
+    this.originY = options.y ?? 0;
+    const theme = this.theme;
     // 面板级主题是在全局主题之上叠加的局部覆盖，而不是另起一套默认主题
     const themeFor = (overrides?: DeepPartial<UITheme>): UITheme =>
       overrides ? resolveTheme(overrides, theme) : theme;
 
     this.root = new Container();
-    this.root.x = options.x ?? 0;
-    this.root.y = options.y ?? 0;
+    this.root.x = this.originX;
+    this.root.y = this.originY;
 
     const dialogue = options.dialogueBox ?? {};
+    this.dialogueXOverride = dialogue.x;
+    this.dialogueYOverride = dialogue.y;
+    this.dialogueWidthOverride = dialogue.width;
+    this.dialogueHeightOverride = dialogue.height;
     // 缺省为底部对话框条（高度的 30%），避免整屏遮罩
     const boxHeight =
       dialogue.height ??
@@ -115,7 +148,12 @@ export class UIManager {
       width: choice.width ?? options.width,
       height: choice.height ?? options.height,
       theme: themeFor(choice.theme),
-      onSelect: (label) => bus.emit('script:choice:selected', { label }),
+      onSelect: (label) => {
+        // 选择后立即收起选项并恢复被避让隐藏的对话框
+        this.choicePanel.hide();
+        this.layoutOverlays();
+        bus.emit('script:choice:selected', { label });
+      },
     });
 
     const size = { width: options.width, height: options.height };
@@ -207,6 +245,50 @@ export class UIManager {
     this.updateFades(dt);
   }
 
+  /**
+   * 按视口尺寸重排屏幕空间 UI，返回虚拟尺寸供输入命中层使用。
+   *
+   * 缩放只跟随视口宽度；传入 `frame`（场景画面在屏幕上的矩形）时，
+   * UI 的水平范围对齐画面、不覆盖两侧黑边，高度仍铺满屏幕。
+   * 尺寸未变化时直接返回缓存，避免桌面拖拽窗口时每帧重建文本。
+   */
+  public resize(
+    viewport: { width: number; height: number },
+    frame?: SceneFrame,
+  ): { width: number; height: number } {
+    const current = this.layout;
+    if (
+      !isPositiveFinite(viewport.width) ||
+      !isPositiveFinite(viewport.height)
+    ) {
+      return { width: current.width, height: current.height };
+    }
+    const hasFrame = frame !== undefined && isPositiveFinite(frame.width);
+    const next = computeUiLayout(
+      viewport.width,
+      viewport.height,
+      hasFrame ? frame : undefined,
+    );
+    const frameX =
+      hasFrame && Number.isFinite(frame.x) ? (frame.x as number) : 0;
+    const frameY = 0;
+    if (
+      Math.abs(next.scale - current.scale) < 0.0001 &&
+      Math.abs(next.width - current.width) < 0.5 &&
+      Math.abs(next.height - current.height) < 0.5 &&
+      Math.abs(frameX - this.frameX) < 0.5 &&
+      Math.abs(frameY - this.frameY) < 0.5
+    ) {
+      return { width: current.width, height: current.height };
+    }
+    this.layout = next;
+    this.compactAmount = computeCompactAmount(viewport.width);
+    this.frameX = frameX;
+    this.frameY = frameY;
+    this.applyLayout();
+    return { width: next.width, height: next.height };
+  }
+
   /** 打字机是否正在逐字显示（供 InputManager 决定点击语义） */
   public isBusy(): boolean {
     return this.dialogueBox.isBusy();
@@ -255,6 +337,93 @@ export class UIManager {
     return this.confirmDialog.confirm(request);
   }
 
+  private applyLayout(): void {
+    const { scale, width, height } = this.layout;
+    this.root.scale.set(scale);
+    this.root.position.set(
+      this.originX + this.frameX,
+      this.originY + this.frameY,
+    );
+
+    this.choicePanel.resize(width, height, this.compactAmount);
+    this.menuBar.resize(width, height, this.compactAmount);
+    this.layoutOverlays();
+    this.confirmDialog.resize(width, height);
+    this.saveLoadMenu.resize(width, height);
+    this.settingsMenu.resize(width, height);
+    this.historyView.resize(width, height);
+    this.transitionShield.hitArea = new Rectangle(0, 0, width, height);
+  }
+
+  private layoutOverlays(): void {
+    this.layoutDialogue(
+      this.choicePanel.visible ? this.choicePanel.blockBottom() : null,
+    );
+  }
+
+  /**
+   * 对话框贴底并按当前文本自适应高度；`choiceBottom` 非空时让对话框收在选项块下方。
+   *
+   * 短横屏下 30% 高度装不下说话人 + 多行正文，固定高度会让 `minTop` 把正文
+   * 推到快捷栏下方。选项可见时优先保留选项：放下不完整文本就隐藏对话框。
+   * 文本存在且没有选项时恢复可见（例如选择后或转屏）。
+   */
+  private layoutDialogue(choiceBottom: number | null = null): void {
+    const { width, height } = this.layout;
+    const dialogueWidth = this.dialogueWidthOverride ?? width;
+    this.dialogueBox.x = this.dialogueXOverride ?? 0;
+
+    const base = this.dialogueHeightOverride ?? this.dialogueHeight(height);
+    // 先按基准尺寸重排一次，让 blockHeight 按新宽度重算
+    this.dialogueBox.resize(dialogueWidth, base);
+    const preferred = this.dialogueBox.preferredHeight();
+    if (preferred <= 0) {
+      // 无文本时只按基准尺寸贴底，保持当前显隐（clear 后应继续隐藏）
+      this.dialogueBox.y = this.dialogueYOverride ?? height - base;
+      return;
+    }
+
+    const topLimit =
+      choiceBottom === null ? 0 : choiceBottom + this.theme.spacing.s8;
+    const available = height - topLimit;
+    const offset = this.dialogueBox.textBottomOffset();
+    const minHeight = this.dialogueBox.contentHeight();
+    const menuBarTop = height - this.menuBar.reserveHeight;
+
+    let desired: number;
+    if (this.dialogueHeightOverride !== undefined) {
+      desired = choiceBottom === null ? base : Math.min(base, available);
+    } else if (choiceBottom === null) {
+      const maxHeight = Math.max(
+        base,
+        Math.round(height * MAX_DIALOGUE_HEIGHT_RATIO),
+      );
+      desired = Math.min(Math.max(base, preferred), maxHeight);
+    } else {
+      desired = Math.min(Math.max(base, preferred), available);
+    }
+
+    const y = this.dialogueYOverride ?? height - desired;
+    if (
+      choiceBottom !== null &&
+      (desired < minHeight || y < topLimit || y + offset > menuBarTop)
+    ) {
+      this.dialogueBox.hide();
+      return;
+    }
+
+    this.dialogueBox.y = y;
+    this.dialogueBox.resize(dialogueWidth, desired);
+    this.dialogueBox.visible = true;
+  }
+
+  private dialogueHeight(virtualHeight: number): number {
+    return Math.max(
+      MIN_DIALOGUE_HEIGHT,
+      Math.round(virtualHeight * this.theme.sizes.dialogueHeightRatio),
+    );
+  }
+
   public destroy(): void {
     this.stopTicking();
     this.bus.off('script:say', this.handleSay);
@@ -280,23 +449,27 @@ export class UIManager {
   }
 
   private readonly handleSay = (payload: EngineEvents['script:say']): void => {
-    this.dialogueBox.show(payload.speaker, payload.text, payload.speed);
     this.choicePanel.hide();
+    this.dialogueBox.show(payload.speaker, payload.text, payload.speed);
+    this.layoutDialogue();
   };
 
   private readonly handleClear = (): void => {
     this.dialogueBox.clear();
+    this.layoutDialogue();
   };
 
   private readonly handleChoice = (
     payload: EngineEvents['script:choice'],
   ): void => {
     this.choicePanel.show(payload.choices, payload.mode ?? 'adv');
+    this.layoutOverlays();
   };
 
   private readonly handleEnd = (): void => {
-    this.dialogueBox.clear();
     this.choicePanel.hide();
+    this.dialogueBox.clear();
+    this.layoutDialogue();
   };
 
   private readonly handleOpen = (payload: EngineEvents['ui:open']): void => {

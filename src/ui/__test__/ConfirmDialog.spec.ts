@@ -95,6 +95,33 @@ describe('ConfirmDialog', () => {
     expect(labelOf(dialog, 1)).toBe('好的');
   });
 
+  it('should keep a pending request centered across resize', async () => {
+    const dialog = makeDialog();
+    const promise = dialog.confirm({ message: '是否继续？' });
+    dialog.resize(1000, 700);
+
+    const first = dialog.buttons[0];
+    const second = dialog.buttons[1];
+    const secondWidth = (second.hitArea as unknown as { width: number }).width;
+    expect(second.x).toBeGreaterThan(first.x);
+    expect((first.x + second.x + secondWidth) / 2).toBeCloseTo(500);
+
+    tap(second);
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it('should ignore invalid sizes on resize', async () => {
+    const dialog = makeDialog();
+    const promise = dialog.confirm({ message: '是否继续？' });
+    const before = dialog.buttons[0].x;
+
+    dialog.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(dialog.buttons[0].x).toBe(before);
+    tap(dialog.buttons[0]);
+    await expect(promise).resolves.toBe(false);
+  });
+
   it('should throw when the request lacks a message', () => {
     const dialog = makeDialog();
     expect(() => dialog.confirm({} as ConfirmRequest)).toThrow(TypeError);

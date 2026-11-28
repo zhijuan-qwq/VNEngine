@@ -23,10 +23,15 @@ export class InputManager implements IInputManager {
   private readonly bus: EventBus<EngineEvents>;
   private readonly opts: InputManagerOptions;
   private hitContainer: Container | null = null;
+  /** 命中层尺寸（UI 虚拟坐标），与场景逻辑尺寸解耦 */
+  private hitWidth: number;
+  private hitHeight: number;
 
   constructor(bus: EventBus<EngineEvents>, options: InputManagerOptions) {
     this.bus = bus;
     this.opts = options;
+    this.hitWidth = options.width;
+    this.hitHeight = options.height;
   }
 
   /** 挂载/替换命中层；重复调用会先移除旧命中层 */
@@ -34,11 +39,28 @@ export class InputManager implements IInputManager {
     this.teardownHit();
     const hit = new Container();
     hit.eventMode = 'static';
-    hit.hitArea = new Rectangle(0, 0, this.opts.width, this.opts.height);
+    hit.hitArea = new Rectangle(0, 0, this.hitWidth, this.hitHeight);
     hit.on('pointertap', this.onTap);
     hit.on('pointermove', this.onMove);
     root.addChildAt(hit, 0);
     this.hitContainer = hit;
+  }
+
+  /** 更新命中层尺寸（UI 虚拟坐标系）；无效尺寸忽略 */
+  public setSize(width: number, height: number): void {
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return;
+    }
+    this.hitWidth = width;
+    this.hitHeight = height;
+    if (this.hitContainer) {
+      this.hitContainer.hitArea = new Rectangle(0, 0, width, height);
+    }
   }
 
   public destroy(): void {
@@ -46,7 +68,7 @@ export class InputManager implements IInputManager {
   }
 
   private readonly onTap = (event: FederatedPointerEvent): void => {
-    const { x, y } = this.opts.toLogical(event.global);
+    const { x, y } = this.toScene(event.global);
     if (this.opts.isTypewriterBusy?.() ?? false) {
       this.bus.emit('input:skip', {});
     } else {
@@ -55,9 +77,18 @@ export class InputManager implements IInputManager {
   };
 
   private readonly onMove = (event: FederatedPointerEvent): void => {
-    const { x, y } = this.opts.toLogical(event.global);
+    const { x, y } = this.toScene(event.global);
     this.bus.emit('input:hover', { x, y });
   };
+
+  /** 黑边点击会落在画面外，钳制后保持 input:* 坐标仍在场景范围内 */
+  private toScene(point: { x: number; y: number }): { x: number; y: number } {
+    const logical = this.opts.toLogical(point);
+    return {
+      x: Math.min(Math.max(logical.x, 0), this.opts.width),
+      y: Math.min(Math.max(logical.y, 0), this.opts.height),
+    };
+  }
 
   private teardownHit(): void {
     const hit = this.hitContainer;

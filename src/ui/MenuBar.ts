@@ -4,6 +4,7 @@ import type { EngineEvents, UiPanel } from '@/types/events';
 import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite, UI_MIN_SCALE } from './uiLayout';
 
 export interface MenuBarOptions {
   /** 屏幕逻辑宽度；用于缺省时把快捷栏贴到右下角 */
@@ -130,17 +131,38 @@ function drawIcon(
   }
 }
 
+/** 移动端紧凑模式的整体缩放 */
+const COMPACT_SCALE = 0.8;
+/** 紧凑模式字号下限按物理像素反推：最差缩放档下仍不小于 11 CSS px */
+const COMPACT_MIN_FONT = Math.ceil(11 / UI_MIN_SCALE);
+
+interface LayoutMetrics {
+  itemHeight: number;
+  gap: number;
+  margin: number;
+}
+
 /**
  * 右下角快捷栏：图标 + 大写标签，覆盖在画面上方。
  * 点击任一按钮在 EventBus 上 emit `ui:open`，作为设置/保存/读取/历史四个页面的入口。
+ *
+ * 移动端（UI 缩放落在最小档）可开启紧凑模式，按钮按 `COMPACT_SCALE` 收缩；
+ * 桌面保持原尺寸。
  */
 export class MenuBar extends UIComponent {
+  private readonly bus: EventBus<EngineEvents>;
   private readonly opts: ResolvedOptions;
   private readonly theme: UITheme;
   private readonly menuButtons: Container[] = [];
+  private readonly itemWidths: number[] = [];
+  private metrics: LayoutMetrics = { itemHeight: 0, gap: 0, margin: 0 };
+  /** 0 为正常尺寸，1 为完全紧凑；中间值随视口宽度线性过渡 */
+  private compactAmount = 0;
+  private buildKey = '';
 
   constructor(bus: EventBus<EngineEvents>, options: MenuBarOptions) {
     super({ id: 'menu-bar' });
+    this.bus = bus;
     this.theme = resolveTheme(options.theme);
     this.opts = {
       width: options.width,
@@ -149,15 +171,64 @@ export class MenuBar extends UIComponent {
       y: options.y,
       buttonWidth: options.buttonWidth,
       buttonHeight: options.buttonHeight ?? this.theme.sizes.quickBarHeight,
-      gap: options.gap ?? this.theme.spacing.s24,
+      gap: options.gap ?? this.theme.spacing.s16,
       fontSize: options.fontSize ?? this.theme.typography.sizes.sm,
-      margin: options.margin ?? this.theme.spacing.s16,
+      margin: options.margin ?? this.theme.spacing.s12,
     };
 
-    const iconSize = this.theme.sizes.quickBarIcon;
-    const iconGap = this.theme.spacing.s8;
-    const paddingX = this.theme.spacing.s8;
-    const itemHeight = this.opts.buttonHeight;
+    this.build();
+    this.layout();
+  }
+
+  /**
+   * 视口变化时重算尺寸与位置。
+   * `compactAmount` 为 0–1 的连续值，只有取整后的尺寸变化时才重建按钮。
+   */
+  public resize(
+    width: number,
+    height: number,
+    compactAmount = this.compactAmount,
+  ): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
+    this.opts.width = width;
+    this.opts.height = height;
+    if (Number.isFinite(compactAmount)) {
+      this.compactAmount = Math.min(Math.max(compactAmount, 0), 1);
+    }
+    this.build();
+    this.layout();
+  }
+
+  private build(): void {
+    const factor = 1 - (1 - COMPACT_SCALE) * this.compactAmount;
+    const scaled = (value: number): number => Math.round(value * factor);
+    const itemHeight = Math.max(1, scaled(this.opts.buttonHeight));
+    // 自定义小字号不被紧凑缩放继续压低，也不被下限强行放大
+    const fontFloor = Math.min(COMPACT_MIN_FONT, this.opts.fontSize);
+    const fontSize = Math.max(fontFloor, scaled(this.opts.fontSize));
+    const iconSize = Math.max(1, scaled(this.theme.sizes.quickBarIcon));
+    const iconGap = Math.max(0, scaled(this.theme.spacing.s4));
+    const paddingX = Math.max(0, scaled(this.theme.spacing.s4));
+    const metrics: LayoutMetrics = {
+      itemHeight,
+      gap: Math.max(0, scaled(this.opts.gap)),
+      margin: Math.max(0, scaled(this.opts.margin)),
+    };
+
+    const key = `${itemHeight}/${fontSize}/${iconSize}/${iconGap}/${paddingX}/${metrics.gap}/${metrics.margin}`;
+    this.metrics = metrics;
+    if (key === this.buildKey && this.menuButtons.length === ENTRIES.length) {
+      return;
+    }
+    this.buildKey = key;
+
+    for (const child of this.children.slice()) {
+      child.destroy({ children: true });
+    }
+    this.menuButtons.length = 0;
+    this.itemWidths.length = 0;
 
     interface BuiltItem {
       container: Container;
@@ -169,7 +240,7 @@ export class MenuBar extends UIComponent {
         text: entry.label,
         style: {
           fontFamily: this.theme.typography.fontFamilyBody,
-          fontSize: this.opts.fontSize,
+          fontSize,
           fontWeight: this.theme.typography.weights.semibold,
           letterSpacing: 0.5,
           fill: this.theme.colors.quickBarText,
@@ -192,7 +263,7 @@ export class MenuBar extends UIComponent {
       /** 先描一层深色底再画线条；Graphics 无阴影，用更粗的暗色描边代替 */
       const paintIcon = (color: number): void => {
         drawIcon(icon, entry.panel, this.theme.colors.textShadow, iconSize, {
-          width: 3,
+          width: Math.max(1, scaled(3)),
           alpha: this.theme.colors.textShadowAlpha,
         });
         drawIcon(icon, entry.panel, color, iconSize, { clear: false });
@@ -226,28 +297,46 @@ export class MenuBar extends UIComponent {
       });
       container.on('pointertap', (event) => {
         event.stopPropagation();
-        bus.emit('ui:open', { panel: entry.panel });
+        this.bus.emit('ui:open', { panel: entry.panel });
       });
 
       return { container, width };
     });
 
+    for (const item of items) {
+      this.menuButtons.push(item.container);
+      this.itemWidths.push(item.width);
+      this.addChild(item.container);
+    }
+  }
+
+  private layout(): void {
+    const { gap, margin } = this.metrics;
     const totalWidth =
-      items.reduce((sum, item) => sum + item.width, 0) +
-      this.opts.gap * (items.length - 1);
+      this.itemWidths.reduce((sum, width) => sum + width, 0) +
+      gap * Math.max(this.itemWidths.length - 1, 0);
     const startX =
-      this.opts.x ?? this.opts.width - totalWidth - this.opts.margin;
-    const startY =
-      this.opts.y ?? this.opts.height - itemHeight - this.opts.margin;
+      this.opts.x ?? Math.max(margin, this.opts.width - totalWidth - margin);
+    const startY = this.opts.y ?? this.opts.height - this.reserveHeight;
 
     let x = startX;
-    for (const item of items) {
-      item.container.x = x;
-      item.container.y = startY;
-      this.menuButtons.push(item.container);
-      this.addChild(item.container);
-      x += item.width + this.opts.gap;
+    for (let index = 0; index < this.menuButtons.length; index += 1) {
+      const button = this.menuButtons[index];
+      button.x = x;
+      button.y = startY;
+      x += this.itemWidths[index] + gap;
     }
+  }
+
+  /**
+   * 快捷栏占用的底部高度（按钮高度 + 贴边留白）。
+   * 自定义 `y` 时不再贴底，返回 0，避免 UIManager 错误预留空间。
+   */
+  get reserveHeight(): number {
+    if (this.opts.y !== undefined) {
+      return 0;
+    }
+    return this.metrics.itemHeight + this.metrics.margin;
   }
 
   /** 测试/调试用：设置 / 存档 / 读档 / 历史 顺序的按钮 */

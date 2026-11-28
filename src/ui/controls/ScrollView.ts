@@ -1,6 +1,7 @@
 import { Container, Graphics, Rectangle } from 'pixi.js';
-import type { FederatedWheelEvent } from 'pixi.js';
+import type { FederatedPointerEvent, FederatedWheelEvent } from 'pixi.js';
 import { UIComponent } from '../UIComponent';
+import { isPositiveFinite } from '../uiLayout';
 
 export interface ScrollViewOptions {
   width: number;
@@ -9,16 +10,23 @@ export interface ScrollViewOptions {
   step?: number;
 }
 
+/** 拖拽超过该距离才进入滚动，避免轻点被当成拖动 */
+const DRAG_THRESHOLD = 6;
+
 /** 遮罩裁剪 + 垂直滚动偏移；内容高度由使用方通过 setContentHeight 告知 */
 export class ScrollView extends UIComponent {
   public readonly content: Container;
   private readonly viewport: Container;
   private readonly maskShape: Graphics;
-  private readonly viewWidth: number;
-  private readonly viewHeight: number;
+  private viewWidth: number;
+  private viewHeight: number;
   private readonly step: number;
   private contentHeight = 0;
   private offset = 0;
+  private dragPointer: number | null = null;
+  private dragStartY = 0;
+  private dragStartOffset = 0;
+  private dragging = false;
 
   constructor(options: ScrollViewOptions) {
     super({ id: 'scroll-view' });
@@ -46,6 +54,27 @@ export class ScrollView extends UIComponent {
       event.stopPropagation();
       this.scrollBy(delta > 0 ? this.step : -this.step);
     });
+
+    // 触摸/鼠标拖拽滚动：只在空白或文字区域起手（event.target 为本组件），
+    // 起手于 Slider/Toggle 等控件时交给控件自己处理，避免抢占拖动。
+    this.on('pointerdown', this.onDragStart);
+    this.on('pointermove', this.onDragMove);
+    this.on('pointerup', this.onDragEnd);
+    this.on('pointerupoutside', this.onDragEnd);
+  }
+
+  /** 视口变化时重画裁剪框并重新钳制偏移 */
+  public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
+    this.viewWidth = width;
+    this.viewHeight = height;
+    this.maskShape.clear();
+    this.maskShape.rect(0, 0, width, height);
+    this.maskShape.fill(0xffffff, 1);
+    this.hitArea = new Rectangle(0, 0, width, height);
+    this.applyOffset(this.offset);
   }
 
   public get scrollTop(): number {
@@ -76,6 +105,40 @@ export class ScrollView extends UIComponent {
   public setScroll(y: number): void {
     this.applyOffset(Number.isFinite(y) ? y : 0);
   }
+
+  private readonly onDragStart = (event: FederatedPointerEvent): void => {
+    if (event.target !== this || this.maxScroll <= 0) {
+      return;
+    }
+    this.dragPointer = event.pointerId;
+    // 指针是屏幕 CSS px，换算到 UI 本地坐标后才能和滚动偏移（虚拟 px）比较
+    this.dragStartY = this.toLocal(event.global).y;
+    this.dragStartOffset = this.offset;
+    this.dragging = false;
+  };
+
+  private readonly onDragMove = (event: FederatedPointerEvent): void => {
+    if (this.dragPointer !== event.pointerId) {
+      return;
+    }
+    const delta = this.toLocal(event.global).y - this.dragStartY;
+    if (!this.dragging) {
+      if (Math.abs(delta) < DRAG_THRESHOLD) {
+        return;
+      }
+      this.dragging = true;
+    }
+    event.stopPropagation();
+    this.applyOffset(this.dragStartOffset - delta);
+  };
+
+  private readonly onDragEnd = (event: FederatedPointerEvent): void => {
+    if (this.dragPointer !== event.pointerId) {
+      return;
+    }
+    this.dragPointer = null;
+    this.dragging = false;
+  };
 
   private applyOffset(y: number): void {
     const clamped = Math.min(Math.max(y, 0), this.maxScroll);

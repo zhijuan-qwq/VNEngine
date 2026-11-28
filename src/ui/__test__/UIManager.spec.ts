@@ -50,6 +50,249 @@ describe('UIManager', () => {
     expect(ui.dialogueBox.y).toBe(400);
   });
 
+  it('should scale the root and report the virtual size on resize', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    expect(ui.root.scale.x).toBeCloseTo(0.8);
+    expect(virtual.width).toBeCloseTo(745 / 0.8);
+    expect(virtual.height).toBeCloseTo(264 / 0.8);
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 120);
+    // 手机档（scale=0.8）快捷栏用紧凑尺寸：高 21 + 留白 10
+    expect(ui.menuBar.buttons[0].y).toBeCloseTo(virtual.height - 31);
+  });
+
+  it('should grow the dialogue box to fit long text on short screens', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '长'.repeat(200),
+      mode: 'adv',
+    });
+
+    const cap = Math.round(virtual.height * 0.7);
+    expect(ui.dialogueBox.y).toBeLessThan(virtual.height - 120);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(virtual.height - cap);
+
+    bus.emit('script:clear', {});
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 120);
+  });
+
+  it('should ignore a non-finite viewport size', () => {
+    const { ui } = makeManager();
+    const before = ui.resize({ width: 745, height: 264 });
+
+    const after = ui.resize({
+      width: Number.POSITIVE_INFINITY,
+      height: Number.NaN,
+    });
+
+    expect(after).toEqual(before);
+  });
+
+  it('should keep the dialogue above visible choices without overlap', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(70),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(true);
+    expect(ui.choicePanel.buttons).toHaveLength(2);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(
+      ui.choicePanel.blockBottom() + 8 - 0.001,
+    );
+    const textBottom = ui.dialogueBox.y + ui.dialogueBox.textBottomOffset();
+    const menuBarTop = virtual.height - ui.menuBar.reserveHeight;
+    expect(textBottom).toBeLessThanOrEqual(menuBarTop + 0.001);
+  });
+
+  it('should keep a short dialogue below three choices when it fits', () => {
+    const { bus, ui } = makeManager();
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(20),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(true);
+    expect(ui.choicePanel.buttons).toHaveLength(3);
+    expect(ui.dialogueBox.y).toBeGreaterThanOrEqual(
+      ui.choicePanel.blockBottom() + 8 - 0.001,
+    );
+    expect(
+      ui.dialogueBox.y + ui.dialogueBox.textBottomOffset(),
+    ).toBeLessThanOrEqual(virtual.height - ui.menuBar.reserveHeight + 0.001);
+  });
+
+  it('should restore the dialogue after a choice is selected', () => {
+    const { bus, ui } = makeManager();
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+    expect(ui.dialogueBox.visible).toBe(false);
+
+    tapNode(ui.choicePanel.buttons[0]);
+
+    expect(ui.choicePanel.visible).toBe(false);
+    expect(ui.dialogueBox.visible).toBe(true);
+  });
+
+  it('should apply the choice avoidance to an explicit dialogue height', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(false);
+  });
+
+  it('should hide the dialogue when choices leave no room above it', () => {
+    const { bus, ui } = makeManager();
+    ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    bus.emit('script:say', {
+      speaker: '星弥',
+      text: '字'.repeat(160),
+      mode: 'adv',
+    });
+    bus.emit('script:choice', {
+      choices: [
+        { text: '继续', label: 'continue' },
+        { text: '停下', label: 'stop' },
+        { text: '退出', label: 'quit' },
+      ],
+    });
+
+    expect(ui.dialogueBox.visible).toBe(false);
+    expect(ui.choicePanel.buttons).toHaveLength(3);
+  });
+
+  it('should align the ui width to the scene frame', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 469, height: 264 },
+    );
+
+    expect(ui.root.scale.x).toBeCloseTo(0.8);
+    expect(ui.root.x).toBeCloseTo(138);
+    expect(virtual.width).toBeCloseTo(469 / 0.8);
+    expect(virtual.height).toBeCloseTo(264 / 0.8);
+    const last = ui.menuBar.buttons[3];
+    const lastWidth = (last.hitArea as unknown as { width: number }).width;
+    expect(last.x + lastWidth).toBeCloseTo(virtual.width - 10);
+  });
+
+  it('should fall back to the viewport when the frame is invalid', () => {
+    const { ui } = makeManager();
+
+    const virtual = ui.resize(
+      { width: 745, height: 264 },
+      { x: 138, y: 0, width: 0, height: 0 },
+    );
+
+    expect(ui.root.x).toBe(0);
+    expect(virtual.width).toBeCloseTo(745 / 0.8);
+  });
+
+  it('should skip relayout when the viewport is unchanged', () => {
+    const { ui } = makeManager();
+    ui.resize({ width: 745, height: 264 });
+    const resize = vi.spyOn(ui.dialogueBox, 'resize');
+
+    ui.resize({ width: 745, height: 264 });
+
+    expect(resize).not.toHaveBeenCalled();
+  });
+
+  it('should ignore a zero-size viewport', () => {
+    const { ui } = makeManager();
+    const virtual = ui.resize({ width: 0, height: 0 });
+
+    expect(virtual).toEqual({ width: 800, height: 600 });
+    expect(ui.root.scale.x).toBe(1);
+  });
+
+  it('should keep an explicit dialogue height across resize', () => {
+    const bus = new EventBus<EngineEvents>();
+    const ui = new UIManager(bus, {
+      width: 800,
+      height: 600,
+      autoTick: false,
+      dialogueBox: { height: 200 },
+    });
+
+    const virtual = ui.resize({ width: 745, height: 264 });
+
+    expect(ui.dialogueBox.y).toBeCloseTo(virtual.height - 200);
+  });
+
   it('should route script:say to the dialogue box', () => {
     const { bus, ui } = makeManager();
     bus.emit('script:say', { speaker: 'Hero', text: 'Hi', mode: 'adv' });
