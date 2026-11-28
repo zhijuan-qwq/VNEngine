@@ -292,7 +292,7 @@ Renderer（依赖经构造函数注入）
 └── destroy(): void                  // 退订事件、销毁 sceneRoot 与 uiLayer
 ```
 
-场景树形如 `app.stage → [sceneRoot → viewport(mask) → layers(bg/chara/effect), uiLayer → ui.root]`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景对象。UI 在 `uiLayer`（屏幕空间、不裁剪、不随场景缩放），所以黑边区域也能响应 UI 与点击。`getSceneRoot()` 仍返回 `layers` 供场景整体操作；存档缩略图改用 `getCaptureTarget()` 截整屏，保留对话框与快捷栏。
+场景树形如 `app.stage → [sceneRoot → viewport(mask) → layers(bg/chara/effect), uiLayer → ui.root]`。遮罩是 viewport 上的固定逻辑尺寸矩形：画布铺满视口后，立绘腿部与背景 cover 的溢出会被裁在逻辑画面边界内，不会露到 letterbox 黑边；遮罩与 `layers` 是兄弟节点，shake 只移动 `layers`，裁剪窗口保持不动。遮罩同时参与命中测试（Pixi v8 `EventBoundary.hitPruneFn` 会检查 mask 的 `containsPoint`），letterbox 区域不会命中任何场景对象。UI 在 `uiLayer`（屏幕空间、不裁剪、不随场景缩放），宽度对齐场景画面；letterbox 黑边不参与 UI 命中，也不响应点击。`getSceneRoot()` 仍返回 `layers` 供场景整体操作；存档缩略图改用 `getCaptureTarget()` 截整屏，保留对话框与快捷栏。
 
 依赖注入而非内部 new：`stage` 由 Game 从 pixi `Application` 传入，`resource` 传入资源门面（只要求 `manifest`/`loadImage`/`loadSpritesheet` 三个成员，见 §6.1），因此渲染层可在 node 环境用假资源单测。
 
@@ -508,12 +508,17 @@ ScaleManager（构造注入 target: Container，即 sceneRoot）
 **UI 屏幕空间缩放（与场景解耦）：** UIManager 自管一套变换，规则见 `src/ui/uiLayout.ts`：
 
 ```
-uiScale  = clamp(viewportWidth / 1280, 0.8, 2)
-virtualW = viewportWidth  / uiScale
-virtualH = viewportHeight / uiScale
+uiScale           = clamp(viewportWidth / 1280, 0.8, 2)
+virtualW          = (frame.width > 0 ? frame.width : viewportWidth) / uiScale
+virtualH          = viewportHeight / uiScale
+compactAmount     = 1                 // viewportWidth ≤ 768
+                  = (1024 - width) / 256  // 768 < width < 1024
+                  = 0                 // viewportWidth ≥ 1024
 ```
 
 只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放会让 UI 忽大忽小。手机横屏 745/785 宽都低于 `1280×0.8`，`uiScale` 固定 0.8，UI 物理尺寸在工具栏/全屏切换时完全稳定；虚拟高度随可用高度变化，底部控件贴虚拟底边即贴屏幕底边。桌面 1280/1920 宽分别为 1.0/1.5。
+
+`compactAmount` 让快捷栏与选项的紧凑尺寸随视口宽度连续过渡，避免跨过缩放钳制点时突然跳变；桌面宽度为 0（正常尺寸），≤768 完全紧凑。紧凑模式字号下限按物理像素反推（≥11 CSS px）。对话框高度在短屏上按当前文本自适应（基准仍为虚拟高度 30%，上限 70%），避免说话人 + 多行正文被快捷栏遮挡。`computeUiLayout(viewportWidth, viewportHeight, frame?)` 是唯一的布局计算入口，`UIManager.resize` 只负责去重与偏移。
 
 **UI 水平范围对齐场景画面：** `UIManager.resize(viewport, frame?)` 的第二个参数是 `renderer.getSceneFrame()`——场景画面在屏幕上的矩形（已应用 fit 缩放与居中）。UI 的虚拟宽度取 `frame.width / uiScale`，`root.position.x = frame.x`，因此 UI 不会覆盖两侧 letterbox 黑边；高度仍取 `viewport.height / uiScale`，对话框仍贴屏幕底边。未传入/无效 frame 时退回视口宽度。命中层尺寸同步为 UI 虚拟尺寸，黑边不参与 UI 命中。
 
@@ -1147,6 +1152,8 @@ class InputManager implements IInputManager {
 
   // 命中层以 addChildAt(hit, 0) 挂为 root 的首个子节点；重复调用先移除旧命中层
   setUIRoot(root: Container): void;
+  // 更新命中层尺寸（UI 虚拟坐标）；非有限/非正数忽略
+  setSize(width: number, height: number): void;
   // 移除监听并销毁命中层
   destroy(): void;
 }
@@ -1154,7 +1161,7 @@ class InputManager implements IInputManager {
 
 点击语义采用 **`pointertap`**（而非文档旧稿的 `pointerdown`）：拖动滑条或滚动列表时不会误触发 `input:click` 而推进对话。组件内部命中由 pixi 负责（各交互组件 `eventMode='static'`），无需全局监听 `MouseEvent`。
 
-坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。命中层的 `width/height` 使用**逻辑分辨率**（`config.width/height`），不是 `app.screen`；因此 canvas 铺满视口后命中区域仍恰好覆盖整个逻辑画面，letterbox 区域外的点击因超出矩形被忽略。viewport 的逻辑尺寸遮罩也会在 Pixi 命中测试阶段裁掉 letterbox（`EventBoundary.hitPruneFn` 检查 mask），与命中层形成双重保证。
+坐标转换统一依赖 `ScaleManager.toLogical`（见 §4.8），逻辑坐标与渲染共享同一换算，不做手写 CSS 像素数学。命中层的 `width/height` 使用 **UI 虚拟尺寸**（`UIManager.resize` 的返回值，由 `setSize` 更新），恰好覆盖场景画面宽度、不覆盖两侧 letterbox；黑边区域不参与 UI 命中。场景逻辑尺寸遮罩也会在 Pixi 命中测试阶段裁掉 letterbox（`EventBoundary.hitPruneFn` 检查 mask），与命中层形成双重保证。
 
 ---
 

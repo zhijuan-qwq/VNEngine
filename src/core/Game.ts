@@ -83,7 +83,7 @@ const defaultFactories: GameFactories = {
     ),
   createInput: (engine, config) =>
     new InputManager(engine.eventBus, {
-      // 命中层使用逻辑分辨率：画布尺寸随视口变化，命中区域始终覆盖整个逻辑画面
+      // 初始尺寸；responsive 模式下随后由 UIManager.resize 的虚拟尺寸覆盖
       width: config.width,
       height: config.height,
       toLogical: (point) => engine.renderer.toLogical(point),
