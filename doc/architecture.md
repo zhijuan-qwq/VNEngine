@@ -518,7 +518,9 @@ compactAmount     = 1                 // viewportWidth ≤ 768
 
 只跟随宽度：横屏时浏览器工具栏/地址栏伸缩改变的是可用高度，若把高度纳入缩放会让 UI 忽大忽小。手机横屏 745/785 宽都低于 `1280×0.8`，`uiScale` 固定 0.8，UI 物理尺寸在工具栏/全屏切换时完全稳定；虚拟高度随可用高度变化，底部控件贴虚拟底边即贴屏幕底边。桌面 1280/1920 宽分别为 1.0/1.5。
 
-`compactAmount` 让快捷栏与选项的紧凑尺寸随视口宽度连续过渡，避免跨过缩放钳制点时突然跳变；桌面宽度为 0（正常尺寸），≤768 完全紧凑。紧凑模式字号下限按物理像素反推（≥11 CSS px）。对话框高度在短屏上按当前文本自适应（基准仍为虚拟高度 30%，上限 70%），避免说话人 + 多行正文被快捷栏遮挡。`computeUiLayout(viewportWidth, viewportHeight, frame?)` 是唯一的布局计算入口，`UIManager.resize` 只负责去重与偏移。
+`compactAmount` 让快捷栏与选项的紧凑尺寸随视口宽度连续过渡，避免跨过缩放钳制点时突然跳变；桌面宽度为 0（正常尺寸），≤768 完全紧凑。紧凑模式字号下限按物理像素反推（≥11 CSS px）。对话框高度在短屏上按当前文本自适应（基准仍为虚拟高度 30%，上限 70%），避免说话人 + 多行正文被快捷栏遮挡。
+
+**对话框与选项避让：** 选项可见时，对话框收在选项块下方（`ChoicePanel.blockBottom()` + 8px），必要时可压到基准高度以下，下限取文本完整显示所需高度（`DialogueBox.contentHeight()`）；若此时文本底边仍会越过快捷栏顶边（`height - MenuBar.reserveHeight`），则隐藏对话框、保留选项，选项收起后恢复显示。显式 `dialogueBox.height` 同样参与该检查，不会绕过避让。几何判断所需的访问器：`DialogueBox.textBottomOffset()` / `contentHeight()` / `preferredHeight()`、`ChoicePanel.blockBottom()`、`MenuBar.reserveHeight`。`computeUiLayout(viewportWidth, viewportHeight, frame?)` 是唯一的布局计算入口，`UIManager.resize` 只负责去重与偏移。
 
 **UI 水平范围对齐场景画面：** `UIManager.resize(viewport, frame?)` 的第二个参数是 `renderer.getSceneFrame()`——场景画面在屏幕上的矩形（已应用 fit 缩放与居中）。UI 的虚拟宽度取 `frame.width / uiScale`，`root.position.x = frame.x`，因此 UI 不会覆盖两侧 letterbox 黑边；高度仍取 `viewport.height / uiScale`，对话框仍贴屏幕底边。未传入/无效 frame 时退回视口宽度。命中层尺寸同步为 UI 虚拟尺寸，黑边不参与 UI 命中。
 
