@@ -1,4 +1,4 @@
-import type { FederatedWheelEvent } from 'pixi.js';
+import type { FederatedPointerEvent, FederatedWheelEvent } from 'pixi.js';
 import { ScrollView } from '../controls/ScrollView';
 
 function makeView(contentHeight = 0): ScrollView {
@@ -13,6 +13,22 @@ function wheel(view: ScrollView, deltaY: number): void {
     deltaY,
     stopPropagation: vi.fn(),
   } as unknown as FederatedWheelEvent);
+}
+
+function pointer(
+  view: ScrollView,
+  type: string,
+  y: number,
+  target: unknown = view,
+): { stopPropagation: ReturnType<typeof vi.fn> } {
+  const event = {
+    target,
+    pointerId: 1,
+    global: { x: 0, y },
+    stopPropagation: vi.fn(),
+  };
+  view.emit(type, event as unknown as FederatedPointerEvent);
+  return event;
 }
 
 describe('ScrollView', () => {
@@ -108,5 +124,43 @@ describe('ScrollView', () => {
     const view = makeView(500);
     wheel(view, 0);
     expect(view.scrollTop).toBe(0);
+  });
+
+  it('should drag-scroll after the pointer moves past the threshold', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50);
+    const move = pointer(view, 'pointermove', 30);
+
+    expect(view.scrollTop).toBe(20);
+    expect(move.stopPropagation).toHaveBeenCalledOnce();
+
+    pointer(view, 'pointerup', 30);
+  });
+
+  it('should not scroll for a movement under the threshold', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50);
+    pointer(view, 'pointermove', 47);
+
+    expect(view.scrollTop).toBe(0);
+  });
+
+  it('should leave drags that start on a child to the child', () => {
+    const view = makeView(500);
+    pointer(view, 'pointerdown', 50, {});
+    pointer(view, 'pointermove', 20);
+
+    expect(view.scrollTop).toBe(0);
+  });
+
+  it('should ignore invalid sizes on resize', () => {
+    const view = makeView(500);
+    view.resize(300, 200);
+    view.setScroll(300);
+
+    view.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(view.maxScroll).toBe(300);
+    expect(view.scrollTop).toBe(300);
   });
 });
