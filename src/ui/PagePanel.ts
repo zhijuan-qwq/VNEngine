@@ -5,6 +5,7 @@ import { createBackdrop, createButton } from './overlay';
 import type { UIButton } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite } from './uiLayout';
 
 export interface PagePanelOptions {
   width: number;
@@ -106,6 +107,9 @@ export class PagePanel extends UIComponent {
 
   /** 视口变化时重算背板、标题、内容区与返回按钮的位置 */
   public relayout(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.panelWidth = width;
     this.panelHeight = height;
     this.drawBackdrop();

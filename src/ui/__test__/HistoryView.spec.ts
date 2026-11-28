@@ -30,6 +30,22 @@ describe('HistoryView', () => {
     expect(view.rowCount).toBe(1);
   });
 
+  it('should ignore invalid sizes on resize', () => {
+    const view = new HistoryView({
+      width: 800,
+      height: 600,
+      getEntries: () => [entry('Hero', 'Hi')],
+    });
+    view.show();
+    const page = view.children[0] as PagePanel;
+    const before = page.contentWidth;
+
+    view.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(page.contentWidth).toBe(before);
+    expect(view.rowCount).toBe(1);
+  });
+
   it('should start hidden', () => {
     const view = new HistoryView({ width: 800, height: 600 });
     expect(view.visible).toBe(false);

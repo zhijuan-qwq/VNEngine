@@ -7,6 +7,7 @@ import { createPanelBox } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 import { parseRichText } from './richtext';
+import { isPositiveFinite } from './uiLayout';
 
 export interface HistoryViewOptions {
   width: number;
@@ -99,6 +100,9 @@ export class HistoryView extends UIComponent {
 
   /** 视口变化时重排页面与滚动区；可见时按新宽度重建卡片 */
   public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
     this.page.relayout(width, height);

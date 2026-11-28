@@ -117,6 +117,7 @@ describe('InputManager', () => {
     input.setUIRoot(root);
 
     input.setSize(0, Number.NaN);
+    input.setSize(Number.POSITIVE_INFINITY, 330);
 
     expect(hitOf(root).hitArea).toMatchObject({ width: 800, height: 600 });
   });

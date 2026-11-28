@@ -72,6 +72,18 @@ describe('SaveLoadMenu', () => {
     expect(menu.buttons).toHaveLength(3);
   });
 
+  it('should ignore invalid sizes on resize', () => {
+    const menu = makeMenu();
+    menu.show('load');
+    const page = menu.children[0] as PagePanel;
+    const before = page.contentWidth;
+
+    menu.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(page.contentWidth).toBe(before);
+    expect(menu.buttons).toHaveLength(3);
+  });
+
   it('should start hidden in load mode', () => {
     const menu = makeMenu();
     expect(menu.visible).toBe(false);

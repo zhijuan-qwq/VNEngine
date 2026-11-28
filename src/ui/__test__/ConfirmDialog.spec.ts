@@ -110,6 +110,18 @@ describe('ConfirmDialog', () => {
     await expect(promise).resolves.toBe(true);
   });
 
+  it('should ignore invalid sizes on resize', async () => {
+    const dialog = makeDialog();
+    const promise = dialog.confirm({ message: '是否继续？' });
+    const before = dialog.buttons[0].x;
+
+    dialog.resize(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(dialog.buttons[0].x).toBe(before);
+    tap(dialog.buttons[0]);
+    await expect(promise).resolves.toBe(false);
+  });
+
   it('should throw when the request lacks a message', () => {
     const dialog = makeDialog();
     expect(() => dialog.confirm({} as ConfirmRequest)).toThrow(TypeError);

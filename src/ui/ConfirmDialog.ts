@@ -3,6 +3,7 @@ import { UIComponent } from './UIComponent';
 import { createBackdrop, createButton } from './overlay';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
+import { isPositiveFinite } from './uiLayout';
 
 export interface ConfirmDialogOptions {
   width: number;
@@ -125,6 +126,9 @@ export class ConfirmDialog extends UIComponent {
 
   /** 视口变化时重算遮罩、盒子与按钮位置；未决请求保持不变 */
   public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
     if (!this.boxWidthExplicit) {

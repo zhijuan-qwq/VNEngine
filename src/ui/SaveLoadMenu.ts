@@ -6,6 +6,7 @@ import { UIComponent } from './UIComponent';
 import { resolveTheme } from './theme';
 import type { DeepPartial, UITheme } from './theme';
 import type { SaveSlotInfo } from '@/types/save';
+import { isPositiveFinite } from './uiLayout';
 
 export type SaveLoadMode = 'save' | 'load';
 
@@ -126,6 +127,9 @@ export class SaveLoadMenu extends UIComponent {
 
   /** 视口变化时重排页面与滚动区；可见时按新宽度重建卡片 */
   public resize(width: number, height: number): void {
+    if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+      return;
+    }
     this.opts.width = width;
     this.opts.height = height;
     this.page.relayout(width, height);

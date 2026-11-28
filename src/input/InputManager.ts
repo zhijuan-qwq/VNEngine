@@ -48,7 +48,14 @@ export class InputManager implements IInputManager {
 
   /** 更新命中层尺寸（UI 虚拟坐标系）；无效尺寸忽略 */
   public setSize(width: number, height: number): void {
-    if (!(width > 0) || !(height > 0)) return;
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return;
+    }
     this.hitWidth = width;
     this.hitHeight = height;
     if (this.hitContainer) {

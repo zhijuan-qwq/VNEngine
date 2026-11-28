@@ -65,6 +65,15 @@ describe('PagePanel', () => {
     expect(panel.contentHeight).toBeGreaterThan(0);
   });
 
+  it('should ignore invalid sizes on relayout', () => {
+    const panel = makePanel();
+    const before = panel.contentWidth;
+
+    panel.relayout(Number.NaN, Number.POSITIVE_INFINITY);
+
+    expect(panel.contentWidth).toBe(before);
+  });
+
   it('should forward back taps to onBack', () => {
     const onBack = vi.fn();
     const panel = makePanel({ onBack });
